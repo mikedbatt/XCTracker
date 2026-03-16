@@ -1,11 +1,12 @@
+import React, { useState } from 'react';
 import {
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  View, Text, StyleSheet, Modal, TouchableOpacity,
+  ScrollView, TextInput, Alert, ActivityIndicator,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { db, auth } from '../firebaseConfig';
+import { doc, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
+import DatePickerField from './DatePickerField';
 
 const EFFORT_LABELS = ['', 'Very Easy', 'Easy', 'Moderate', 'Moderate', 'Medium',
   'Medium Hard', 'Hard', 'Very Hard', 'Max Effort', 'All Out'];
@@ -13,193 +14,295 @@ const EFFORT_LABELS = ['', 'Very Easy', 'Easy', 'Moderate', 'Moderate', 'Medium'
 const EFFORT_COLORS = ['', '#4caf50', '#4caf50', '#8bc34a', '#8bc34a', '#ffeb3b',
   '#ffc107', '#ff9800', '#ff5722', '#f44336', '#b71c1c'];
 
-export default function RunDetailModal({ run, visible, onClose, primaryColor = '#2e7d32' }) {
+export default function RunDetailModal({ run, visible, onClose, onDeleted, onUpdated, primaryColor = '#2e7d32' }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [saving,    setSaving]    = useState(false);
+  const [deleting,  setDeleting]  = useState(false);
+
+  const [editMiles,    setEditMiles]    = useState('');
+  const [editDuration, setEditDuration] = useState('');
+  const [editHR,       setEditHR]       = useState('');
+  const [editEffort,   setEditEffort]   = useState(5);
+  const [editNotes,    setEditNotes]    = useState('');
+  const [editDate,     setEditDate]     = useState(new Date());
+
   if (!run) return null;
 
+  const isOwner = auth.currentUser?.uid === run.userId;
   const date = run.date?.toDate?.() || new Date();
   const effortColor = EFFORT_COLORS[run.effort] || primaryColor;
 
-  // Calculate pace if we have miles and duration
   let pace = null;
   if (run.miles && run.duration) {
     const parts = run.duration.split(':');
     if (parts.length === 2) {
       const totalMinutes = parseInt(parts[0]) + parseInt(parts[1]) / 60;
-      const paceMinutes = totalMinutes / run.miles;
+      const paceMinutes  = totalMinutes / run.miles;
       const paceMin = Math.floor(paceMinutes);
       const paceSec = Math.round((paceMinutes - paceMin) * 60);
       pace = `${paceMin}:${paceSec.toString().padStart(2, '0')} /mi`;
     }
   }
 
+  const handleStartEdit = () => {
+    setEditMiles(String(run.miles || ''));
+    setEditDuration(run.duration || '');
+    setEditHR(run.heartRate ? String(run.heartRate) : '');
+    setEditEffort(run.effort || 5);
+    setEditNotes(run.notes || '');
+    setEditDate(run.date?.toDate?.() || new Date());
+    setIsEditing(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editMiles || isNaN(parseFloat(editMiles))) {
+      Alert.alert('Missing info', 'Please enter miles for this run.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const newMiles = parseFloat(editMiles);
+      const diff = newMiles - (run.miles || 0);
+      await updateDoc(doc(db, 'runs', run.id), {
+        miles: newMiles,
+        duration: editDuration || null,
+        heartRate: editHR ? parseInt(editHR) : null,
+        effort: editEffort,
+        notes: editNotes || null,
+        date: editDate,
+      });
+      if (diff !== 0) {
+        const userDoc = await getDoc(doc(db, 'users', run.userId));
+        if (userDoc.exists()) {
+          const current = userDoc.data().totalMiles || 0;
+          await updateDoc(doc(db, 'users', run.userId), {
+            totalMiles: Math.max(0, Math.round((current + diff) * 10) / 10),
+          });
+        }
+      }
+      setIsEditing(false);
+      onUpdated && onUpdated();
+      Alert.alert('Saved!', 'Run updated.');
+    } catch { Alert.alert('Error', 'Could not save changes.'); }
+    setSaving(false);
+  };
+
+  const handleDelete = () => {
+    Alert.alert(
+      'Delete run?',
+      `Delete this ${run.miles} mile run? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: async () => {
+          setDeleting(true);
+          try {
+            await deleteDoc(doc(db, 'runs', run.id));
+            const userDoc = await getDoc(doc(db, 'users', run.userId));
+            if (userDoc.exists()) {
+              const current = userDoc.data().totalMiles || 0;
+              await updateDoc(doc(db, 'users', run.userId), {
+                totalMiles: Math.max(0, Math.round((current - (run.miles || 0)) * 10) / 10),
+              });
+            }
+            onDeleted && onDeleted();
+            onClose();
+          } catch { Alert.alert('Error', 'Could not delete run.'); }
+          setDeleting(false);
+        }},
+      ]
+    );
+  };
+
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
-    >
-      <View style={styles.container}>
-
-        {/* Header */}
-        <View style={[styles.header, { backgroundColor: primaryColor }]}>
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-            <Text style={styles.closeText}>✕ Close</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerMiles}>{run.miles} miles</Text>
-          <Text style={styles.headerDate}>
-            {date.toLocaleDateString('en-US', {
-              weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
-            })}
-          </Text>
-          {run.duration && (
-            <Text style={styles.headerDuration}>{run.duration}</Text>
-          )}
-        </View>
-
-        <ScrollView style={styles.scroll}>
-
-          {/* Effort section */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Effort</Text>
-            <View style={styles.effortContainer}>
-              <View style={styles.effortCircle}>
-                <Text style={[styles.effortNumber, { color: effortColor }]}>
-                  {run.effort}
-                </Text>
-                <Text style={styles.effortDivider}>/10</Text>
-              </View>
-              <View style={styles.effortInfo}>
-                <Text style={[styles.effortLabel, { color: effortColor }]}>
-                  {EFFORT_LABELS[run.effort]}
-                </Text>
-                <View style={styles.effortBar}>
-                  <View style={[
-                    styles.effortFill,
-                    { width: `${(run.effort / 10) * 100}%`, backgroundColor: effortColor }
-                  ]} />
-                </View>
-              </View>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      {isEditing ? (
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.container}>
+            <View style={styles.editHeader}>
+              <TouchableOpacity onPress={() => setIsEditing(false)}>
+                <Text style={styles.cancelBtn}>Cancel</Text>
+              </TouchableOpacity>
+              <Text style={styles.editHeaderTitle}>Edit Run</Text>
+              <TouchableOpacity onPress={handleSaveEdit} disabled={saving}>
+                {saving ? <ActivityIndicator color={primaryColor} />
+                  : <Text style={[styles.saveBtn, { color: primaryColor }]}>Save</Text>}
+              </TouchableOpacity>
             </View>
+            <ScrollView style={styles.editScroll} keyboardShouldPersistTaps="handled">
+              <DatePickerField label="Run date" value={editDate} onChange={setEditDate}
+                primaryColor={primaryColor} maximumDate={new Date()} />
+              <Text style={styles.editLabel}>Miles *</Text>
+              <TextInput style={styles.editInput} value={editMiles} onChangeText={setEditMiles}
+                keyboardType="decimal-pad" placeholder="e.g. 5.2" placeholderTextColor="#999" />
+              <Text style={styles.editLabel}>Duration (optional)</Text>
+              <TextInput style={styles.editInput} value={editDuration} onChangeText={setEditDuration}
+                placeholder="e.g. 42:30" placeholderTextColor="#999" />
+              <Text style={styles.editLabel}>Avg heart rate (optional)</Text>
+              <TextInput style={styles.editInput} value={editHR} onChangeText={setEditHR}
+                keyboardType="numeric" placeholder="e.g. 155" placeholderTextColor="#999" />
+              <Text style={styles.editLabel}>How did it feel? {editEffort}/10 — {EFFORT_LABELS[editEffort]}</Text>
+              <View style={styles.effortRow}>
+                {[1,2,3,4,5,6,7,8,9,10].map(n => (
+                  <TouchableOpacity key={n}
+                    style={[styles.effortBtn, editEffort === n && { backgroundColor: primaryColor }]}
+                    onPress={() => setEditEffort(n)}>
+                    <Text style={[styles.effortBtnText, editEffort === n && { color: '#fff' }]}>{n}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={styles.editLabel}>Notes (optional)</Text>
+              <TextInput style={[styles.editInput, { height: 90, textAlignVertical: 'top' }]}
+                value={editNotes} onChangeText={setEditNotes}
+                placeholder="How did the run go?" placeholderTextColor="#999" multiline />
+              <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete} disabled={deleting}>
+                {deleting ? <ActivityIndicator color="#dc2626" />
+                  : <Text style={styles.deleteBtnText}>🗑  Delete this run</Text>}
+              </TouchableOpacity>
+              <View style={{ height: 40 }} />
+            </ScrollView>
           </View>
-
-          {/* Stats grid */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Run stats</Text>
-            <View style={styles.statsGrid}>
-
-              <View style={styles.statBox}>
-                <Text style={styles.statValue}>{run.miles}</Text>
-                <Text style={styles.statLabel}>Miles</Text>
-              </View>
-
-              {run.duration && (
-                <View style={styles.statBox}>
-                  <Text style={styles.statValue}>{run.duration}</Text>
-                  <Text style={styles.statLabel}>Duration</Text>
-                </View>
+        </KeyboardAvoidingView>
+      ) : (
+        <View style={styles.container}>
+          <View style={[styles.header, { backgroundColor: primaryColor }]}>
+            <View style={styles.headerTop}>
+              <TouchableOpacity onPress={onClose}>
+                <Text style={styles.closeText}>✕ Close</Text>
+              </TouchableOpacity>
+              {isOwner && (
+                <TouchableOpacity onPress={handleStartEdit} style={styles.editBtn}>
+                  <Text style={styles.editBtnText}>✏️ Edit</Text>
+                </TouchableOpacity>
               )}
-
-              {pace && (
-                <View style={styles.statBox}>
-                  <Text style={styles.statValue}>{pace}</Text>
-                  <Text style={styles.statLabel}>Avg pace</Text>
-                </View>
-              )}
-
-              {run.heartRate && (
-                <View style={styles.statBox}>
-                  <Text style={styles.statValue}>{run.heartRate}</Text>
-                  <Text style={styles.statLabel}>Avg HR (bpm)</Text>
-                </View>
-              )}
-
             </View>
-          </View>
-
-          {/* Source */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Data source</Text>
-            <View style={styles.sourceBox}>
-              <Text style={styles.sourceText}>
-                {run.source === 'manual' ? 'Manually entered' :
-                 run.source === 'strava' ? 'Synced from Strava' :
-                 run.source === 'garmin' ? 'Synced from Garmin' :
-                 run.source || 'Manual entry'}
-              </Text>
-            </View>
-          </View>
-
-          {/* Notes */}
-          {run.notes && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Athlete notes</Text>
-              <View style={styles.notesBox}>
-                <Text style={styles.notesText}>{run.notes}</Text>
-              </View>
-            </View>
-          )}
-
-          {/* Time logged */}
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>
-              Logged at {date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+            <Text style={styles.headerMiles}>{run.miles} miles</Text>
+            <Text style={styles.headerDate}>
+              {date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
             </Text>
+            {run.duration && <Text style={styles.headerDuration}>{run.duration}</Text>}
           </View>
-
-        </ScrollView>
-      </View>
+          <ScrollView style={styles.scroll}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Effort</Text>
+              <View style={styles.effortContainer}>
+                <View style={styles.effortCircle}>
+                  <Text style={[styles.effortNumber, { color: effortColor }]}>{run.effort}</Text>
+                  <Text style={styles.effortDivider}>/10</Text>
+                </View>
+                <View style={styles.effortInfo}>
+                  <Text style={[styles.effortLabel, { color: effortColor }]}>{EFFORT_LABELS[run.effort]}</Text>
+                  <View style={styles.effortBar}>
+                    <View style={[styles.effortFill, { width: `${(run.effort / 10) * 100}%`, backgroundColor: effortColor }]} />
+                  </View>
+                </View>
+              </View>
+            </View>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Run stats</Text>
+              <View style={styles.statsGrid}>
+                <View style={styles.statBox}>
+                  <Text style={styles.statValue}>{run.miles}</Text>
+                  <Text style={styles.statLabel}>Miles</Text>
+                </View>
+                {run.duration && (
+                  <View style={styles.statBox}>
+                    <Text style={styles.statValue}>{run.duration}</Text>
+                    <Text style={styles.statLabel}>Duration</Text>
+                  </View>
+                )}
+                {pace && (
+                  <View style={styles.statBox}>
+                    <Text style={styles.statValue}>{pace}</Text>
+                    <Text style={styles.statLabel}>Avg pace</Text>
+                  </View>
+                )}
+                {run.heartRate && (
+                  <View style={styles.statBox}>
+                    <Text style={styles.statValue}>{run.heartRate}</Text>
+                    <Text style={styles.statLabel}>Avg HR (bpm)</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Data source</Text>
+              <View style={styles.sourceBox}>
+                <Text style={styles.sourceText}>
+                  {run.source === 'strava' ? '🟠 Synced from Strava'
+                    : run.source === 'garmin' ? '🟢 Synced from Garmin'
+                    : '✏️ Manually entered'}
+                </Text>
+              </View>
+            </View>
+            {run.notes && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Notes</Text>
+                <View style={styles.notesBox}>
+                  <Text style={styles.notesText}>{run.notes}</Text>
+                </View>
+              </View>
+            )}
+            <View style={styles.footer}>
+              <Text style={styles.footerText}>
+                Logged at {date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+              </Text>
+              {isOwner && (
+                <TouchableOpacity onPress={handleDelete} disabled={deleting} style={styles.footerDeleteBtn}>
+                  {deleting ? <ActivityIndicator color="#dc2626" size="small" />
+                    : <Text style={styles.footerDeleteText}>Delete run</Text>}
+                </TouchableOpacity>
+              )}
+            </View>
+          </ScrollView>
+        </View>
+      )}
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5' },
-  header: {
-    paddingTop: 60, paddingBottom: 24, paddingHorizontal: 24,
-  },
-  closeBtn: { marginBottom: 16 },
-  closeText: { color: 'rgba(255,255,255,0.8)', fontSize: 15 },
+  header: { paddingTop: 60, paddingBottom: 24, paddingHorizontal: 24 },
+  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  closeText: { color: 'rgba(255,255,255,0.85)', fontSize: 15 },
+  editBtn: { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
+  editBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   headerMiles: { fontSize: 42, fontWeight: 'bold', color: '#fff' },
   headerDate: { fontSize: 16, color: 'rgba(255,255,255,0.85)', marginTop: 4 },
   headerDuration: { fontSize: 22, color: 'rgba(255,255,255,0.9)', marginTop: 6, fontWeight: '600' },
   scroll: { flex: 1 },
-  section: {
-    backgroundColor: '#fff', borderRadius: 14,
-    margin: 16, marginBottom: 0, padding: 16,
-  },
-  sectionTitle: {
-    fontSize: 13, fontWeight: '700', color: '#999',
-    textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 14,
-  },
+  section: { backgroundColor: '#fff', borderRadius: 14, margin: 16, marginBottom: 0, padding: 16 },
+  sectionTitle: { fontSize: 13, fontWeight: '700', color: '#999', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 14 },
   effortContainer: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   effortCircle: { flexDirection: 'row', alignItems: 'baseline' },
   effortNumber: { fontSize: 52, fontWeight: 'bold' },
   effortDivider: { fontSize: 20, color: '#ccc', marginLeft: 2 },
   effortInfo: { flex: 1 },
   effortLabel: { fontSize: 18, fontWeight: '700', marginBottom: 10 },
-  effortBar: {
-    height: 8, backgroundColor: '#eee',
-    borderRadius: 4, overflow: 'hidden',
-  },
+  effortBar: { height: 8, backgroundColor: '#eee', borderRadius: 4, overflow: 'hidden' },
   effortFill: { height: '100%', borderRadius: 4 },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  statBox: {
-    backgroundColor: '#f8f8f8', borderRadius: 10,
-    padding: 14, minWidth: '45%', flex: 1,
-  },
+  statBox: { backgroundColor: '#f8f8f8', borderRadius: 10, padding: 14, minWidth: '45%', flex: 1 },
   statValue: { fontSize: 22, fontWeight: 'bold', color: '#333' },
   statLabel: { fontSize: 12, color: '#999', marginTop: 4 },
-  sourceBox: {
-    backgroundColor: '#f8f8f8', borderRadius: 10,
-    padding: 14,
-  },
+  sourceBox: { backgroundColor: '#f8f8f8', borderRadius: 10, padding: 14 },
   sourceText: { fontSize: 15, color: '#555' },
-  notesBox: {
-    backgroundColor: '#f8f8f8', borderRadius: 10,
-    padding: 14,
-  },
+  notesBox: { backgroundColor: '#f8f8f8', borderRadius: 10, padding: 14 },
   notesText: { fontSize: 15, color: '#444', lineHeight: 22 },
-  footer: { padding: 24, alignItems: 'center' },
+  footer: { padding: 24, alignItems: 'center', gap: 12 },
   footerText: { fontSize: 13, color: '#bbb' },
+  footerDeleteBtn: { padding: 8 },
+  footerDeleteText: { fontSize: 14, color: '#dc2626', fontWeight: '600' },
+  editHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 60, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  editHeaderTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
+  cancelBtn: { color: '#dc2626', fontSize: 16, fontWeight: '600', width: 60 },
+  saveBtn: { fontSize: 16, fontWeight: '700', width: 60, textAlign: 'right' },
+  editScroll: { padding: 20 },
+  editLabel: { fontSize: 14, fontWeight: '600', color: '#444', marginBottom: 8, marginTop: 4 },
+  editInput: { backgroundColor: '#fff', borderRadius: 10, padding: 14, fontSize: 16, marginBottom: 16, borderWidth: 1, borderColor: '#ddd', color: '#333' },
+  effortRow: { flexDirection: 'row', gap: 6, marginBottom: 16, flexWrap: 'wrap' },
+  effortBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#eee', alignItems: 'center', justifyContent: 'center' },
+  effortBtnText: { fontSize: 15, fontWeight: '600', color: '#666' },
+  deleteBtn: { borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 16, backgroundColor: '#fee2e2', borderWidth: 1, borderColor: '#fca5a5' },
+  deleteBtnText: { color: '#dc2626', fontSize: 16, fontWeight: '700' },
 });

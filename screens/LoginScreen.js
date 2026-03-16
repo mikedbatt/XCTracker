@@ -3,12 +3,12 @@ import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'fire
 import { doc, setDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert, KeyboardAvoidingView, Platform,
-    ScrollView,
-    StyleSheet,
-    Text, TextInput, TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert, KeyboardAvoidingView, Platform,
+  ScrollView,
+  StyleSheet,
+  Text, TextInput, TouchableOpacity,
+  View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 
@@ -25,6 +25,7 @@ export default function LoginScreen({ onAuthSuccess }) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [role, setRole] = useState('athlete');
+  const [gender, setGender] = useState('boys');
   const [birthMonth, setBirthMonth] = useState('');
   const [birthDay, setBirthDay] = useState('');
   const [birthYear, setBirthYear] = useState('');
@@ -110,6 +111,7 @@ export default function LoginScreen({ onAuthSuccess }) {
           lastName,
           email: user.email,
           role,
+          gender: role === 'athlete' ? gender : null,
           createdAt: new Date(),
           totalMiles: 0,
           schoolId: null,
@@ -240,6 +242,49 @@ export default function LoginScreen({ onAuthSuccess }) {
           onChangeText={setPassword}
           secureTextEntry
         />
+
+        {/* Gender - athletes only on sign up */}
+        {isSignUp && role === 'athlete' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>I compete on the:</Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              {['boys', 'girls'].map(g => (
+                <TouchableOpacity
+                  key={g}
+                  style={[styles.roleCard, { flex: 1, paddingVertical: 14 },
+                    gender === g && { borderColor: '#2e7d32', backgroundColor: '#e8f5e9' }]}
+                  onPress={() => setGender(g)}
+                >
+                  <Text style={[styles.roleLabel, gender === g && { color: '#2e7d32' }]}>
+                    {g === 'boys' ? 'Boys team' : 'Girls team'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Gender selector - athletes only on sign up */}
+        {isSignUp && role === 'athlete' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>I compete on the:</Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              {['boys', 'girls'].map(g => (
+                <TouchableOpacity
+                  key={g}
+                  style={[styles.roleCard, { flex: 1, padding: 14, alignItems: 'center' },
+                    gender === g && { backgroundColor: '#2e7d32', borderColor: '#2e7d32' }]}
+                  onPress={() => setGender(g)}
+                >
+                  <Text style={[{ fontSize: 16, fontWeight: '700', color: '#444' },
+                    gender === g && { color: '#fff' }]}>
+                    {g === 'boys' ? '♂ Boys team' : '♀ Girls team'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
 
         {/* Date of Birth - athletes only on sign up */}
         {isSignUp && role === 'athlete' && (

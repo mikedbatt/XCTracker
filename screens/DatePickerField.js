@@ -1,11 +1,11 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useState } from 'react';
+import React, { useState } from 'react';
 import {
-    Modal,
-    Platform,
-    StyleSheet,
-    Text, TouchableOpacity,
-    View,
+  Modal,
+  Platform,
+  StyleSheet,
+  Text, TouchableOpacity,
+  View,
 } from 'react-native';
 
 export default function DatePickerField({
@@ -18,7 +18,28 @@ export default function DatePickerField({
   mode = 'date',
 }) {
   const [show, setShow] = useState(false);
-  const date = value instanceof Date ? value : new Date();
+  // Safely convert any date format to a valid JS Date
+  const toValidDate = (val) => {
+    if (!val) return undefined;
+    if (val?.toDate) return val.toDate();           // Firestore Timestamp
+    if (val instanceof Date && !isNaN(val.getTime())) return val;
+    if (typeof val === 'string') {
+      const d = new Date(val);
+      return isNaN(d.getTime()) ? undefined : d;
+    }
+    return undefined;
+  };
+
+  const date    = toValidDate(value) || new Date();
+  const minDate = toValidDate(minimumDate);
+  const maxDate = toValidDate(maximumDate);
+
+  const handleOpen = () => {
+    setShow(true);
+    // Pre-fire onChange with today if no value set yet
+    // iOS spinner only fires onChange on scroll, not on open
+    if (!value) onChange(new Date());
+  };
 
   const formatDate = (d) => {
     if (!value) return 'Tap to select date';
@@ -44,7 +65,7 @@ export default function DatePickerField({
         {label && <Text style={styles.label}>{label}</Text>}
         <TouchableOpacity
           style={[styles.trigger, { borderColor: value ? primaryColor : '#ddd' }]}
-          onPress={() => setShow(true)}
+          onPress={handleOpen}
         >
           <Text style={[styles.triggerText, { color: value ? '#333' : '#999' }]}>
             {mode === 'time' ? formatTime(date) : formatDate(date)}
@@ -69,8 +90,8 @@ export default function DatePickerField({
                 mode={mode}
                 display="spinner"
                 onChange={handleChange}
-                minimumDate={minimumDate}
-                maximumDate={maximumDate}
+                minimumDate={minDate}
+                maximumDate={maxDate}
                 style={styles.picker}
               />
             </View>
@@ -86,7 +107,7 @@ export default function DatePickerField({
       {label && <Text style={styles.label}>{label}</Text>}
       <TouchableOpacity
         style={[styles.trigger, { borderColor: value ? primaryColor : '#ddd' }]}
-        onPress={() => setShow(true)}
+        onPress={handleOpen}
       >
         <Text style={[styles.triggerText, { color: value ? '#333' : '#999' }]}>
           {mode === 'time' ? formatTime(date) : formatDate(date)}
@@ -99,8 +120,8 @@ export default function DatePickerField({
           mode={mode}
           display="default"
           onChange={handleChange}
-          minimumDate={minimumDate}
-          maximumDate={maximumDate}
+          minimumDate={minDate}
+          maximumDate={maxDate}
         />
       )}
     </View>
@@ -132,7 +153,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: '#eee',
   },
   modalTitle: { fontSize: 16, fontWeight: '600', color: '#333' },
-  modalCancel: { fontSize: 16, color: '#999' },
+  modalCancel: { fontSize: 16, color: '#c0392b', fontWeight: '600' },
   modalDone: { fontSize: 16, fontWeight: '700' },
   picker: { height: 200 },
 });

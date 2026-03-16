@@ -40,7 +40,7 @@ export const TYPE_COLORS = {
   Race: '#dc2626', 'Team Meeting': '#0284c7', 'Team Party': '#f59e0b',
 };
 
-export default function CalendarScreen({ userData, school, onClose, autoOpenAdd }) {
+export default function CalendarScreen({ userData, school, onClose }) {
   const [markedDates, setMarkedDates] = useState({});
   const [allItems, setAllItems] = useState([]);
   const [athleteRuns, setAthleteRuns] = useState([]);
@@ -62,6 +62,8 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd 
   const [title, setTitle] = useState('');
   const [date, setDate] = useState(new Date());
   const [time, setTime] = useState(null);
+  const [endDate, setEndDate] = useState(null);
+  const [isMultiDay, setIsMultiDay] = useState(false);
   const [location, setLocation] = useState('');
   const [description, setDescription] = useState('');
   const [notes, setNotes] = useState('');
@@ -69,20 +71,7 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd 
   const primaryColor = school?.primaryColor || '#2e7d32';
   const isCoach = userData.role === 'admin_coach' || userData.role === 'assistant_coach';
 
-  useEffect(() => { 
-  loadItems();
-  if (autoOpenAdd) {
-    setCategory('Training');
-    setType('Easy');
-    setTitle('');
-    setDate(new Date());
-    setTime(null);
-    setLocation('');
-    setDescription('');
-    setNotes('');
-    setAddModalVisible(true);
-  }
-}, []);
+  useEffect(() => { loadItems(); }, []);
 
   const loadItems = async () => {
     setLoading(true);
@@ -101,10 +90,23 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd 
       items.forEach(item => {
         const d = item.date?.toDate?.();
         if (!d) return;
-        const key = d.toISOString().split('T')[0];
         const color = TYPE_COLORS[item.type] || primaryColor;
-        if (!marks[key]) marks[key] = { dots: [], marked: true };
-        if (marks[key].dots.length < 2) marks[key].dots.push({ key: item.id, color });
+
+        if (item.isMultiDay && item.endDate) {
+          // Mark every day from start to end
+          const end = item.endDate?.toDate?.() || d;
+          const cur = new Date(d);
+          while (cur <= end) {
+            const key = cur.toISOString().split('T')[0];
+            if (!marks[key]) marks[key] = { dots: [], marked: true };
+            if (marks[key].dots.length < 3) marks[key].dots.push({ key: `${item.id}_${key}`, color });
+            cur.setDate(cur.getDate() + 1);
+          }
+        } else {
+          const key = d.toISOString().split('T')[0];
+          if (!marks[key]) marks[key] = { dots: [], marked: true };
+          if (marks[key].dots.length < 3) marks[key].dots.push({ key: item.id, color });
+        }
       });
 
       // Also load athlete's own runs and show as gray dots
@@ -154,6 +156,7 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd 
     setEditingItem(null);
     setCategory('Training'); setType('Easy'); setTitle('');
     setDate(preselectDate || new Date()); setTime(null);
+    setEndDate(null); setIsMultiDay(false);
     setLocation(''); setDescription(''); setNotes('');
     setAddModalVisible(true);
   };
@@ -166,6 +169,8 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd 
     setTitle(item.title || '');
     setDate(item.date?.toDate?.() || new Date());
     setTime(null);
+    setIsMultiDay(item.isMultiDay || false);
+    setEndDate(item.endDate?.toDate?.() || null);
     setLocation(item.location || '');
     setDescription(item.description || '');
     setNotes(item.notes || '');
@@ -190,6 +195,8 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd 
         type,
         title,
         date: eventDateTime,
+        isMultiDay: isMultiDay && !!endDate,
+        endDate: isMultiDay && endDate ? endDate : null,
         location: location || null,
         description: description || null,
         notes: notes || null,
@@ -261,6 +268,7 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd 
         <View style={styles.loading}><ActivityIndicator size="large" color={primaryColor} /></View>
       ) : (
         <ScrollView style={styles.scroll}>
+
           <Calendar
             onDayPress={handleDayPress}
             markingType="multi-dot"
@@ -405,7 +413,10 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd 
                 </View>
               </View>
               <Text style={styles.detailTitle}>{detailItem.title}</Text>
-              <Text style={styles.detailDate}>{formatDate(detailItem)}</Text>
+              <Text style={styles.detailDate}>
+                {formatDate(detailItem)}
+                {detailItem.isMultiDay && detailItem.endDate && ` – ${detailItem.endDate?.toDate?.()?.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}`}
+              </Text>
             </View>
             <ScrollView style={styles.detailScroll}>
               {detailItem.location && (
@@ -511,6 +522,32 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd 
               <DatePickerField label="Date *" value={date} onChange={setDate} primaryColor={primaryColor} />
               <DatePickerField label="Start time (optional)" value={time} onChange={setTime} primaryColor={primaryColor} mode="time" />
 
+              {/* Multi-day toggle */}
+              <View style={styles.multiDayRow}>
+                <View style={styles.multiDayLeft}>
+                  <Text style={styles.fieldLabel}>Multi-day event?</Text>
+                  <Text style={styles.multiDayHint}>Camp, overnight trip, multi-day meet</Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.multiDayToggle, isMultiDay && { backgroundColor: primaryColor }]}
+                  onPress={() => { setIsMultiDay(v => !v); if (isMultiDay) setEndDate(null); }}
+                >
+                  <Text style={[styles.multiDayToggleText, isMultiDay && { color: '#fff' }]}>
+                    {isMultiDay ? 'On' : 'Off'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {isMultiDay && (
+                <DatePickerField
+                  label="End date *"
+                  value={endDate}
+                  onChange={setEndDate}
+                  primaryColor={primaryColor}
+                  minimumDate={date || undefined}
+                />
+              )}
+
               {/* Location */}
               <Text style={styles.fieldLabel}>Location (optional)</Text>
               <TextInput style={styles.input} placeholder="e.g. Camel's Back Park" placeholderTextColor="#999" value={location} onChangeText={setLocation} />
@@ -612,10 +649,15 @@ const styles = StyleSheet.create({
   modal: { flex: 1, backgroundColor: '#f5f5f5' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 60, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
   modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
-  modalCancel: { fontSize: 16, color: '#999', width: 60 },
+  modalCancel: { fontSize: 16, color: '#c0392b', fontWeight: '600', width: 60 },
   modalSave: { fontSize: 16, fontWeight: '700', width: 60, textAlign: 'right' },
   modalScroll: { padding: 20 },
   fieldLabel: { fontSize: 14, fontWeight: '600', color: '#444', marginBottom: 8, marginTop: 8 },
+  multiDayRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, marginTop: 4 },
+  multiDayLeft: { flex: 1 },
+  multiDayHint: { fontSize: 12, color: '#999', marginTop: 2 },
+  multiDayToggle: { borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#eee', borderWidth: 1, borderColor: '#ddd' },
+  multiDayToggleText: { fontSize: 14, fontWeight: '700', color: '#666' },
   categoryRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
   categoryBtn: { flex: 1, borderRadius: 10, padding: 14, alignItems: 'center', backgroundColor: '#eee', borderWidth: 2, borderColor: 'transparent' },
   categoryBtnText: { fontSize: 16, fontWeight: '700', color: '#555' },
