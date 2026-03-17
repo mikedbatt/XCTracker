@@ -28,7 +28,7 @@ import { auth, db } from '../firebaseConfig';
 import AthleteDetailScreen from '../screens/AthleteDetailScreen';
 import CalendarScreen, { TYPE_COLORS } from '../screens/CalendarScreen';
 import SeasonPlanner, { getActiveSeason, getPhaseForSeason, PhasePill } from '../screens/SeasonPlanner';
-import TimeframePicker, { TIMEFRAMES } from '../screens/TimeframePicker';
+import TimeframePicker, { getDateRange, TIMEFRAMES } from '../screens/TimeframePicker';
 
 // ── Daily tip library by phase ────────────────────────────────────────────────
 const PHASE_TIPS = {
@@ -139,8 +139,10 @@ async function checkOvertraining(athleteId) {
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function CoachDashboard({ userData }) {
   const [school,              setSchool]              = useState(null);
+  const [activeSeasonData,    setActiveSeasonData]    = useState(null);
   const [athletes,            setAthletes]            = useState([]);
   const [athleteMiles,        setAthleteMiles]        = useState({});
+  const [athleteWeeklyMiles,  setAthleteWeeklyMiles]  = useState({});
   const [pendingAthletes,     setPendingAthletes]     = useState([]);
   const [trainingItems,       setTrainingItems]       = useState([]);
   const [loading,             setLoading]             = useState(true);
@@ -163,7 +165,12 @@ export default function CoachDashboard({ userData }) {
       if (!userData.schoolId) { setLoading(false); return; }
 
       const schoolDoc = await getDoc(doc(db, 'schools', userData.schoolId));
-      if (schoolDoc.exists()) setSchool(schoolDoc.data());
+      const schoolData = schoolDoc.exists() ? schoolDoc.data() : null;
+      if (schoolData) setSchool(schoolData);
+
+      const activeSeason = schoolData ? getActiveSeason(schoolData) : null;
+      setActiveSeasonData(activeSeason);
+      const { start: cutoff } = getDateRange(selectedTimeframe, activeSeason, null, null);
 
       const approvedSnap = await getDocs(query(
         collection(db, 'users'),
@@ -174,22 +181,49 @@ export default function CoachDashboard({ userData }) {
       const approvedAthletes = approvedSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       setAthletes(approvedAthletes);
 
-      const cutoff = selectedTimeframe.days && selectedTimeframe.days !== 'season' && selectedTimeframe.days !== 'custom'
-        ? new Date(Date.now() - selectedTimeframe.days * 86400000)
-        : selectedTimeframe.days === 'season' ? new Date(new Date().getFullYear(), 7, 1) : null;
+      // Get start of current calendar week (Monday)
+      const now = new Date();
+      const dayOfWeek = now.getDay();
+      const weekStart = new Date(now);
+      weekStart.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+      weekStart.setHours(0, 0, 0, 0);
 
       const milesMap = {};
+      const weeklyMilesMap = {};
       for (const athlete of approvedAthletes) {
         try {
-          const runsSnap = await getDocs(
-            cutoff
-              ? query(collection(db, 'runs'), where('userId', '==', athlete.id), where('date', '>=', cutoff), orderBy('date', 'desc'))
-              : query(collection(db, 'runs'), where('userId', '==', athlete.id), orderBy('date', 'desc'))
-          );
-          milesMap[athlete.id] = Math.round(runsSnap.docs.reduce((sum, d) => sum + (d.data().miles || 0), 0) * 10) / 10;
-        } catch { milesMap[athlete.id] = 0; }
+          // Fetch all runs for athlete, filter in memory — avoids composite index requirement
+          const runsSnap = await getDocs(query(
+            collection(db, 'runs'),
+            where('userId', '==', athlete.id),
+            orderBy('date', 'desc')
+          ));
+          const allRuns = runsSnap.docs.map(d => ({ ...d.data() }));
+
+          // Timeframe filter in memory
+          const filtered = allRuns.filter(r => {
+            if (!cutoff) return true;
+            const d = r.date?.toDate?.();
+            return d && d >= cutoff;
+          });
+          milesMap[athlete.id] = Math.round(filtered.reduce((s, r) => s + (r.miles || 0), 0) * 10) / 10;
+
+          // Weekly miles — filter in memory from Monday
+          const weekFiltered = allRuns.filter(r => {
+            const d = r.date?.toDate?.();
+            return d && d >= weekStart;
+          });
+          weeklyMilesMap[athlete.id] = Math.round(
+            weekFiltered.reduce((s, r) => s + (r.miles || 0), 0) * 10
+          ) / 10;
+        } catch (e) {
+          console.log('Athlete miles error:', e);
+          milesMap[athlete.id] = 0;
+          weeklyMilesMap[athlete.id] = 0;
+        }
       }
       setAthleteMiles(milesMap);
+      setAthleteWeeklyMiles(weeklyMilesMap);
 
       const alertsMap = {};
       for (const athlete of approvedAthletes) {
@@ -338,6 +372,14 @@ export default function CoachDashboard({ userData }) {
   const alertCount    = Object.values(overtTrainingAlerts).filter(a => a.alert).length;
   const filteredAthletes = athletes.filter(a => genderFilter === 'all' || a.gender === genderFilter);
 
+  // Team summary totals
+  const teamWeeklyMiles = Math.round(
+    filteredAthletes.reduce((s, a) => s + (athleteWeeklyMiles[a.id] || 0), 0) * 10
+  ) / 10;
+  const teamPeriodMiles = Math.round(
+    filteredAthletes.reduce((s, a) => s + (athleteMiles[a.id] || 0), 0) * 10
+  ) / 10;
+
   return (
     <View style={styles.container}>
 
@@ -398,7 +440,7 @@ export default function CoachDashboard({ userData }) {
         {/* Compact phase pill — collapses to one line, expands on tap */}
         <PhasePill school={school} onPress={() => setPlannerVisible(true)} />
 
-        {/* Daily message button — small, stays out of the way */}
+        {/* Daily message button */}
         <View style={styles.msgRow}>
           <TouchableOpacity
             style={[styles.msgBtn, { backgroundColor: todayTipSent ? '#e8f5e9' : primaryColor }]}
@@ -408,6 +450,18 @@ export default function CoachDashboard({ userData }) {
               {todayTipSent ? '✅ Message sent today' : '💬 Send daily message to team'}
             </Text>
           </TouchableOpacity>
+        </View>
+
+        {/* ── This week's team miles — always fixed ── */}
+        <View style={styles.weekCard}>
+          <Text style={styles.weekCardLabel}>Team miles this week</Text>
+          <View style={styles.weekCardRow}>
+            <Text style={[styles.weekCardNum, { color: primaryColor }]}>{teamWeeklyMiles}</Text>
+            <Text style={styles.weekCardSub}>
+              mi · {filteredAthletes.length} athlete{filteredAthletes.length !== 1 ? 's' : ''}
+              {genderFilter !== 'all' ? ` · ${genderFilter}` : ''}
+            </Text>
+          </View>
         </View>
 
         {/* ── Team tab ── */}
@@ -429,13 +483,21 @@ export default function CoachDashboard({ userData }) {
               ))}
             </View>
 
+            {/* Timeframe picker */}
             <TimeframePicker
               selected={selectedTimeframe}
               onSelect={setSelectedTimeframe}
-              seasonStart={school?.seasonStart}
-              seasonEnd={school?.seasonEnd}
+              activeSeason={activeSeasonData}
               primaryColor={primaryColor}
             />
+
+            {/* Team total for selected period */}
+            <View style={[styles.periodCard, { borderColor: `${primaryColor}30` }]}>
+              <Text style={[styles.periodNum, { color: primaryColor }]}>{teamPeriodMiles}</Text>
+              <Text style={styles.periodLabel}>
+                team miles — {selectedTimeframe.label?.toLowerCase() || 'selected period'}
+              </Text>
+            </View>
 
             {filteredAthletes.length === 0 ? (
               <View style={styles.emptyCard}>
@@ -648,6 +710,14 @@ const styles = StyleSheet.create({
   msgRow:             { paddingHorizontal: 16, marginBottom: 4 },
   msgBtn:             { borderRadius: 10, paddingVertical: 9, paddingHorizontal: 14, alignItems: 'center' },
   msgBtnText:         { fontSize: 13, fontWeight: '700' },
+  weekCard:           { backgroundColor: '#fff', marginHorizontal: 16, marginTop: 8, marginBottom: 4, borderRadius: 14, padding: 16 },
+  weekCardLabel:      { fontSize: 12, color: '#999', marginBottom: 4 },
+  weekCardRow:        { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+  weekCardNum:        { fontSize: 36, fontWeight: 'bold' },
+  weekCardSub:        { fontSize: 14, color: '#666' },
+  periodCard:         { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, padding: 14, borderWidth: 1, gap: 10, marginBottom: 12 },
+  periodNum:          { fontSize: 26, fontWeight: 'bold' },
+  periodLabel:        { fontSize: 14, color: '#666', flex: 1 },
 
   section:            { padding: 16 },
   genderRow:          { flexDirection: 'row', gap: 8, marginBottom: 12 },

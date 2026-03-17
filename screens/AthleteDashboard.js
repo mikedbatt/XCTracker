@@ -1,37 +1,22 @@
-import { signOut } from 'firebase/auth';
+import React, { useState, useEffect } from 'react';
 import {
-  addDoc,
-  collection,
-  doc, getDoc,
-  getDocs,
-  limit,
-  orderBy,
-  query,
-  setDoc,
-  updateDoc,
-  where,
-} from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
-import {
-  ActivityIndicator, Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  ActivityIndicator, Alert, Modal, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
-import CalendarScreen from './CalendarScreen';
-import DatePickerField from './DatePickerField';
+import { signOut } from 'firebase/auth';
+import {
+  doc, getDoc, collection, query, where,
+  orderBy, limit, getDocs, addDoc, updateDoc, setDoc,
+} from 'firebase/firestore';
+import TimeframePicker, { TIMEFRAMES, getDateRange } from './TimeframePicker';
 import RunDetailModal from './RunDetailModal';
-import { PhasePill } from './SeasonPlanner';
-import TimeframePicker, { TIMEFRAMES } from './TimeframePicker';
-import WellnessCheckIn from './WellnessCheckIn';
+import DatePickerField from './DatePickerField';
+import CalendarScreen from './CalendarScreen';
 import WorkoutDetailModal from './WorkoutDetailModal';
+import WellnessCheckIn from './WellnessCheckIn';
+import StravaConnect from './StravaConnect';
+import { getActiveSeason, getPhaseForSeason, SPORTS, PhasePill } from './SeasonPlanner';
 
 const EFFORT_LABELS = ['', 'Very Easy', 'Easy', 'Moderate', 'Moderate', 'Medium',
   'Medium Hard', 'Hard', 'Very Hard', 'Max Effort', 'All Out'];
@@ -64,6 +49,17 @@ function calcWeeklyTarget(recentRuns) {
   return Math.round(baseline * 1.10 * 10) / 10;
 }
 
+// ── Get start of current week (Monday) ───────────────────────────────────────
+function getWeekStart() {
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun, 1=Mon...
+  const diff = (day === 0 ? -6 : 1 - day); // days back to Monday
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + diff);
+  monday.setHours(0, 0, 0, 0);
+  return monday;
+}
+
 export default function AthleteDashboard({ userData }) {
   const [school, setSchool] = useState(null);
   const [recentRuns, setRecentRuns] = useState([]);
@@ -71,17 +67,20 @@ export default function AthleteDashboard({ userData }) {
   const [teamAthletes, setTeamAthletes] = useState([]);
   const [weeklyMiles, setWeeklyMiles] = useState(0);
   const [weeklyTarget, setWeeklyTarget] = useState(20);
+  const [totalMiles, setTotalMiles] = useState(0);
+  const [teamMiles, setTeamMiles] = useState({}); // athleteId → miles for selected timeframe
   const [pendingParents, setPendingParents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [selectedTimeframe, setSelectedTimeframe] = useState(TIMEFRAMES[0]);
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd] = useState('');
+  const [customStart, setCustomStart] = useState(null);
+  const [customEnd, setCustomEnd] = useState(null);
   const [selectedRun, setSelectedRun] = useState(null);
   const [runDetailVisible, setRunDetailVisible] = useState(false);
   const [selectedWorkout, setSelectedWorkout] = useState(null);
   const [workoutDetailVisible, setWorkoutDetailVisible] = useState(false);
   const [wellnessVisible, setWellnessVisible] = useState(false);
+  const [stravaVisible, setStravaVisible] = useState(false);
   const [pendingWellness, setPendingWellness] = useState(null);
   const [logModalVisible, setLogModalVisible] = useState(false);
   const [athleteAge, setAthleteAge] = useState(16);
@@ -98,10 +97,6 @@ export default function AthleteDashboard({ userData }) {
 
   useEffect(() => { loadDashboard(); }, [selectedTimeframe]);
 
-  if (calendarVisible) {
-    return <CalendarScreen userData={userData} school={school} onClose={() => setCalendarVisible(false)} />;
-  }
-
   const loadDashboard = async () => {
     setLoading(true);
     try {
@@ -114,34 +109,64 @@ export default function AthleteDashboard({ userData }) {
         setAthleteAge(age);
       }
 
+      let currentSchool = school;
       if (userData.schoolId) {
         const schoolDoc = await getDoc(doc(db, 'schools', userData.schoolId));
-        if (schoolDoc.exists()) setSchool(schoolDoc.data());
+        if (schoolDoc.exists()) {
+          currentSchool = schoolDoc.data();
+          setSchool(currentSchool);
+        }
       }
 
-      // Load runs for timeframe
-      let startDate = null;
-      if (selectedTimeframe.days && selectedTimeframe.days !== 'custom' && selectedTimeframe.days !== 'season') {
-        startDate = new Date(Date.now() - selectedTimeframe.days * 86400000);
-      } else if (selectedTimeframe.days === 'season') {
-        startDate = new Date(new Date().getFullYear(), 7, 1);
-      }
+      // Load runs for selected timeframe using calendar-aware date ranges
+      const activeSeason = getActiveSeason(currentSchool);
+      const { start: startDate } = getDateRange(selectedTimeframe, activeSeason, customStart, customEnd);
 
       const runsQuery = startDate
-        ? query(collection(db, 'runs'), where('userId', '==', user.uid), where('date', '>=', startDate), orderBy('date', 'desc'), limit(30))
-        : query(collection(db, 'runs'), where('userId', '==', user.uid), orderBy('date', 'desc'), limit(30));
+        ? query(collection(db, 'runs'), where('userId', '==', user.uid), where('date', '>=', startDate), orderBy('date', 'desc'), limit(100))
+        : query(collection(db, 'runs'), where('userId', '==', user.uid), orderBy('date', 'desc'), limit(100));
 
       const runsSnap = await getDocs(runsQuery);
       const runs = runsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       setRecentRuns(runs);
 
-      // Weekly miles (always last 7 days regardless of timeframe selector)
-      const oneWeekAgo = new Date(Date.now() - 7 * 86400000);
-      const wMiles = runs.filter(r => r.date?.toDate?.() >= oneWeekAgo).reduce((s, r) => s + (r.miles || 0), 0);
+      // Total miles = sum of all runs in the selected timeframe
+      const tMiles = runs.reduce((s, r) => s + (r.miles || 0), 0);
+      setTotalMiles(Math.round(tMiles * 10) / 10);
+
+      // Weekly miles — always use calendar week (Monday to now) regardless of timeframe
+      const weekStart = getWeekStart();
+      const wMiles = runs.filter(r => {
+        const d = r.date?.toDate?.();
+        return d && d >= weekStart;
+      }).reduce((s, r) => s + (r.miles || 0), 0);
       setWeeklyMiles(Math.round(wMiles * 10) / 10);
 
-      // Calculate suggested weekly target
-      setWeeklyTarget(calcWeeklyTarget(runs));
+      // Calculate weekly target from the past 4 weeks (not just last 7 days)
+      // This gives a more stable baseline after a big sync
+      const fourWeeksAgo = new Date(Date.now() - 28 * 86400000);
+      const recentForTarget = await getDocs(query(
+        collection(db, 'runs'),
+        where('userId', '==', user.uid),
+        where('date', '>=', fourWeeksAgo),
+        orderBy('date', 'desc')
+      ));
+      const targetRuns = recentForTarget.docs.map(d => d.data());
+      setWeeklyTarget(calcWeeklyTarget(targetRuns));
+
+      // Load pending parent requests
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      if (userDoc.exists()) {
+        const freshData = userDoc.data();
+        if (freshData.pendingParentIds?.length > 0) {
+          const parentData = [];
+          for (const pid of freshData.pendingParentIds) {
+            const pDoc = await getDoc(doc(db, 'users', pid));
+            if (pDoc.exists()) parentData.push({ id: pDoc.id, ...pDoc.data() });
+          }
+          setPendingParents(parentData);
+        }
+      }
 
       // Upcoming workouts
       if (userData.status === 'approved' && userData.schoolId) {
@@ -156,7 +181,7 @@ export default function AthleteDashboard({ userData }) {
           setUpcomingWorkouts(wSnap.docs.map(d => ({ id: d.id, ...d.data() })));
         } catch (e) { console.log('Upcoming workouts:', e); }
 
-        // Load teammates for leaderboard
+        // Load teammates and their miles for the selected timeframe
         try {
           const athleteSnap = await getDocs(query(
             collection(db, 'users'),
@@ -164,26 +189,57 @@ export default function AthleteDashboard({ userData }) {
             where('role', '==', 'athlete'),
             where('status', '==', 'approved')
           ));
-          setTeamAthletes(athleteSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+          const athletes = athleteSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+          setTeamAthletes(athletes);
+
+          // Load each teammate's miles for the selected timeframe
+          // Filter in memory to avoid requiring Firestore composite index
+          const milesMap = {};
+          milesMap[user.uid] = tMiles;
+          await Promise.all(athletes.map(async (athlete) => {
+            if (athlete.id === user.uid) return;
+            try {
+              const snap = await getDocs(query(
+                collection(db, 'runs'),
+                where('userId', '==', athlete.id),
+                orderBy('date', 'desc')
+              ));
+              const filtered = snap.docs.filter(d => {
+                if (!startDate) return true;
+                const runDate = d.data().date?.toDate?.();
+                return runDate && runDate >= startDate;
+              });
+              milesMap[athlete.id] = Math.round(
+                filtered.reduce((s, d) => s + (d.data().miles || 0), 0) * 10
+              ) / 10;
+            } catch (e) {
+              console.log('Teammate miles error:', e);
+              milesMap[athlete.id] = 0;
+            }
+          }));
+          setTeamMiles(milesMap);
         } catch (e) { console.log('Team athletes:', e); }
       }
 
-      // Pending parent requests
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      if (userDoc.exists()) {
-        const data = userDoc.data();
-        if (data.pendingParentIds?.length > 0) {
-          const parentData = [];
-          for (const pid of data.pendingParentIds) {
-            const pDoc = await getDoc(doc(db, 'users', pid));
-            if (pDoc.exists()) parentData.push({ id: pDoc.id, ...pDoc.data() });
-          }
-          setPendingParents(parentData);
-        }
-      }
     } catch (error) { console.error('Dashboard load error:', error); }
     setLoading(false);
   };
+
+  // ── Sub-screen early returns (after loadDashboard so it's in scope) ────────
+  if (calendarVisible) {
+    return <CalendarScreen userData={userData} school={school} onClose={() => setCalendarVisible(false)} />;
+  }
+
+  if (stravaVisible) {
+    return (
+      <StravaConnect
+        userData={userData}
+        school={school}
+        onClose={() => setStravaVisible(false)}
+        onSynced={() => { setStravaVisible(false); loadDashboard(); }}
+      />
+    );
+  }
 
   // Tap "Log a Run" → show wellness check-in first
   const handleLogRunTap = () => {
@@ -226,7 +282,7 @@ export default function AthleteDashboard({ userData }) {
           date: runDate,
         });
         // Adjust totalMiles
-        const newTotal = Math.max(0, Math.round(((userData.totalMiles || 0) - oldMiles + milesFloat) * 10) / 10);
+        const newTotal = Math.max(0, Math.round(((totalMiles || 0) - oldMiles + milesFloat) * 10) / 10);
         await updateDoc(doc(db, 'users', user.uid), { totalMiles: newTotal });
         Alert.alert('Updated! ✅', 'Your run has been updated.');
         setEditingRunId(null);
@@ -253,7 +309,7 @@ export default function AthleteDashboard({ userData }) {
           source: 'manual',
           date: runDate,
         });
-        const newTotal = Math.round(((userData.totalMiles || 0) + milesFloat) * 10) / 10;
+        const newTotal = Math.round(((totalMiles || 0) + milesFloat) * 10) / 10;
         await updateDoc(doc(db, 'users', user.uid), { totalMiles: newTotal });
         Alert.alert('Run logged! 🏃', `${miles} miles saved. Great work!`);
       }
@@ -280,7 +336,7 @@ export default function AthleteDashboard({ userData }) {
             const { deleteDoc, doc: firestoreDoc } = await import('firebase/firestore');
             await deleteDoc(firestoreDoc(db, 'runs', run.id));
             // Subtract miles from total
-            const newTotal = Math.max(0, Math.round(((userData.totalMiles || 0) - (run.miles || 0)) * 10) / 10);
+            const newTotal = Math.max(0, Math.round(((totalMiles || 0) - (run.miles || 0)) * 10) / 10);
             await updateDoc(doc(db, 'users', auth.currentUser.uid), { totalMiles: newTotal });
             Alert.alert('Deleted', 'Run removed.');
             setRunDetailVisible(false);
@@ -341,8 +397,8 @@ export default function AthleteDashboard({ userData }) {
   const targetPct = weeklyTarget > 0 ? Math.min(weeklyMiles / weeklyTarget, 1) : 0;
   const targetColor = targetPct >= 1 ? primaryColor : targetPct >= 0.7 ? '#f59e0b' : '#ef4444';
 
-  // Leaderboard — sort teammates by totalMiles, find our rank
-  const sortedTeam = [...teamAthletes].sort((a, b) => (b.totalMiles || 0) - (a.totalMiles || 0));
+  // Leaderboard — sort teammates by miles in selected timeframe
+  const sortedTeam = [...teamAthletes].sort((a, b) => (teamMiles[b.id] || 0) - (teamMiles[a.id] || 0));
   const myRank = sortedTeam.findIndex(a => a.id === auth.currentUser?.uid) + 1;
 
   return (
@@ -391,7 +447,7 @@ export default function AthleteDashboard({ userData }) {
           </View>
         ))}
 
-        {/* Weekly mileage target card */}
+        {/* ── This week's miles — always fixed, never changes ── */}
         <View style={styles.targetCard}>
           <View style={styles.targetTop}>
             <View>
@@ -401,16 +457,33 @@ export default function AthleteDashboard({ userData }) {
                 <Text style={styles.targetMilesOf}> / {weeklyTarget} mi target</Text>
               </Text>
             </View>
-            <View style={styles.totalMilesBox}>
-              <Text style={[styles.totalMilesNum, { color: primaryColor }]}>{userData.totalMiles || 0}</Text>
-              <Text style={styles.totalMilesLabel}>total miles</Text>
-            </View>
           </View>
           <View style={styles.progressBarBg}>
             <View style={[styles.progressBarFill, { width: `${targetPct * 100}%`, backgroundColor: targetColor }]} />
           </View>
           <Text style={styles.progressHint}>
             {targetPct >= 1 ? '✅ Weekly target hit!' : `${Math.round((weeklyTarget - weeklyMiles) * 10) / 10} miles to go`}
+          </Text>
+        </View>
+
+        {/* ── Timeframe picker — controls everything below ── */}
+        <View style={styles.timeframeRow}>
+          <TimeframePicker
+            selected={selectedTimeframe}
+            onSelect={setSelectedTimeframe}
+            customStart={customStart}
+            customEnd={customEnd}
+            onCustomChange={(s, e) => { setCustomStart(s); setCustomEnd(e); }}
+            activeSeason={getActiveSeason(school)}
+            primaryColor={primaryColor}
+          />
+        </View>
+
+        {/* ── Total miles for selected period ── */}
+        <View style={[styles.periodMilesCard, { borderColor: `${primaryColor}30` }]}>
+          <Text style={[styles.periodMilesNum, { color: primaryColor }]}>{totalMiles}</Text>
+          <Text style={styles.periodMilesLabel}>
+            miles — {selectedTimeframe.label?.toLowerCase() || 'selected period'}
           </Text>
         </View>
 
@@ -422,8 +495,11 @@ export default function AthleteDashboard({ userData }) {
           <TouchableOpacity style={[styles.logBtn, { backgroundColor: primaryColor }]} onPress={handleLogRunTap}>
             <Text style={styles.logBtnText}>+ Log a Run</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={[styles.stravaBtn]} onPress={() => setStravaVisible(true)}>
+            <Text style={styles.stravaBtnText}>STRAVA</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={[styles.calBtn, { borderColor: primaryColor }]} onPress={() => setCalendarVisible(true)}>
-            <Text style={[styles.calBtnText, { color: primaryColor }]}>📅 Calendar</Text>
+            <Text style={[styles.calBtnText, { color: primaryColor }]}>📅</Text>
           </TouchableOpacity>
         </View>
 
@@ -450,12 +526,15 @@ export default function AthleteDashboard({ userData }) {
           </View>
         )}
 
-        {/* Team leaderboard */}
+        {/* Team leaderboard — based on selected timeframe */}
         {isApproved && sortedTeam.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Team leaderboard — season miles</Text>
+            <Text style={styles.sectionTitle}>
+              Team leaderboard — {selectedTimeframe.label?.toLowerCase() || 'selected period'}
+            </Text>
             {sortedTeam.slice(0, 5).map((athlete, index) => {
               const isMe = athlete.id === auth.currentUser?.uid;
+              const miles = teamMiles[athlete.id] || 0;
               return (
                 <View key={athlete.id} style={[styles.leaderRow, isMe && { backgroundColor: `${primaryColor}15`, borderColor: primaryColor, borderWidth: 1.5 }]}>
                   <Text style={[styles.leaderRank, isMe && { color: primaryColor }]}>#{index + 1}</Text>
@@ -470,7 +549,7 @@ export default function AthleteDashboard({ userData }) {
                     </Text>
                   </View>
                   <Text style={[styles.leaderMiles, { color: isMe ? primaryColor : '#333' }]}>
-                    {athlete.totalMiles || 0} mi
+                    {miles} mi
                   </Text>
                 </View>
               );
@@ -487,26 +566,16 @@ export default function AthleteDashboard({ userData }) {
                   <Text style={[styles.leaderName, { color: primaryColor, fontWeight: '700' }]}>You</Text>
                 </View>
                 <Text style={[styles.leaderMiles, { color: primaryColor }]}>
-                  {userData.totalMiles || 0} mi
+                  {totalMiles} mi
                 </Text>
               </View>
             )}
           </View>
         )}
 
-        {/* My runs */}
+        {/* My runs — for selected timeframe */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>My runs</Text>
-          <TimeframePicker
-            selected={selectedTimeframe}
-            onSelect={setSelectedTimeframe}
-            customStart={customStart}
-            customEnd={customEnd}
-            onCustomChange={(s, e) => { setCustomStart(s); setCustomEnd(e); }}
-            seasonStart={school?.seasonStart}
-            seasonEnd={school?.seasonEnd}
-            primaryColor={primaryColor}
-          />
           {recentRuns.length === 0 ? (
             <View style={styles.emptyCard}>
               <Text style={styles.emptyText}>No runs yet — tap "Log a Run" to get started!</Text>
@@ -629,21 +698,24 @@ const styles = StyleSheet.create({
   rankBannerText: { color: '#fff', fontSize: 13, textAlign: 'center', fontWeight: '600' },
   scroll: { flex: 1 },
   targetCard: { margin: 16, marginBottom: 8, backgroundColor: '#fff', borderRadius: 14, padding: 16 },
-  targetTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
+  targetTop: { marginBottom: 12 },
   targetLabel: { fontSize: 12, color: '#999', marginBottom: 4 },
   targetMiles: {},
   targetMilesBig: { fontSize: 32, fontWeight: 'bold' },
   targetMilesOf: { fontSize: 15, color: '#999' },
-  totalMilesBox: { alignItems: 'flex-end' },
-  totalMilesNum: { fontSize: 26, fontWeight: 'bold' },
-  totalMilesLabel: { fontSize: 11, color: '#999', marginTop: 2 },
+  timeframeRow: { marginHorizontal: 16, marginBottom: 4 },
+  periodMilesCard: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 8, backgroundColor: '#fff', borderRadius: 12, padding: 14, borderWidth: 1, gap: 10 },
+  periodMilesNum: { fontSize: 28, fontWeight: 'bold' },
+  periodMilesLabel: { fontSize: 14, color: '#666', flex: 1 },
   progressBarBg: { height: 10, backgroundColor: '#eee', borderRadius: 5, overflow: 'hidden', marginBottom: 8 },
   progressBarFill: { height: '100%', borderRadius: 5 },
   progressHint: { fontSize: 12, color: '#999' },
   actionRow: { flexDirection: 'row', paddingHorizontal: 16, gap: 10, marginBottom: 8 },
   logBtn: { flex: 1, borderRadius: 12, padding: 16, alignItems: 'center' },
   logBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  calBtn: { borderRadius: 12, padding: 16, alignItems: 'center', borderWidth: 2, paddingHorizontal: 16 },
+  stravaBtn: { borderRadius: 12, padding: 16, alignItems: 'center', backgroundColor: '#fc4c02', paddingHorizontal: 14 },
+  stravaBtnText: { color: '#fff', fontSize: 13, fontWeight: '900', letterSpacing: 1 },
+  calBtn: { borderRadius: 12, padding: 16, alignItems: 'center', borderWidth: 2, paddingHorizontal: 14 },
   calBtnText: { fontSize: 14, fontWeight: '600' },
   section: { padding: 16 },
   sectionTitle: { fontSize: 17, fontWeight: '700', color: '#333', marginBottom: 12 },

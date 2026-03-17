@@ -1,5 +1,5 @@
 import * as LocalAuthentication from 'expo-local-authentication';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, sendPasswordResetEmail, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
@@ -33,6 +33,7 @@ export default function LoginScreen({ onAuthSuccess }) {
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     checkBiometrics();
@@ -157,6 +158,32 @@ export default function LoginScreen({ onAuthSuccess }) {
     setLoading(false);
   };
 
+  const handleForgotPassword = () => {
+    if (!email) {
+      Alert.alert('Enter your email', 'Type your email address above first, then tap Forgot Password.');
+      return;
+    }
+    Alert.alert(
+      'Reset password?',
+      `Send a reset link to ${email}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Send reset link', onPress: async () => {
+          try {
+            await sendPasswordResetEmail(auth, email);
+            Alert.alert('Email sent ✅', `Check ${email} for a password reset link. Check your spam folder if you don't see it.`);
+          } catch (error) {
+            if (error.code === 'auth/user-not-found') {
+              Alert.alert('Not found', 'No account found with that email address.');
+            } else {
+              Alert.alert('Error', 'Could not send reset email. Please try again.');
+            }
+          }
+        }},
+      ]
+    );
+  };
+
   const age = calculateAge();
   const showParentEmail = role === 'athlete' && isSignUp && age !== null && age < 18;
 
@@ -233,15 +260,32 @@ export default function LoginScreen({ onAuthSuccess }) {
           autoCorrect={false}
         />
 
-        {/* Password */}
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          placeholderTextColor="#999"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
+        {/* Password with show/hide eye */}
+        <View style={styles.passwordRow}>
+          <TextInput
+            style={styles.passwordInput}
+            placeholder="Password"
+            placeholderTextColor="#999"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry={!showPassword}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <TouchableOpacity
+            style={styles.eyeBtn}
+            onPress={() => setShowPassword(v => !v)}
+          >
+            <Text style={styles.eyeIcon}>{showPassword ? '🙈' : '👁️'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Forgot password — only show on sign in */}
+        {!isSignUp && (
+          <TouchableOpacity style={styles.forgotBtn} onPress={handleForgotPassword}>
+            <Text style={styles.forgotText}>Forgot password?</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Gender - athletes only on sign up */}
         {isSignUp && role === 'athlete' && (
@@ -443,6 +487,12 @@ const styles = StyleSheet.create({
   biometricButtonText: { color: '#2e7d32', fontSize: 16, fontWeight: '600' },
   toggleButton: { marginTop: 20, alignItems: 'center' },
   toggleText: { color: '#2e7d32', fontSize: 15 },
+  passwordRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 10, borderWidth: 1, borderColor: '#ddd', marginBottom: 12 },
+  passwordInput: { flex: 1, padding: 14, fontSize: 16, color: '#333' },
+  eyeBtn: { paddingHorizontal: 14, paddingVertical: 14 },
+  eyeIcon: { fontSize: 18 },
+  forgotBtn: { alignSelf: 'flex-end', marginTop: -6, marginBottom: 12 },
+  forgotText: { color: '#2e7d32', fontSize: 14, fontWeight: '600' },
   helperText: { fontSize: 12, color: '#666', marginTop: 4, marginBottom: 8 },
   privacyText: {
     fontSize: 11, color: '#999', textAlign: 'center',
