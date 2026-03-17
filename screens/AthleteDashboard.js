@@ -7,7 +7,6 @@ import {
   limit,
   orderBy,
   query,
-  setDoc,
   updateDoc,
   where,
 } from 'firebase/firestore';
@@ -25,29 +24,27 @@ import {
   View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
+import {
+  DEFAULT_ZONE_BOUNDARIES, ZONE_META,
+  calc8020,
+  calcMaxHR,
+  calcZoneBreakdownFromRuns,
+  formatMinutes
+} from '../zoneConfig';
+import AthleteProfile from './AthleteProfile';
 import CalendarScreen from './CalendarScreen';
 import DatePickerField from './DatePickerField';
 import RunDetailModal from './RunDetailModal';
-import { getActiveSeason, PhasePill } from './SeasonPlanner';
+import { getActiveSeason } from './SeasonPlanner';
 import StravaConnect from './StravaConnect';
-import TimeframePicker, { getDateRange, TIMEFRAMES } from './TimeframePicker';
+import TeamFeed from './TeamFeed';
+import TeammateProfile from './TeammateProfile';
+import TimeframePicker, { TIMEFRAMES, getDateRange } from './TimeframePicker';
 import WellnessCheckIn from './WellnessCheckIn';
 import WorkoutDetailModal from './WorkoutDetailModal';
 
 const EFFORT_LABELS = ['', 'Very Easy', 'Easy', 'Moderate', 'Moderate', 'Medium',
   'Medium Hard', 'Hard', 'Very Hard', 'Max Effort', 'All Out'];
-
-// ── Heart rate zone calculation ───────────────────────────────────────────────
-function getHRZone(heartRate, age) {
-  if (!heartRate || !age) return null;
-  const maxHR = 220 - age;
-  const pct = heartRate / maxHR;
-  if (pct < 0.60) return { zone: 1, name: 'Recovery', color: '#64b5f6' };
-  if (pct < 0.70) return { zone: 2, name: 'Aerobic Base', color: '#4caf50' };
-  if (pct < 0.80) return { zone: 3, name: 'Aerobic Power', color: '#ffb300' };
-  if (pct < 0.90) return { zone: 4, name: 'Threshold', color: '#ff7043' };
-  return { zone: 5, name: 'Anaerobic', color: '#e53935' };
-}
 
 // ── Weekly mileage target (10% rule) ─────────────────────────────────────────
 function calcWeeklyTarget(recentRuns) {
@@ -97,9 +94,15 @@ export default function AthleteDashboard({ userData }) {
   const [workoutDetailVisible, setWorkoutDetailVisible] = useState(false);
   const [wellnessVisible, setWellnessVisible] = useState(false);
   const [stravaVisible, setStravaVisible] = useState(false);
+  const [selectedTeammate, setSelectedTeammate] = useState(null);
+  const [dailyMessage, setDailyMessage] = useState(null);
+  const [profileVisible, setProfileVisible] = useState(false);
+  const [feedVisible, setFeedVisible] = useState(false);
+  const [messageModalVisible, setMessageModalVisible] = useState(false);
   const [pendingWellness, setPendingWellness] = useState(null);
   const [logModalVisible, setLogModalVisible] = useState(false);
-  const [athleteAge, setAthleteAge] = useState(16);
+  const [athleteAge,      setAthleteAge]      = useState(16);
+  const [zoneSettings,    setZoneSettings]    = useState(null); // coach-configured boundaries
 
   // Log run form
   const [miles, setMiles] = useState('');
@@ -124,6 +127,12 @@ export default function AthleteDashboard({ userData }) {
         const age = Math.floor((new Date() - birth) / (365.25 * 86400000));
         setAthleteAge(age);
       }
+
+      // Load coach-configured zone settings for this athlete
+      try {
+        const zoneDoc = await getDoc(doc(db, 'zoneSettings', user.uid));
+        if (zoneDoc.exists()) setZoneSettings(zoneDoc.data());
+      } catch { /* use defaults */ }
 
       let currentSchool = school;
       if (userData.schoolId) {
@@ -193,7 +202,26 @@ export default function AthleteDashboard({ userData }) {
         }
       }
 
-      // Upcoming workouts — today and next 2 scheduled (max 3 total)
+      // Load today's coach message — show as pop-up once per day
+      if (userData.schoolId) {
+        try {
+          const today = new Date().toISOString().split('T')[0];
+          const msgDoc = await getDoc(doc(db, 'dailyMessages', `${userData.schoolId}_${today}`));
+          if (msgDoc.exists()) {
+            const msgData = msgDoc.data();
+            setDailyMessage(msgData);
+            // Check if already shown today using Firestore user doc
+            const userDoc2 = await getDoc(doc(db, 'users', user.uid));
+            const lastSeen = userDoc2.data()?.lastSeenMessageDate;
+            if (lastSeen !== today) {
+              setMessageModalVisible(true);
+              await updateDoc(doc(db, 'users', user.uid), { lastSeenMessageDate: today });
+            }
+          } else {
+            setDailyMessage(null);
+          }
+        } catch (e) { console.log('Daily message load:', e); }
+      }
       if (userData.status === 'approved' && userData.schoolId) {
         try {
           const todayStart = new Date();
@@ -268,6 +296,40 @@ export default function AthleteDashboard({ userData }) {
         school={school}
         onClose={() => setStravaVisible(false)}
         onSynced={() => { setStravaVisible(false); loadDashboard(); }}
+      />
+    );
+  }
+
+  if (feedVisible) {
+    return (
+      <TeamFeed
+        userData={userData}
+        school={school}
+        onClose={() => setFeedVisible(false)}
+      />
+    );
+  }
+
+  if (selectedTeammate) {
+    return (
+      <TeammateProfile
+        athlete={selectedTeammate}
+        school={school}
+        onBack={() => setSelectedTeammate(null)}
+      />
+    );
+  }
+
+  if (profileVisible) {
+    return (
+      <AthleteProfile
+        userData={userData}
+        school={school}
+        onClose={() => setProfileVisible(false)}
+        onUpdated={(updates) => {
+          // Update will reflect on next login — no live prop update needed
+          setProfileVisible(false);
+        }}
       />
     );
   }
@@ -435,32 +497,73 @@ export default function AthleteDashboard({ userData }) {
   return (
     <View style={styles.container}>
 
-      {/* Header */}
+      {/* ── Header — greeting + weekly miles + progress ── */}
       <View style={[styles.header, { backgroundColor: primaryColor }]}>
         <View style={styles.headerTop}>
           <View>
             <Text style={styles.greeting}>Hey, {userData.firstName}! 👋</Text>
             <Text style={styles.schoolName}>{school?.name || 'XCTracker'}</Text>
           </View>
-          <TouchableOpacity onPress={handleSignOut} style={styles.signOutBtn}>
-            <Text style={styles.signOutText}>Sign out</Text>
+          <TouchableOpacity onPress={() => setProfileVisible(true)} style={styles.profileBtn}>
+            <View style={styles.profileAvatar}>
+              <Text style={styles.profileAvatarText}>
+                {userData.firstName?.[0]}{userData.lastName?.[0]}
+              </Text>
+            </View>
           </TouchableOpacity>
         </View>
+
         {!isApproved && (
           <View style={styles.pendingBanner}>
             <Text style={styles.pendingText}>Awaiting coach approval — you can log runs in the meantime!</Text>
           </View>
         )}
-        {isApproved && myRank > 0 && (
-          <View style={styles.rankBanner}>
-            <Text style={styles.rankBannerText}>
-              You're ranked #{myRank} of {sortedTeam.length} on the team this season
+
+        {/* Weekly miles lives in the header */}
+        <View style={styles.headerMilesRow}>
+          <View>
+            <Text style={styles.headerMilesLabel}>This week</Text>
+            <View style={styles.headerMilesNumRow}>
+              <Text style={styles.headerMilesNum}>{weeklyMiles}</Text>
+              <Text style={styles.headerMilesOf}> / {weeklyTarget} mi</Text>
+            </View>
+          </View>
+          <View style={styles.headerProgressCol}>
+            <View style={styles.headerProgressBg}>
+              <View style={[styles.headerProgressFill, { width: `${targetPct * 100}%`, backgroundColor: targetPct >= 1 ? '#fff' : 'rgba(255,255,255,0.6)' }]} />
+            </View>
+            <Text style={styles.headerProgressHint}>
+              {targetPct >= 1 ? '✅ Target hit!' : `${Math.round((weeklyTarget - weeklyMiles) * 10) / 10} mi to go`}
             </Text>
           </View>
-        )}
+        </View>
       </View>
 
-      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+      {/* Daily message pop-up modal */}
+      <Modal visible={messageModalVisible} transparent animationType="fade">
+        <View style={styles.msgModalOverlay}>
+          <View style={styles.msgModal}>
+            <View style={[styles.msgModalHeader, { backgroundColor: primaryColor }]}>
+              <Text style={styles.msgModalTitle}>📣 Message from Coach</Text>
+              <Text style={styles.msgModalDate}>Today</Text>
+            </View>
+            <Text style={styles.msgModalText}>{dailyMessage?.message}</Text>
+            <Text style={styles.msgModalFrom}>— {dailyMessage?.sentByName}</Text>
+            <TouchableOpacity
+              style={[styles.msgModalBtn, { backgroundColor: primaryColor }]}
+              onPress={() => setMessageModalVisible(false)}
+            >
+              <Text style={styles.msgModalBtnText}>Got it 👍</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <ScrollView
+        style={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 90 }}
+      >
 
         {/* Parent approval requests */}
         {pendingParents.length > 0 && pendingParents.map(parent => (
@@ -477,25 +580,6 @@ export default function AthleteDashboard({ userData }) {
             </View>
           </View>
         ))}
-
-        {/* ── This week's miles — always fixed, never changes ── */}
-        <View style={styles.targetCard}>
-          <View style={styles.targetTop}>
-            <View>
-              <Text style={styles.targetLabel}>This week's miles</Text>
-              <Text style={styles.targetMiles}>
-                <Text style={[styles.targetMilesBig, { color: primaryColor }]}>{weeklyMiles}</Text>
-                <Text style={styles.targetMilesOf}> / {weeklyTarget} mi target</Text>
-              </Text>
-            </View>
-          </View>
-          <View style={styles.progressBarBg}>
-            <View style={[styles.progressBarFill, { width: `${targetPct * 100}%`, backgroundColor: targetColor }]} />
-          </View>
-          <Text style={styles.progressHint}>
-            {targetPct >= 1 ? '✅ Weekly target hit!' : `${Math.round((weeklyTarget - weeklyMiles) * 10) / 10} miles to go`}
-          </Text>
-        </View>
 
         {/* ── Timeframe picker — controls everything below ── */}
         <View style={styles.timeframeRow}>
@@ -518,21 +602,96 @@ export default function AthleteDashboard({ userData }) {
           </Text>
         </View>
 
-        {/* Compact phase pill */}
-        <PhasePill school={school} />
+        {/* ── Training zone breakdown for selected period ── */}
+        {(() => {
+          const boundaries = zoneSettings?.boundaries || DEFAULT_ZONE_BOUNDARIES;
+          const customMaxHR = zoneSettings?.customMaxHR || null;
+          const maxHR = calcMaxHR(athleteAge, customMaxHR);
 
-        {/* Action buttons */}
-        <View style={styles.actionRow}>
-          <TouchableOpacity style={[styles.logBtn, { backgroundColor: primaryColor }]} onPress={handleLogRunTap}>
-            <Text style={styles.logBtnText}>+ Log a Run</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.stravaBtn]} onPress={() => setStravaVisible(true)}>
-            <Text style={styles.stravaBtnText}>STRAVA</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.calBtn, { borderColor: primaryColor }]} onPress={() => setCalendarVisible(true)}>
-            <Text style={[styles.calBtnText, { color: primaryColor }]}>📅</Text>
-          </TouchableOpacity>
-        </View>
+          // Use stream data if available, otherwise fall back to avg HR
+          const runsWithStream = recentRuns.filter(r => r.hasStreamData && r.zoneSeconds);
+          let breakdown = null;
+
+          if (runsWithStream.length > 0) {
+            // Combine zoneSeconds across all stream runs
+            const combined = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
+            runsWithStream.forEach(r => {
+              Object.entries(r.zoneSeconds).forEach(([k, v]) => {
+                if (combined[k] !== undefined) combined[k] += v;
+              });
+            });
+            const totalSecs = Object.values(combined).reduce((s, v) => s + v, 0);
+            if (totalSecs > 0) {
+              breakdown = Object.entries(combined)
+                .filter(([, s]) => s > 0)
+                .map(([key, secs]) => {
+                  const zone = parseInt(key.replace('z', ''));
+                  return { zone, seconds: secs, minutes: Math.round(secs / 60), pct: Math.round((secs / totalSecs) * 100), ...ZONE_META[zone] };
+                })
+                .sort((a, b) => a.zone - b.zone);
+            }
+          }
+
+          // Fallback: avg HR + duration
+          if (!breakdown) {
+            breakdown = calcZoneBreakdownFromRuns(recentRuns, athleteAge, customMaxHR, boundaries);
+          }
+
+          if (!breakdown) return null;
+
+          const analysis = calc8020(breakdown);
+          const totalMins = breakdown.reduce((s, z) => s + z.minutes, 0);
+          const hasStreamData = runsWithStream.length > 0;
+
+          return (
+            <View style={styles.zoneSection}>
+              <View style={styles.zoneSectionHeader}>
+                <Text style={styles.zoneSectionTitle}>
+                  Training zones — {selectedTimeframe.label?.toLowerCase()}
+                </Text>
+                {hasStreamData && (
+                  <View style={styles.streamBadge}>
+                    <Text style={styles.streamBadgeText}>Precise ✓</Text>
+                  </View>
+                )}
+              </View>
+              <View style={styles.zoneCard}>
+                {/* Stacked bar */}
+                <View style={styles.zoneStackedBar}>
+                  {breakdown.map(z => (
+                    <View key={z.zone} style={[styles.zoneStackedSegment, { flex: z.minutes, backgroundColor: ZONE_META[z.zone].color }]} />
+                  ))}
+                </View>
+                {/* Zone rows */}
+                {breakdown.map(z => (
+                  <View key={z.zone} style={styles.zoneRow}>
+                    <View style={[styles.zoneDot, { backgroundColor: ZONE_META[z.zone].color }]} />
+                    <Text style={styles.zoneName}>Z{z.zone} {ZONE_META[z.zone].name}</Text>
+                    <View style={styles.zoneBarBg}>
+                      <View style={[styles.zoneBarFill, { width: `${z.pct}%`, backgroundColor: ZONE_META[z.zone].color }]} />
+                    </View>
+                    <Text style={styles.zoneTime}>{formatMinutes(z.minutes)}</Text>
+                  </View>
+                ))}
+                {/* 80/20 analysis */}
+                {analysis && (
+                  <View style={[styles.analysis8020, {
+                    backgroundColor: analysis.status === 'great' ? '#e8f5e9' : analysis.status === 'good' ? '#fff8e1' : '#fce4ec'
+                  }]}>
+                    <Text style={[styles.analysis8020Text, {
+                      color: analysis.status === 'great' ? '#2e7d32' : analysis.status === 'good' ? '#f57f17' : '#c62828'
+                    }]}>
+                      {analysis.message}
+                    </Text>
+                  </View>
+                )}
+                <Text style={styles.zoneTotalTime}>
+                  {formatMinutes(totalMins)} total · {hasStreamData ? 'second-by-second HR data' : 'estimated from avg HR'}
+                </Text>
+              </View>
+            </View>
+          );
+        })()}
 
         {/* Upcoming workouts */}
         {isApproved && upcomingWorkouts.length > 0 && (
@@ -567,7 +726,12 @@ export default function AthleteDashboard({ userData }) {
               const isMe = athlete.id === auth.currentUser?.uid;
               const miles = teamMiles[athlete.id] || 0;
               return (
-                <View key={athlete.id} style={[styles.leaderRow, isMe && { backgroundColor: `${primaryColor}15`, borderColor: primaryColor, borderWidth: 1.5 }]}>
+                <TouchableOpacity
+                  key={athlete.id}
+                  style={[styles.leaderRow, isMe && { backgroundColor: `${primaryColor}15`, borderColor: primaryColor, borderWidth: 1.5 }]}
+                  onPress={() => !isMe && setSelectedTeammate(athlete)}
+                  activeOpacity={isMe ? 1 : 0.7}
+                >
                   <Text style={[styles.leaderRank, isMe && { color: primaryColor }]}>#{index + 1}</Text>
                   <View style={[styles.leaderAvatar, { backgroundColor: isMe ? primaryColor : '#ddd' }]}>
                     <Text style={[styles.leaderAvatarText, { color: isMe ? '#fff' : '#666' }]}>
@@ -578,11 +742,12 @@ export default function AthleteDashboard({ userData }) {
                     <Text style={[styles.leaderName, isMe && { color: primaryColor, fontWeight: '700' }]}>
                       {isMe ? 'You' : `${athlete.firstName} ${athlete.lastName}`}
                     </Text>
+                    {!isMe && <Text style={styles.leaderTap}>Tap to view profile</Text>}
                   </View>
                   <Text style={[styles.leaderMiles, { color: isMe ? primaryColor : '#333' }]}>
                     {miles} mi
                   </Text>
-                </View>
+                </TouchableOpacity>
               );
             })}
             {sortedTeam.length > 5 && myRank > 5 && (
@@ -612,7 +777,8 @@ export default function AthleteDashboard({ userData }) {
               <Text style={styles.emptyText}>No runs yet — tap "Log a Run" to get started!</Text>
             </View>
           ) : recentRuns.map(run => {
-            const zone = getHRZone(run.heartRate, athleteAge);
+            const boundaries = zoneSettings?.boundaries || DEFAULT_ZONE_BOUNDARIES;
+            const maxHR = calcMaxHR(athleteAge, zoneSettings?.customMaxHR);
             return (
               <TouchableOpacity key={run.id} style={styles.runCard}
                 onPress={() => { setSelectedRun(run); setRunDetailVisible(true); }}>
@@ -622,11 +788,6 @@ export default function AthleteDashboard({ userData }) {
                 </View>
                 <View style={styles.runMiddle}>
                   {run.duration && <Text style={styles.runDetail}>{run.duration}</Text>}
-                  {zone && (
-                    <View style={[styles.zoneBadge, { backgroundColor: zone.color }]}>
-                      <Text style={styles.zoneBadgeText}>Z{zone.zone} {zone.name}</Text>
-                    </View>
-                  )}
                 </View>
                 <View style={styles.runRight}>
                   <Text style={styles.effortLabel}>Effort</Text>
@@ -659,10 +820,12 @@ export default function AthleteDashboard({ userData }) {
       <RunDetailModal
         run={selectedRun}
         visible={runDetailVisible}
+        primaryColor={primaryColor}
+        athleteAge={athleteAge}
+        zoneSettings={zoneSettings}
         onClose={() => { setRunDetailVisible(false); setSelectedRun(null); }}
         onDeleted={() => { setRunDetailVisible(false); setSelectedRun(null); loadDashboard(); }}
         onUpdated={() => { setSelectedRun(null); loadDashboard(); }}
-        primaryColor={primaryColor}
       />
 
       {/* Log Run Modal */}
@@ -710,6 +873,30 @@ export default function AthleteDashboard({ userData }) {
         </KeyboardAvoidingView>
       </Modal>
 
+      {/* ── Bottom navigation bar ── */}
+      <View style={[styles.bottomNav, { borderTopColor: `${primaryColor}30` }]}>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={handleLogRunTap}>
+          <View style={[styles.bottomNavPlus, { backgroundColor: primaryColor }]}>
+            <Text style={styles.bottomNavPlusText}>+</Text>
+          </View>
+          <Text style={[styles.bottomNavLabel, { color: primaryColor }]}>Log run</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => setStravaVisible(true)}>
+          <View style={[styles.bottomNavIcon, { backgroundColor: '#fc4c02' }]}>
+            <Text style={styles.bottomNavIconText}>S</Text>
+          </View>
+          <Text style={styles.bottomNavLabel}>Strava</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => setCalendarVisible(true)}>
+          <Text style={styles.bottomNavEmoji}>📅</Text>
+          <Text style={styles.bottomNavLabel}>Calendar</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => setFeedVisible(true)}>
+          <Text style={styles.bottomNavEmoji}>💬</Text>
+          <Text style={styles.bottomNavLabel}>Feed</Text>
+        </TouchableOpacity>
+      </View>
+
     </View>
   );
 }
@@ -717,16 +904,41 @@ export default function AthleteDashboard({ userData }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5' },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header: { paddingTop: 60, paddingBottom: 16, paddingHorizontal: 20 },
-  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  header: { paddingTop: 56, paddingBottom: 16, paddingHorizontal: 20 },
+  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   greeting: { fontSize: 22, fontWeight: 'bold', color: '#fff' },
-  schoolName: { fontSize: 14, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
-  signOutBtn: { paddingVertical: 6, paddingHorizontal: 12, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 8 },
-  signOutText: { color: '#fff', fontSize: 13 },
-  pendingBanner: { backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: 10, marginTop: 12 },
+  schoolName: { fontSize: 14, color: 'rgba(255,255,255,0.75)', marginTop: 2 },
+  profileBtn: { padding: 4 },
+  profileAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' },
+  profileAvatarText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  pendingBanner: { backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 10, padding: 10, marginBottom: 12, alignItems: 'center' },
   pendingText: { color: '#fff', fontSize: 13, textAlign: 'center' },
-  rankBanner: { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 8, padding: 8, marginTop: 10 },
-  rankBannerText: { color: '#fff', fontSize: 13, textAlign: 'center', fontWeight: '600' },
+  headerMilesRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  headerMilesLabel: { color: 'rgba(255,255,255,0.75)', fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
+  headerMilesNumRow: { flexDirection: 'row', alignItems: 'baseline', gap: 2 },
+  headerMilesNum: { color: '#fff', fontSize: 36, fontWeight: 'bold', lineHeight: 40 },
+  headerMilesOf: { color: 'rgba(255,255,255,0.7)', fontSize: 15 },
+  headerProgressCol: { flex: 1 },
+  headerProgressBg: { height: 8, backgroundColor: 'rgba(255,255,255,0.25)', borderRadius: 4, overflow: 'hidden', marginBottom: 4 },
+  headerProgressFill: { height: '100%', borderRadius: 4 },
+  headerProgressHint: { color: 'rgba(255,255,255,0.8)', fontSize: 12 },
+  bottomNav: { flexDirection: 'row', backgroundColor: '#fff', borderTopWidth: 1, paddingBottom: Platform.OS === 'ios' ? 24 : 8, paddingTop: 10 },
+  bottomNavBtn: { flex: 1, alignItems: 'center', gap: 3 },
+  bottomNavPlus: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  bottomNavPlusText: { color: '#fff', fontSize: 24, fontWeight: '300', lineHeight: 32 },
+  bottomNavIcon: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  bottomNavIconText: { color: '#fff', fontSize: 16, fontWeight: '900' },
+  bottomNavEmoji: { fontSize: 24, lineHeight: 32 },
+  bottomNavLabel: { fontSize: 11, color: '#888', fontWeight: '500' },
+  msgModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  msgModal: { backgroundColor: '#fff', borderRadius: 20, overflow: 'hidden', width: '100%' },
+  msgModalHeader: { padding: 20, paddingBottom: 16 },
+  msgModalTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  msgModalDate: { color: 'rgba(255,255,255,0.7)', fontSize: 12, marginTop: 2 },
+  msgModalText: { fontSize: 17, color: '#333', lineHeight: 26, padding: 20, paddingBottom: 8 },
+  msgModalFrom: { fontSize: 13, color: '#999', fontStyle: 'italic', paddingHorizontal: 20, paddingBottom: 20 },
+  msgModalBtn: { margin: 16, marginTop: 4, borderRadius: 12, padding: 16, alignItems: 'center' },
+  msgModalBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   scroll: { flex: 1 },
   targetCard: { margin: 16, marginBottom: 8, backgroundColor: '#fff', borderRadius: 14, padding: 16 },
   targetTop: { marginBottom: 12 },
@@ -734,7 +946,7 @@ const styles = StyleSheet.create({
   targetMiles: {},
   targetMilesBig: { fontSize: 32, fontWeight: 'bold' },
   targetMilesOf: { fontSize: 15, color: '#999' },
-  timeframeRow: { marginHorizontal: 16, marginBottom: 4 },
+  timeframeRow: { marginHorizontal: 16, marginBottom: 4, marginTop: 14 },
   periodMilesCard: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 8, backgroundColor: '#fff', borderRadius: 12, padding: 14, borderWidth: 1, gap: 10 },
   periodMilesNum: { fontSize: 28, fontWeight: 'bold' },
   periodMilesLabel: { fontSize: 14, color: '#666', flex: 1 },
@@ -759,6 +971,11 @@ const styles = StyleSheet.create({
   workoutDate: { fontSize: 12, color: '#999', marginTop: 4 },
   chevron: { fontSize: 22, color: '#ccc' },
   leaderRow: { backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  leaderTap: { fontSize: 11, color: '#bbb', marginTop: 1 },
+  msgCard: { marginHorizontal: 16, marginBottom: 8, backgroundColor: '#fff', borderRadius: 12, padding: 14, borderLeftWidth: 4, borderLeftColor: '#2e7d32' },
+  msgLabel: { fontSize: 12, fontWeight: '700', color: '#2e7d32', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
+  msgText: { fontSize: 15, color: '#333', lineHeight: 22, marginBottom: 6 },
+  msgFrom: { fontSize: 12, color: '#999', fontStyle: 'italic' },
   leaderRank: { fontSize: 14, fontWeight: '700', color: '#999', width: 28 },
   leaderAvatar: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   leaderAvatarText: { fontWeight: 'bold', fontSize: 14 },
@@ -768,6 +985,23 @@ const styles = StyleSheet.create({
   emptyCard: { backgroundColor: '#fff', borderRadius: 12, padding: 20, alignItems: 'center' },
   emptyText: { color: '#999', fontSize: 14, textAlign: 'center', lineHeight: 20 },
   runCard: { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 10, flexDirection: 'row', alignItems: 'center' },
+  zoneSection: { marginHorizontal: 16, marginBottom: 8 },
+  zoneSectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  zoneSectionTitle: { fontSize: 14, fontWeight: '700', color: '#555' },
+  streamBadge: { backgroundColor: '#e8f5e9', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  streamBadgeText: { fontSize: 11, color: '#2e7d32', fontWeight: '700' },
+  analysis8020: { borderRadius: 8, padding: 10, marginTop: 8, marginBottom: 4 },
+  analysis8020Text: { fontSize: 13, fontWeight: '600', textAlign: 'center' },
+  zoneCard: { backgroundColor: '#fff', borderRadius: 14, padding: 14 },
+  zoneStackedBar: { flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginBottom: 12 },
+  zoneStackedSegment: { height: '100%' },
+  zoneRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  zoneDot: { width: 10, height: 10, borderRadius: 5 },
+  zoneName: { fontSize: 12, color: '#555', width: 110 },
+  zoneBarBg: { flex: 1, height: 6, backgroundColor: '#f0f0f0', borderRadius: 3, overflow: 'hidden' },
+  zoneBarFill: { height: '100%', borderRadius: 3 },
+  zoneTime: { fontSize: 12, color: '#666', fontWeight: '600', width: 52, textAlign: 'right' },
+  zoneTotalTime: { fontSize: 11, color: '#bbb', textAlign: 'right', marginTop: 4 },
   runLeft: { width: 72 },
   runMiles: { fontSize: 17, fontWeight: 'bold', color: '#333' },
   runDate: { fontSize: 11, color: '#999', marginTop: 2 },

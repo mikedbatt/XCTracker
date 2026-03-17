@@ -1,11 +1,24 @@
+import { deleteDoc, doc, getDoc, updateDoc } from 'firebase/firestore';
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, Modal, TouchableOpacity,
-  ScrollView, TextInput, Alert, ActivityIndicator,
-  KeyboardAvoidingView, Platform,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { db, auth } from '../firebaseConfig';
-import { doc, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../firebaseConfig';
+import {
+  DEFAULT_ZONE_BOUNDARIES, ZONE_META, calcMaxHR,
+  calcZoneBreakdownFromRuns,
+  formatMinutes
+} from '../zoneConfig';
 import DatePickerField from './DatePickerField';
 
 const EFFORT_LABELS = ['', 'Very Easy', 'Easy', 'Moderate', 'Moderate', 'Medium',
@@ -14,7 +27,100 @@ const EFFORT_LABELS = ['', 'Very Easy', 'Easy', 'Moderate', 'Moderate', 'Medium'
 const EFFORT_COLORS = ['', '#4caf50', '#4caf50', '#8bc34a', '#8bc34a', '#ffeb3b',
   '#ffc107', '#ff9800', '#ff5722', '#f44336', '#b71c1c'];
 
-export default function RunDetailModal({ run, visible, onClose, onDeleted, onUpdated, primaryColor = '#2e7d32' }) {
+// ── Zone breakdown for a single run ──────────────────────────────────────────
+function RunZoneBreakdown({ run, athleteAge, zoneSettings, primaryColor }) {
+  if (!run.heartRate && !run.zoneSeconds) return null;
+
+  const boundaries = zoneSettings?.boundaries || DEFAULT_ZONE_BOUNDARIES;
+  const customMaxHR = zoneSettings?.customMaxHR || null;
+  const maxHR = calcMaxHR(athleteAge, customMaxHR);
+
+  let breakdown = null;
+  let hasStreamData = false;
+
+  // Use stream data if available
+  if (run.hasStreamData && run.zoneSeconds) {
+    const totalSecs = Object.values(run.zoneSeconds).reduce((s, v) => s + v, 0);
+    if (totalSecs > 0) {
+      breakdown = Object.entries(run.zoneSeconds)
+        .filter(([, s]) => s > 0)
+        .map(([key, secs]) => {
+          const zone = parseInt(key.replace('z', ''));
+          return {
+            zone,
+            seconds: secs,
+            minutes: Math.round(secs / 60),
+            pct: Math.round((secs / totalSecs) * 100),
+            ...ZONE_META[zone],
+          };
+        })
+        .sort((a, b) => a.zone - b.zone);
+      hasStreamData = true;
+    }
+  }
+
+  // Fallback to avg HR + duration
+  if (!breakdown && run.heartRate && run.duration) {
+    breakdown = calcZoneBreakdownFromRuns([run], athleteAge, customMaxHR, boundaries);
+  }
+
+  if (!breakdown || breakdown.length === 0) return null;
+
+  const totalMins = breakdown.reduce((s, z) => s + z.minutes, 0);
+
+  return (
+    <View style={zoneStyles.section}>
+      <View style={zoneStyles.titleRow}>
+        <Text style={zoneStyles.sectionTitle}>Heart rate zones</Text>
+        {hasStreamData
+          ? <View style={zoneStyles.preciseBadge}><Text style={zoneStyles.preciseBadgeText}>Precise ✓</Text></View>
+          : <Text style={zoneStyles.estimatedText}>estimated from avg HR</Text>
+        }
+      </View>
+
+      {/* Stacked bar */}
+      <View style={zoneStyles.stackedBar}>
+        {breakdown.map(z => (
+          <View key={z.zone} style={[zoneStyles.stackedSegment, { flex: z.minutes, backgroundColor: ZONE_META[z.zone].color }]} />
+        ))}
+      </View>
+
+      {/* Zone rows */}
+      {breakdown.map(z => (
+        <View key={z.zone} style={zoneStyles.zoneRow}>
+          <View style={[zoneStyles.zoneDot, { backgroundColor: ZONE_META[z.zone].color }]} />
+          <Text style={zoneStyles.zoneName}>Z{z.zone} {ZONE_META[z.zone].name}</Text>
+          <View style={zoneStyles.zoneBarBg}>
+            <View style={[zoneStyles.zoneBarFill, { width: `${z.pct}%`, backgroundColor: ZONE_META[z.zone].color }]} />
+          </View>
+          <Text style={zoneStyles.zoneTime}>{formatMinutes(z.minutes)}</Text>
+        </View>
+      ))}
+
+      <Text style={zoneStyles.totalTime}>{formatMinutes(totalMins)} total with HR data</Text>
+    </View>
+  );
+}
+
+const zoneStyles = StyleSheet.create({
+  section:        { backgroundColor: '#fff', borderRadius: 14, margin: 16, marginBottom: 0, padding: 16 },
+  titleRow:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  sectionTitle:   { fontSize: 13, fontWeight: '700', color: '#999', textTransform: 'uppercase', letterSpacing: 0.5 },
+  preciseBadge:   { backgroundColor: '#e8f5e9', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  preciseBadgeText:{ fontSize: 11, color: '#2e7d32', fontWeight: '700' },
+  estimatedText:  { fontSize: 11, color: '#bbb' },
+  stackedBar:     { flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginBottom: 14 },
+  stackedSegment: { height: '100%' },
+  zoneRow:        { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  zoneDot:        { width: 10, height: 10, borderRadius: 5 },
+  zoneName:       { fontSize: 13, color: '#555', width: 116 },
+  zoneBarBg:      { flex: 1, height: 6, backgroundColor: '#f0f0f0', borderRadius: 3, overflow: 'hidden' },
+  zoneBarFill:    { height: '100%', borderRadius: 3 },
+  zoneTime:       { fontSize: 12, fontWeight: '600', color: '#555', width: 52, textAlign: 'right' },
+  totalTime:      { fontSize: 11, color: '#bbb', textAlign: 'right', marginTop: 4 },
+});
+
+export default function RunDetailModal({ run, visible, onClose, onDeleted, onUpdated, primaryColor = '#2e7d32', athleteAge = 16, zoneSettings = null }) {
   const [isEditing, setIsEditing] = useState(false);
   const [saving,    setSaving]    = useState(false);
   const [deleting,  setDeleting]  = useState(false);
@@ -224,6 +330,14 @@ export default function RunDetailModal({ run, visible, onClose, onDeleted, onUpd
                 )}
               </View>
             </View>
+
+            <RunZoneBreakdown
+              run={run}
+              athleteAge={athleteAge}
+              zoneSettings={zoneSettings}
+              primaryColor={primaryColor}
+            />
+
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Data source</Text>
               <View style={styles.sourceBox}>

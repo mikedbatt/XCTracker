@@ -110,3 +110,58 @@ export function stravaActivityToRun(activity, userId, schoolId) {
     date: new Date(activity.start_date),
   };
 }
+
+// ── Fetch HR stream for a single activity ────────────────────────────────────
+// Returns array of { hr, seconds } — one entry per second of the activity
+// This gives accurate zone time instead of just the average HR
+export async function fetchStravaHRStream(accessToken, activityId) {
+  const url = `https://www.strava.com/api/v3/activities/${activityId}/streams?keys=heartrate,time&key_by_type=true`;
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) return null; // Activity may not have HR data
+  const data = await response.json();
+  if (!data.heartrate || !data.time) return null;
+
+  const hrData    = data.heartrate.data;  // array of HR values (bpm)
+  const timeData  = data.time.data;       // array of seconds from start
+
+  // Convert to { hr, seconds } pairs where seconds = duration of that HR reading
+  const stream = [];
+  for (let i = 0; i < hrData.length; i++) {
+    const duration = i < hrData.length - 1
+      ? timeData[i + 1] - timeData[i]  // seconds until next reading
+      : 1;                               // last reading gets 1 second
+    if (hrData[i] > 0) {
+      stream.push({ hr: hrData[i], seconds: duration });
+    }
+  }
+  return stream.length > 0 ? stream : null;
+}
+
+// ── Enhanced activity converter with stream data ──────────────────────────────
+// stravaActivityToRunWithStream — fetches HR stream and calculates zone seconds
+export async function fetchRunWithZones(accessToken, activity, userId, schoolId, maxHR, boundaries) {
+  const baseRun = stravaActivityToRun(activity, userId, schoolId);
+  if (!baseRun) return null;
+
+  // Try to fetch the HR stream for accurate zone data
+  try {
+    const stream = await fetchStravaHRStream(accessToken, activity.id);
+    if (stream && maxHR) {
+      // Import zoneConfig dynamically to avoid circular deps
+      const { calcZoneBreakdownFromStream } = await import('./zoneConfig.js');
+      const breakdown = calcZoneBreakdownFromStream(stream, maxHR, boundaries);
+      if (breakdown) {
+        // Store zone seconds on the run document
+        const zoneSeconds = {};
+        breakdown.forEach(z => { zoneSeconds[`z${z.zone}`] = z.seconds; });
+        return { ...baseRun, zoneSeconds, hasStreamData: true };
+      }
+    }
+  } catch (e) {
+    console.log('HR stream fetch failed, using average HR:', e);
+  }
+
+  return { ...baseRun, hasStreamData: false };
+}

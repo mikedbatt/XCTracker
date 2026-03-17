@@ -21,9 +21,13 @@ import { auth, db } from '../firebaseConfig';
 import {
   STRAVA_CONFIG, exchangeStravaCode,
   fetchStravaActivities,
+  fetchStravaHRStream,
   refreshStravaToken,
   stravaActivityToRun,
 } from '../stravaConfig';
+import {
+  DEFAULT_ZONE_BOUNDARIES, calcMaxHR, calcZoneBreakdownFromStream,
+} from '../zoneConfig';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -210,15 +214,52 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
       let skipped  = 0;
       let totalMilesImported = 0;
 
+      // Load athlete's zone settings for accurate zone calculation
+      let zoneSettings = null;
+      try {
+        const zoneDoc = await getDoc(doc(db, 'zoneSettings', auth.currentUser.uid));
+        if (zoneDoc.exists()) zoneSettings = zoneDoc.data();
+      } catch { /* use defaults */ }
+
+      // Determine age and max HR for zone calculation
+      const userSnap2 = await getDoc(doc(db, 'users', auth.currentUser.uid));
+      const athleteData = userSnap2.data();
+      const age = athleteData?.birthdate
+        ? Math.floor((new Date() - new Date(athleteData.birthdate)) / (365.25 * 86400000))
+        : 16;
+      const boundaries = zoneSettings?.boundaries || DEFAULT_ZONE_BOUNDARIES;
+      const maxHR = calcMaxHR(age, zoneSettings?.customMaxHR);
+
       for (const activity of activities) {
-        // Skip already imported
         if (existingStravaIds.has(activity.id.toString())) { skipped++; continue; }
 
         const run = stravaActivityToRun(activity, auth.currentUser.uid, userData.schoolId);
         if (!run) { skipped++; continue; }
 
-        // Save to Firestore
-        await setDoc(doc(collection(db, 'runs')), run);
+        // Try to fetch HR stream for accurate zone data
+        // Rate limit: only fetch streams for activities that have HR data
+        let zoneSeconds = null;
+        if (activity.average_heartrate && activity.has_heartrate) {
+          try {
+            const stream = await fetchStravaHRStream(token, activity.id);
+            if (stream) {
+              const breakdown = calcZoneBreakdownFromStream(stream, maxHR, boundaries);
+              if (breakdown) {
+                zoneSeconds = {};
+                breakdown.forEach(z => { zoneSeconds[`z${z.zone}`] = z.seconds; });
+              }
+            }
+            // Small delay to respect rate limits (100 requests/15min)
+            await new Promise(r => setTimeout(r, 200));
+          } catch (e) { console.log('Stream fetch:', e); }
+        }
+
+        const runWithZones = {
+          ...run,
+          ...(zoneSeconds ? { zoneSeconds, hasStreamData: true } : { hasStreamData: false }),
+        };
+
+        await setDoc(doc(collection(db, 'runs')), runWithZones);
         totalMilesImported += run.miles;
         imported++;
       }
