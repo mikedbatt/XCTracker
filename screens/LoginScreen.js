@@ -287,27 +287,6 @@ export default function LoginScreen({ onAuthSuccess }) {
           </TouchableOpacity>
         )}
 
-        {/* Gender - athletes only on sign up */}
-        {isSignUp && role === 'athlete' && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>I compete on the:</Text>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              {['boys', 'girls'].map(g => (
-                <TouchableOpacity
-                  key={g}
-                  style={[styles.roleCard, { flex: 1, paddingVertical: 14 },
-                    gender === g && { borderColor: '#2e7d32', backgroundColor: '#e8f5e9' }]}
-                  onPress={() => setGender(g)}
-                >
-                  <Text style={[styles.roleLabel, gender === g && { color: '#2e7d32' }]}>
-                    {g === 'boys' ? 'Boys team' : 'Girls team'}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        )}
-
         {/* Gender selector - athletes only on sign up */}
         {isSignUp && role === 'athlete' && (
           <View style={styles.section}>
@@ -322,7 +301,7 @@ export default function LoginScreen({ onAuthSuccess }) {
                 >
                   <Text style={[{ fontSize: 16, fontWeight: '700', color: '#444' },
                     gender === g && { color: '#fff' }]}>
-                    {g === 'boys' ? '♂ Boys team' : '♀ Girls team'}
+                    {g === 'boys' ? 'Boys team' : 'Girls team'}
                   </Text>
                 </TouchableOpacity>
               ))}

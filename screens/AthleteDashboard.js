@@ -1,22 +1,38 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Alert, Modal, TextInput, KeyboardAvoidingView, Platform,
-} from 'react-native';
-import { auth, db } from '../firebaseConfig';
 import { signOut } from 'firebase/auth';
 import {
-  doc, getDoc, collection, query, where,
-  orderBy, limit, getDocs, addDoc, updateDoc, setDoc,
+  addDoc,
+  collection,
+  doc, getDoc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  setDoc,
+  updateDoc,
+  where,
 } from 'firebase/firestore';
-import TimeframePicker, { TIMEFRAMES, getDateRange } from './TimeframePicker';
-import RunDetailModal from './RunDetailModal';
-import DatePickerField from './DatePickerField';
+import React, { useEffect, useState } from 'react';
+import {
+  ActivityIndicator, Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { auth, db } from '../firebaseConfig';
 import CalendarScreen from './CalendarScreen';
-import WorkoutDetailModal from './WorkoutDetailModal';
-import WellnessCheckIn from './WellnessCheckIn';
+import DatePickerField from './DatePickerField';
+import RunDetailModal from './RunDetailModal';
+import { getActiveSeason, PhasePill } from './SeasonPlanner';
 import StravaConnect from './StravaConnect';
-import { getActiveSeason, getPhaseForSeason, SPORTS, PhasePill } from './SeasonPlanner';
+import TimeframePicker, { getDateRange, TIMEFRAMES } from './TimeframePicker';
+import WellnessCheckIn from './WellnessCheckIn';
+import WorkoutDetailModal from './WorkoutDetailModal';
 
 const EFFORT_LABELS = ['', 'Very Easy', 'Easy', 'Moderate', 'Moderate', 'Medium',
   'Medium Hard', 'Hard', 'Very Hard', 'Max Effort', 'All Out'];
@@ -120,14 +136,23 @@ export default function AthleteDashboard({ userData }) {
 
       // Load runs for selected timeframe using calendar-aware date ranges
       const activeSeason = getActiveSeason(currentSchool);
-      const { start: startDate } = getDateRange(selectedTimeframe, activeSeason, customStart, customEnd);
+      const { start: startDate, end: endDate } = getDateRange(selectedTimeframe, activeSeason, customStart, customEnd);
 
+      // Fetch from Firestore with start filter only, then apply end filter in memory
+      // This correctly handles last_month and custom ranges that have a hard end date
       const runsQuery = startDate
-        ? query(collection(db, 'runs'), where('userId', '==', user.uid), where('date', '>=', startDate), orderBy('date', 'desc'), limit(100))
-        : query(collection(db, 'runs'), where('userId', '==', user.uid), orderBy('date', 'desc'), limit(100));
+        ? query(collection(db, 'runs'), where('userId', '==', user.uid), where('date', '>=', startDate), orderBy('date', 'desc'), limit(200))
+        : query(collection(db, 'runs'), where('userId', '==', user.uid), orderBy('date', 'desc'), limit(200));
 
       const runsSnap = await getDocs(runsQuery);
-      const runs = runsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const allFetched = runsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const runs = allFetched.filter(r => {
+        const d = r.date?.toDate?.();
+        if (!d) return false;
+        if (startDate && d < startDate) return false;
+        if (endDate && d > endDate) return false;
+        return true;
+      });
       setRecentRuns(runs);
 
       // Total miles = sum of all runs in the selected timeframe
@@ -168,13 +193,16 @@ export default function AthleteDashboard({ userData }) {
         }
       }
 
-      // Upcoming workouts
+      // Upcoming workouts — today and next 2 scheduled (max 3 total)
       if (userData.status === 'approved' && userData.schoolId) {
         try {
+          const todayStart = new Date();
+          todayStart.setHours(0, 0, 0, 0);
           const wSnap = await getDocs(query(
             collection(db, 'events'),
             where('schoolId', '==', userData.schoolId),
             where('category', '==', 'Training'),
+            where('date', '>=', todayStart),
             orderBy('date', 'asc'),
             limit(3)
           ));
@@ -205,9 +233,12 @@ export default function AthleteDashboard({ userData }) {
                 orderBy('date', 'desc')
               ));
               const filtered = snap.docs.filter(d => {
-                if (!startDate) return true;
+                if (!startDate && !endDate) return true;
                 const runDate = d.data().date?.toDate?.();
-                return runDate && runDate >= startDate;
+                if (!runDate) return false;
+                if (startDate && runDate < startDate) return false;
+                if (endDate && runDate > endDate) return false;
+                return true;
               });
               milesMap[athlete.id] = Math.round(
                 filtered.reduce((s, d) => s + (d.data().miles || 0), 0) * 10

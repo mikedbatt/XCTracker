@@ -170,7 +170,7 @@ export default function CoachDashboard({ userData }) {
 
       const activeSeason = schoolData ? getActiveSeason(schoolData) : null;
       setActiveSeasonData(activeSeason);
-      const { start: cutoff } = getDateRange(selectedTimeframe, activeSeason, null, null);
+      const { start: cutoff, end: cutoffEnd } = getDateRange(selectedTimeframe, activeSeason, null, null);
 
       const approvedSnap = await getDocs(query(
         collection(db, 'users'),
@@ -200,11 +200,13 @@ export default function CoachDashboard({ userData }) {
           ));
           const allRuns = runsSnap.docs.map(d => ({ ...d.data() }));
 
-          // Timeframe filter in memory
+          // Timeframe filter in memory — applies both start and end for last_month/custom
           const filtered = allRuns.filter(r => {
-            if (!cutoff) return true;
             const d = r.date?.toDate?.();
-            return d && d >= cutoff;
+            if (!d) return false;
+            if (cutoff && d < cutoff) return false;
+            if (cutoffEnd && d > cutoffEnd) return false;
+            return true;
           });
           milesMap[athlete.id] = Math.round(filtered.reduce((s, r) => s + (r.miles || 0), 0) * 10) / 10;
 
