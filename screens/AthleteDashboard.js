@@ -28,7 +28,7 @@ import {
   DEFAULT_ZONE_BOUNDARIES, ZONE_META,
   calc8020,
   calcMaxHR,
-  calcZoneBreakdownFromRuns,
+  calcZoneBreakdownFromRuns, calcZoneBreakdownFromStream,
   formatMinutes
 } from '../zoneConfig';
 import AthleteProfile from './AthleteProfile';
@@ -608,14 +608,41 @@ export default function AthleteDashboard({ userData }) {
           const customMaxHR = zoneSettings?.customMaxHR || null;
           const maxHR = calcMaxHR(athleteAge, customMaxHR);
 
-          // Use stream data if available, otherwise fall back to avg HR
-          const runsWithStream = recentRuns.filter(r => r.hasStreamData && r.zoneSeconds);
+          // Priority 1: recalculate from raw HR stream using CURRENT boundaries
+          // Priority 2: use stored pre-bucketed zoneSeconds (from sync time — may use old boundaries)
+          // Priority 3: fall back to avg HR + duration estimate
           let breakdown = null;
+          let hasStreamData = false;
 
-          if (runsWithStream.length > 0) {
-            // Combine zoneSeconds across all stream runs
+          const runsWithRawStream = recentRuns.filter(r => r.rawHRStream?.length > 0);
+          const runsWithStoredZones = recentRuns.filter(r => r.hasStreamData && r.zoneSeconds);
+
+          if (runsWithRawStream.length > 0) {
+            // Best path — recalculate fresh from raw data using current team boundaries
             const combined = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
-            runsWithStream.forEach(r => {
+            runsWithRawStream.forEach(r => {
+              const runBreakdown = calcZoneBreakdownFromStream(r.rawHRStream, maxHR, boundaries);
+              if (runBreakdown) {
+                runBreakdown.forEach(z => {
+                  combined[`z${z.zone}`] = (combined[`z${z.zone}`] || 0) + z.seconds;
+                });
+              }
+            });
+            const totalSecs = Object.values(combined).reduce((s, v) => s + v, 0);
+            if (totalSecs > 0) {
+              breakdown = Object.entries(combined)
+                .filter(([, s]) => s > 0)
+                .map(([key, secs]) => {
+                  const zone = parseInt(key.replace('z', ''));
+                  return { zone, seconds: secs, minutes: Math.round(secs / 60), pct: Math.round((secs / totalSecs) * 100), ...ZONE_META[zone] };
+                })
+                .sort((a, b) => a.zone - b.zone);
+              hasStreamData = true;
+            }
+          } else if (runsWithStoredZones.length > 0) {
+            // Fallback — use stored zone seconds (may reflect old boundaries)
+            const combined = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
+            runsWithStoredZones.forEach(r => {
               Object.entries(r.zoneSeconds).forEach(([k, v]) => {
                 if (combined[k] !== undefined) combined[k] += v;
               });
@@ -629,10 +656,11 @@ export default function AthleteDashboard({ userData }) {
                   return { zone, seconds: secs, minutes: Math.round(secs / 60), pct: Math.round((secs / totalSecs) * 100), ...ZONE_META[zone] };
                 })
                 .sort((a, b) => a.zone - b.zone);
+              hasStreamData = true;
             }
           }
 
-          // Fallback: avg HR + duration
+          // Final fallback — avg HR + duration
           if (!breakdown) {
             breakdown = calcZoneBreakdownFromRuns(recentRuns, athleteAge, customMaxHR, boundaries);
           }

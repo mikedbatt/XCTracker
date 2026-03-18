@@ -11,8 +11,8 @@ import {
 import { db } from '../firebaseConfig';
 import {
   DEFAULT_ZONE_BOUNDARIES, ZONE_META, calcMaxHR,
-  calcZoneBreakdownFromRuns,
-  formatMinutes
+  calcZoneBreakdownFromRuns, calcZoneBreakdownFromStream,
+  formatMinutes,
 } from '../zoneConfig';
 import RunDetailModal from './RunDetailModal';
 
@@ -68,10 +68,38 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
 
   // ── Zone breakdown — MTD, stream data preferred ───────────────────────────
   const getMonthZoneBreakdown = () => {
-    const streamRuns = monthRuns.filter(r => r.hasStreamData && r.zoneSeconds);
-    if (streamRuns.length > 0) {
+    // Priority 1 — recalculate from raw HR stream using CURRENT team boundaries
+    const rawStreamRuns = monthRuns.filter(r => r.rawHRStream?.length > 0);
+    if (rawStreamRuns.length > 0) {
       const combined = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
-      streamRuns.forEach(r => {
+      rawStreamRuns.forEach(r => {
+        const runBreakdown = calcZoneBreakdownFromStream(r.rawHRStream, maxHR, boundaries);
+        if (runBreakdown) {
+          runBreakdown.forEach(z => {
+            combined[`z${z.zone}`] = (combined[`z${z.zone}`] || 0) + z.seconds;
+          });
+        }
+      });
+      const total = Object.values(combined).reduce((s, v) => s + v, 0);
+      if (total > 0) {
+        return {
+          breakdown: Object.entries(combined)
+            .filter(([, s]) => s > 0)
+            .map(([key, secs]) => {
+              const zone = parseInt(key.replace('z', ''));
+              return { zone, seconds: secs, minutes: Math.round(secs / 60), pct: Math.round((secs / total) * 100), ...ZONE_META[zone] };
+            })
+            .sort((a, b) => a.zone - b.zone),
+          hasStreamData: true,
+        };
+      }
+    }
+
+    // Priority 2 — stored zone seconds (may reflect old boundaries — less accurate)
+    const storedZoneRuns = monthRuns.filter(r => r.hasStreamData && r.zoneSeconds);
+    if (storedZoneRuns.length > 0) {
+      const combined = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
+      storedZoneRuns.forEach(r => {
         Object.entries(r.zoneSeconds).forEach(([k, v]) => {
           if (combined[k] !== undefined) combined[k] += v;
         });
@@ -90,7 +118,8 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
         };
       }
     }
-    // Fallback to avg HR
+
+    // Priority 3 — avg HR + duration estimate
     const bd = calcZoneBreakdownFromRuns(monthRuns, athleteAge, null, boundaries);
     return { breakdown: bd, hasStreamData: false };
   };

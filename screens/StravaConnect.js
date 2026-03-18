@@ -239,17 +239,18 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
         // Try to fetch HR stream for accurate zone data
         // Rate limit: only fetch streams for activities that have HR data
         let zoneSeconds = null;
+        let rawHRStream = null;
         if (activity.average_heartrate && activity.has_heartrate) {
           try {
             const stream = await fetchStravaHRStream(token, activity.id);
             if (stream) {
+              rawHRStream = stream; // Store raw { hr, seconds } array for recalculation
               const breakdown = calcZoneBreakdownFromStream(stream, maxHR, boundaries);
               if (breakdown) {
                 zoneSeconds = {};
                 breakdown.forEach(z => { zoneSeconds[`z${z.zone}`] = z.seconds; });
               }
             }
-            // Small delay to respect rate limits (100 requests/15min)
             await new Promise(r => setTimeout(r, 200));
           } catch (e) { console.log('Stream fetch:', e); }
         }
@@ -257,6 +258,7 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
         const runWithZones = {
           ...run,
           ...(zoneSeconds ? { zoneSeconds, hasStreamData: true } : { hasStreamData: false }),
+          ...(rawHRStream ? { rawHRStream } : {}), // store raw stream for recalculation
         };
 
         await setDoc(doc(collection(db, 'runs')), runWithZones);
