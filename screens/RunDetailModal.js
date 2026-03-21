@@ -17,7 +17,8 @@ import { auth, db } from '../firebaseConfig';
 import {
   DEFAULT_ZONE_BOUNDARIES, ZONE_META, calcMaxHR,
   calcZoneBreakdownFromRuns,
-  formatMinutes
+  calcZoneBreakdownFromStream,
+  formatMinutes,
 } from '../zoneConfig';
 import DatePickerField from './DatePickerField';
 
@@ -28,18 +29,38 @@ const EFFORT_COLORS = ['', '#4caf50', '#4caf50', '#8bc34a', '#8bc34a', '#ffeb3b'
   '#ffc107', '#ff9800', '#ff5722', '#f44336', '#b71c1c'];
 
 // ── Zone breakdown for a single run ──────────────────────────────────────────
+// FIX: Added Tier 1 (rawHRStream recalculation) which was missing entirely.
+// Previously jumped straight to Tier 2 (stored zoneSeconds from sync time),
+// which used whatever boundaries existed when the run was synced — not the
+// coach's current configured boundaries. Now uses the same 3-tier priority
+// as the rest of the app:
+//   Tier 1 — rawHRStream → recalculate with current coach boundaries (most accurate)
+//   Tier 2 — stored zoneSeconds → sync-time boundaries (fallback)
+//   Tier 3 — avg HR + duration → estimate (least accurate, covers manual runs)
 function RunZoneBreakdown({ run, athleteAge, zoneSettings, primaryColor }) {
-  if (!run.heartRate && !run.zoneSeconds) return null;
+  // Need at least some HR data to show anything
+  if (!run.heartRate && !run.zoneSeconds && !run.rawHRStream) return null;
 
-  const boundaries = zoneSettings?.boundaries || DEFAULT_ZONE_BOUNDARIES;
+  const boundaries  = zoneSettings?.boundaries  || DEFAULT_ZONE_BOUNDARIES;
   const customMaxHR = zoneSettings?.customMaxHR || null;
-  const maxHR = calcMaxHR(athleteAge, customMaxHR);
+  const maxHR       = calcMaxHR(athleteAge, customMaxHR);
 
-  let breakdown = null;
+  let breakdown     = null;
   let hasStreamData = false;
 
-  // Use stream data if available
-  if (run.hasStreamData && run.zoneSeconds) {
+  // Tier 1 — raw HR stream: recalculate with current coach boundaries
+  // This is the most accurate path and ensures zone display always reflects
+  // whatever the coach has currently configured, not sync-time boundaries.
+  if (run.rawHRStream?.length > 0) {
+    const bd = calcZoneBreakdownFromStream(run.rawHRStream, maxHR, boundaries);
+    if (bd && bd.length > 0) {
+      breakdown     = bd;
+      hasStreamData = true;
+    }
+  }
+
+  // Tier 2 — stored zone seconds (calculated at sync time — may reflect old boundaries)
+  if (!breakdown && run.hasStreamData && run.zoneSeconds) {
     const totalSecs = Object.values(run.zoneSeconds).reduce((s, v) => s + v, 0);
     if (totalSecs > 0) {
       breakdown = Object.entries(run.zoneSeconds)
@@ -59,7 +80,7 @@ function RunZoneBreakdown({ run, athleteAge, zoneSettings, primaryColor }) {
     }
   }
 
-  // Fallback to avg HR + duration
+  // Tier 3 — estimate from average HR + duration
   if (!breakdown && run.heartRate && run.duration) {
     breakdown = calcZoneBreakdownFromRuns([run], athleteAge, customMaxHR, boundaries);
   }
@@ -91,36 +112,41 @@ function RunZoneBreakdown({ run, athleteAge, zoneSettings, primaryColor }) {
           <View style={[zoneStyles.zoneDot, { backgroundColor: ZONE_META[z.zone].color }]} />
           <Text style={zoneStyles.zoneName}>Z{z.zone} {ZONE_META[z.zone].name}</Text>
           <View style={zoneStyles.zoneBarBg}>
-            <View style={[zoneStyles.zoneBarFill, { width: `${z.pct}%`, backgroundColor: ZONE_META[z.zone].color }]} />
+            <View style={[zoneStyles.zoneBarFill, { width: z.pct + '%', backgroundColor: ZONE_META[z.zone].color }]} />
           </View>
           <Text style={zoneStyles.zoneTime}>{formatMinutes(z.minutes)}</Text>
         </View>
       ))}
 
-      <Text style={zoneStyles.totalTime}>{formatMinutes(totalMins)} total with HR data</Text>
+      <Text style={zoneStyles.totalTime}>
+        {formatMinutes(totalMins)} total · {hasStreamData ? 'second-by-second HR data' : 'estimated from avg HR'}
+      </Text>
     </View>
   );
 }
 
 const zoneStyles = StyleSheet.create({
-  section:        { backgroundColor: '#fff', borderRadius: 14, margin: 16, marginBottom: 0, padding: 16 },
-  titleRow:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  sectionTitle:   { fontSize: 13, fontWeight: '700', color: '#999', textTransform: 'uppercase', letterSpacing: 0.5 },
-  preciseBadge:   { backgroundColor: '#e8f5e9', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  section:         { backgroundColor: '#fff', borderRadius: 14, margin: 16, marginBottom: 0, padding: 16 },
+  titleRow:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  sectionTitle:    { fontSize: 13, fontWeight: '700', color: '#999', textTransform: 'uppercase', letterSpacing: 0.5 },
+  preciseBadge:    { backgroundColor: '#e8f5e9', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   preciseBadgeText:{ fontSize: 11, color: '#2e7d32', fontWeight: '700' },
-  estimatedText:  { fontSize: 11, color: '#bbb' },
-  stackedBar:     { flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginBottom: 14 },
-  stackedSegment: { height: '100%' },
-  zoneRow:        { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  zoneDot:        { width: 10, height: 10, borderRadius: 5 },
-  zoneName:       { fontSize: 13, color: '#555', width: 116 },
-  zoneBarBg:      { flex: 1, height: 6, backgroundColor: '#f0f0f0', borderRadius: 3, overflow: 'hidden' },
-  zoneBarFill:    { height: '100%', borderRadius: 3 },
-  zoneTime:       { fontSize: 12, fontWeight: '600', color: '#555', width: 52, textAlign: 'right' },
-  totalTime:      { fontSize: 11, color: '#bbb', textAlign: 'right', marginTop: 4 },
+  estimatedText:   { fontSize: 11, color: '#bbb' },
+  stackedBar:      { flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginBottom: 14 },
+  stackedSegment:  { height: '100%' },
+  zoneRow:         { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  zoneDot:         { width: 10, height: 10, borderRadius: 5 },
+  zoneName:        { fontSize: 13, color: '#555', width: 116 },
+  zoneBarBg:       { flex: 1, height: 6, backgroundColor: '#f0f0f0', borderRadius: 3, overflow: 'hidden' },
+  zoneBarFill:     { height: '100%', borderRadius: 3 },
+  zoneTime:        { fontSize: 12, fontWeight: '600', color: '#555', width: 52, textAlign: 'right' },
+  totalTime:       { fontSize: 11, color: '#bbb', textAlign: 'right', marginTop: 4 },
 });
 
-export default function RunDetailModal({ run, visible, onClose, onDeleted, onUpdated, primaryColor = '#2e7d32', athleteAge = 16, zoneSettings = null }) {
+export default function RunDetailModal({
+  run, visible, onClose, onDeleted, onUpdated,
+  primaryColor = '#2e7d32', athleteAge = 16, zoneSettings = null,
+}) {
   const [isEditing, setIsEditing] = useState(false);
   const [saving,    setSaving]    = useState(false);
   const [deleting,  setDeleting]  = useState(false);
@@ -134,19 +160,20 @@ export default function RunDetailModal({ run, visible, onClose, onDeleted, onUpd
 
   if (!run) return null;
 
-  const isOwner = auth.currentUser?.uid === run.userId;
-  const date = run.date?.toDate?.() || new Date();
+  const isOwner     = auth.currentUser?.uid === run.userId;
+  const date        = run.date?.toDate?.() || new Date();
   const effortColor = EFFORT_COLORS[run.effort] || primaryColor;
 
+  // Calculate pace from miles + duration
   let pace = null;
   if (run.miles && run.duration) {
     const parts = run.duration.split(':');
     if (parts.length === 2) {
       const totalMinutes = parseInt(parts[0]) + parseInt(parts[1]) / 60;
       const paceMinutes  = totalMinutes / run.miles;
-      const paceMin = Math.floor(paceMinutes);
-      const paceSec = Math.round((paceMinutes - paceMin) * 60);
-      pace = `${paceMin}:${paceSec.toString().padStart(2, '0')} /mi`;
+      const paceMin      = Math.floor(paceMinutes);
+      const paceSec      = Math.round((paceMinutes - paceMin) * 60);
+      pace = paceMin + ':' + paceSec.toString().padStart(2, '0') + ' /mi';
     }
   }
 
@@ -168,14 +195,14 @@ export default function RunDetailModal({ run, visible, onClose, onDeleted, onUpd
     setSaving(true);
     try {
       const newMiles = parseFloat(editMiles);
-      const diff = newMiles - (run.miles || 0);
+      const diff     = newMiles - (run.miles || 0);
       await updateDoc(doc(db, 'runs', run.id), {
-        miles: newMiles,
-        duration: editDuration || null,
+        miles:     newMiles,
+        duration:  editDuration || null,
         heartRate: editHR ? parseInt(editHR) : null,
-        effort: editEffort,
-        notes: editNotes || null,
-        date: editDate,
+        effort:    editEffort,
+        notes:     editNotes || null,
+        date:      editDate,
       });
       if (diff !== 0) {
         const userDoc = await getDoc(doc(db, 'users', run.userId));
@@ -196,7 +223,7 @@ export default function RunDetailModal({ run, visible, onClose, onDeleted, onUpd
   const handleDelete = () => {
     Alert.alert(
       'Delete run?',
-      `Delete this ${run.miles} mile run? This cannot be undone.`,
+      'Delete this ' + run.miles + ' mile run? This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Delete', style: 'destructive', onPress: async () => {
@@ -230,22 +257,20 @@ export default function RunDetailModal({ run, visible, onClose, onDeleted, onUpd
               </TouchableOpacity>
               <Text style={styles.editHeaderTitle}>Edit Run</Text>
               <TouchableOpacity onPress={handleSaveEdit} disabled={saving}>
-                {saving ? <ActivityIndicator color={primaryColor} />
-                  : <Text style={[styles.saveBtn, { color: primaryColor }]}>Save</Text>}
+                {saving
+                  ? <ActivityIndicator color={primaryColor} />
+                  : <Text style={[styles.saveBtn, { color: primaryColor }]}>Save</Text>
+                }
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.editScroll} keyboardShouldPersistTaps="handled">
-              <DatePickerField label="Run date" value={editDate} onChange={setEditDate}
-                primaryColor={primaryColor} maximumDate={new Date()} />
+              <DatePickerField label="Run date" value={editDate} onChange={setEditDate} primaryColor={primaryColor} maximumDate={new Date()} />
               <Text style={styles.editLabel}>Miles *</Text>
-              <TextInput style={styles.editInput} value={editMiles} onChangeText={setEditMiles}
-                keyboardType="decimal-pad" placeholder="e.g. 5.2" placeholderTextColor="#999" />
+              <TextInput style={styles.editInput} value={editMiles} onChangeText={setEditMiles} keyboardType="decimal-pad" placeholder="e.g. 5.2" placeholderTextColor="#999" />
               <Text style={styles.editLabel}>Duration (optional)</Text>
-              <TextInput style={styles.editInput} value={editDuration} onChangeText={setEditDuration}
-                placeholder="e.g. 42:30" placeholderTextColor="#999" />
+              <TextInput style={styles.editInput} value={editDuration} onChangeText={setEditDuration} placeholder="e.g. 42:30" placeholderTextColor="#999" />
               <Text style={styles.editLabel}>Avg heart rate (optional)</Text>
-              <TextInput style={styles.editInput} value={editHR} onChangeText={setEditHR}
-                keyboardType="numeric" placeholder="e.g. 155" placeholderTextColor="#999" />
+              <TextInput style={styles.editInput} value={editHR} onChangeText={setEditHR} keyboardType="numeric" placeholder="e.g. 155" placeholderTextColor="#999" />
               <Text style={styles.editLabel}>How did it feel? {editEffort}/10 — {EFFORT_LABELS[editEffort]}</Text>
               <View style={styles.effortRow}>
                 {[1,2,3,4,5,6,7,8,9,10].map(n => (
@@ -261,8 +286,10 @@ export default function RunDetailModal({ run, visible, onClose, onDeleted, onUpd
                 value={editNotes} onChangeText={setEditNotes}
                 placeholder="How did the run go?" placeholderTextColor="#999" multiline />
               <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete} disabled={deleting}>
-                {deleting ? <ActivityIndicator color="#dc2626" />
-                  : <Text style={styles.deleteBtnText}>🗑  Delete this run</Text>}
+                {deleting
+                  ? <ActivityIndicator color="#dc2626" />
+                  : <Text style={styles.deleteBtnText}>🗑  Delete this run</Text>
+                }
               </TouchableOpacity>
               <View style={{ height: 40 }} />
             </ScrollView>
@@ -287,7 +314,10 @@ export default function RunDetailModal({ run, visible, onClose, onDeleted, onUpd
             </Text>
             {run.duration && <Text style={styles.headerDuration}>{run.duration}</Text>}
           </View>
+
           <ScrollView style={styles.scroll}>
+
+            {/* Effort */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Effort</Text>
               <View style={styles.effortContainer}>
@@ -298,11 +328,13 @@ export default function RunDetailModal({ run, visible, onClose, onDeleted, onUpd
                 <View style={styles.effortInfo}>
                   <Text style={[styles.effortLabel, { color: effortColor }]}>{EFFORT_LABELS[run.effort]}</Text>
                   <View style={styles.effortBar}>
-                    <View style={[styles.effortFill, { width: `${(run.effort / 10) * 100}%`, backgroundColor: effortColor }]} />
+                    <View style={[styles.effortFill, { width: ((run.effort / 10) * 100) + '%', backgroundColor: effortColor }]} />
                   </View>
                 </View>
               </View>
             </View>
+
+            {/* Run stats */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Run stats</Text>
               <View style={styles.statsGrid}>
@@ -331,6 +363,7 @@ export default function RunDetailModal({ run, visible, onClose, onDeleted, onUpd
               </View>
             </View>
 
+            {/* Zone breakdown — uses coach-configured boundaries via zoneSettings prop */}
             <RunZoneBreakdown
               run={run}
               athleteAge={athleteAge}
@@ -338,6 +371,7 @@ export default function RunDetailModal({ run, visible, onClose, onDeleted, onUpd
               primaryColor={primaryColor}
             />
 
+            {/* Data source */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Data source</Text>
               <View style={styles.sourceBox}>
@@ -348,6 +382,8 @@ export default function RunDetailModal({ run, visible, onClose, onDeleted, onUpd
                 </Text>
               </View>
             </View>
+
+            {/* Notes */}
             {run.notes && (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Notes</Text>
@@ -356,17 +392,21 @@ export default function RunDetailModal({ run, visible, onClose, onDeleted, onUpd
                 </View>
               </View>
             )}
+
             <View style={styles.footer}>
               <Text style={styles.footerText}>
                 Logged at {date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
               </Text>
               {isOwner && (
                 <TouchableOpacity onPress={handleDelete} disabled={deleting} style={styles.footerDeleteBtn}>
-                  {deleting ? <ActivityIndicator color="#dc2626" size="small" />
-                    : <Text style={styles.footerDeleteText}>Delete run</Text>}
+                  {deleting
+                    ? <ActivityIndicator color="#dc2626" size="small" />
+                    : <Text style={styles.footerDeleteText}>Delete run</Text>
+                  }
                 </TouchableOpacity>
               )}
             </View>
+
           </ScrollView>
         </View>
       )}
@@ -375,48 +415,48 @@ export default function RunDetailModal({ run, visible, onClose, onDeleted, onUpd
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  header: { paddingTop: 60, paddingBottom: 24, paddingHorizontal: 24 },
-  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  closeText: { color: 'rgba(255,255,255,0.85)', fontSize: 15 },
-  editBtn: { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
-  editBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  headerMiles: { fontSize: 42, fontWeight: 'bold', color: '#fff' },
-  headerDate: { fontSize: 16, color: 'rgba(255,255,255,0.85)', marginTop: 4 },
-  headerDuration: { fontSize: 22, color: 'rgba(255,255,255,0.9)', marginTop: 6, fontWeight: '600' },
-  scroll: { flex: 1 },
-  section: { backgroundColor: '#fff', borderRadius: 14, margin: 16, marginBottom: 0, padding: 16 },
-  sectionTitle: { fontSize: 13, fontWeight: '700', color: '#999', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 14 },
-  effortContainer: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  effortCircle: { flexDirection: 'row', alignItems: 'baseline' },
-  effortNumber: { fontSize: 52, fontWeight: 'bold' },
-  effortDivider: { fontSize: 20, color: '#ccc', marginLeft: 2 },
-  effortInfo: { flex: 1 },
-  effortLabel: { fontSize: 18, fontWeight: '700', marginBottom: 10 },
-  effortBar: { height: 8, backgroundColor: '#eee', borderRadius: 4, overflow: 'hidden' },
-  effortFill: { height: '100%', borderRadius: 4 },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  statBox: { backgroundColor: '#f8f8f8', borderRadius: 10, padding: 14, minWidth: '45%', flex: 1 },
-  statValue: { fontSize: 22, fontWeight: 'bold', color: '#333' },
-  statLabel: { fontSize: 12, color: '#999', marginTop: 4 },
-  sourceBox: { backgroundColor: '#f8f8f8', borderRadius: 10, padding: 14 },
-  sourceText: { fontSize: 15, color: '#555' },
-  notesBox: { backgroundColor: '#f8f8f8', borderRadius: 10, padding: 14 },
-  notesText: { fontSize: 15, color: '#444', lineHeight: 22 },
-  footer: { padding: 24, alignItems: 'center', gap: 12 },
-  footerText: { fontSize: 13, color: '#bbb' },
-  footerDeleteBtn: { padding: 8 },
+  container:        { flex: 1, backgroundColor: '#f5f5f5' },
+  header:           { paddingTop: 60, paddingBottom: 24, paddingHorizontal: 24 },
+  headerTop:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  closeText:        { color: 'rgba(255,255,255,0.85)', fontSize: 15 },
+  editBtn:          { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
+  editBtnText:      { color: '#fff', fontWeight: '700', fontSize: 14 },
+  headerMiles:      { fontSize: 42, fontWeight: 'bold', color: '#fff' },
+  headerDate:       { fontSize: 16, color: 'rgba(255,255,255,0.85)', marginTop: 4 },
+  headerDuration:   { fontSize: 22, color: 'rgba(255,255,255,0.9)', marginTop: 6, fontWeight: '600' },
+  scroll:           { flex: 1 },
+  section:          { backgroundColor: '#fff', borderRadius: 14, margin: 16, marginBottom: 0, padding: 16 },
+  sectionTitle:     { fontSize: 13, fontWeight: '700', color: '#999', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 14 },
+  effortContainer:  { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  effortCircle:     { flexDirection: 'row', alignItems: 'baseline' },
+  effortNumber:     { fontSize: 52, fontWeight: 'bold' },
+  effortDivider:    { fontSize: 20, color: '#ccc', marginLeft: 2 },
+  effortInfo:       { flex: 1 },
+  effortLabel:      { fontSize: 18, fontWeight: '700', marginBottom: 10 },
+  effortBar:        { height: 8, backgroundColor: '#eee', borderRadius: 4, overflow: 'hidden' },
+  effortFill:       { height: '100%', borderRadius: 4 },
+  statsGrid:        { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  statBox:          { backgroundColor: '#f8f8f8', borderRadius: 10, padding: 14, minWidth: '45%', flex: 1 },
+  statValue:        { fontSize: 22, fontWeight: 'bold', color: '#333' },
+  statLabel:        { fontSize: 12, color: '#999', marginTop: 4 },
+  sourceBox:        { backgroundColor: '#f8f8f8', borderRadius: 10, padding: 14 },
+  sourceText:       { fontSize: 15, color: '#555' },
+  notesBox:         { backgroundColor: '#f8f8f8', borderRadius: 10, padding: 14 },
+  notesText:        { fontSize: 15, color: '#444', lineHeight: 22 },
+  footer:           { padding: 24, alignItems: 'center', gap: 12 },
+  footerText:       { fontSize: 13, color: '#bbb' },
+  footerDeleteBtn:  { padding: 8 },
   footerDeleteText: { fontSize: 14, color: '#dc2626', fontWeight: '600' },
-  editHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 60, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
-  editHeaderTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
-  cancelBtn: { color: '#dc2626', fontSize: 16, fontWeight: '600', width: 60 },
-  saveBtn: { fontSize: 16, fontWeight: '700', width: 60, textAlign: 'right' },
-  editScroll: { padding: 20 },
-  editLabel: { fontSize: 14, fontWeight: '600', color: '#444', marginBottom: 8, marginTop: 4 },
-  editInput: { backgroundColor: '#fff', borderRadius: 10, padding: 14, fontSize: 16, marginBottom: 16, borderWidth: 1, borderColor: '#ddd', color: '#333' },
-  effortRow: { flexDirection: 'row', gap: 6, marginBottom: 16, flexWrap: 'wrap' },
-  effortBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#eee', alignItems: 'center', justifyContent: 'center' },
-  effortBtnText: { fontSize: 15, fontWeight: '600', color: '#666' },
-  deleteBtn: { borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 16, backgroundColor: '#fee2e2', borderWidth: 1, borderColor: '#fca5a5' },
-  deleteBtnText: { color: '#dc2626', fontSize: 16, fontWeight: '700' },
+  editHeader:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 60, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  editHeaderTitle:  { fontSize: 18, fontWeight: 'bold', color: '#333' },
+  cancelBtn:        { color: '#dc2626', fontSize: 16, fontWeight: '600', width: 60 },
+  saveBtn:          { fontSize: 16, fontWeight: '700', width: 60, textAlign: 'right' },
+  editScroll:       { padding: 20 },
+  editLabel:        { fontSize: 14, fontWeight: '600', color: '#444', marginBottom: 8, marginTop: 4 },
+  editInput:        { backgroundColor: '#fff', borderRadius: 10, padding: 14, fontSize: 16, marginBottom: 16, borderWidth: 1, borderColor: '#ddd', color: '#333' },
+  effortRow:        { flexDirection: 'row', gap: 6, marginBottom: 16, flexWrap: 'wrap' },
+  effortBtn:        { width: 44, height: 44, borderRadius: 22, backgroundColor: '#eee', alignItems: 'center', justifyContent: 'center' },
+  effortBtnText:    { fontSize: 15, fontWeight: '600', color: '#666' },
+  deleteBtn:        { borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 16, backgroundColor: '#fee2e2', borderWidth: 1, borderColor: '#fca5a5' },
+  deleteBtnText:    { color: '#dc2626', fontSize: 16, fontWeight: '700' },
 });

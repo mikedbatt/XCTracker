@@ -48,7 +48,6 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated })
       if (!userData.schoolId) { setLoadingMsgs(false); return; }
 
       // Build keys for last 30 days and fetch each one directly
-      // Avoids composite index requirement — each doc is keyed {schoolId}_{date}
       const msgs = [];
       const now = new Date();
       for (let i = 0; i < 30; i++) {
@@ -286,6 +285,7 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated })
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Connected apps</Text>
 
+            {/* FIX: connectionCard was used in JSX but missing from StyleSheet — added below */}
             <View style={styles.connectionCard}>
               <View style={[styles.connectionLogo, { backgroundColor: '#fc4c02' }]}>
                 <Text style={styles.connectionLogoText}>S</Text>
@@ -336,10 +336,7 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated })
 
         {/* Sign out */}
         <View style={styles.signOutSection}>
-          <TouchableOpacity
-            style={styles.signOutBtn}
-            onPress={handleSignOut}
-          >
+          <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
             <Text style={styles.signOutBtnText}>Sign out</Text>
           </TouchableOpacity>
           <Text style={styles.signOutHint}>
@@ -392,10 +389,12 @@ const styles = StyleSheet.create({
   messageDate:        { fontSize: 13, color: '#666', fontWeight: '600' },
   messageSender:      { fontSize: 12, color: '#999' },
   messageText:        { fontSize: 15, color: '#333', lineHeight: 22 },
-  signOutSection:    { marginHorizontal: 16, marginTop: 8, marginBottom: 8, alignItems: 'center' },
-  signOutBtn:        { borderRadius: 12, borderWidth: 1.5, borderColor: '#dc2626', paddingVertical: 14, paddingHorizontal: 40, marginBottom: 8 },
-  signOutBtnText:    { color: '#dc2626', fontSize: 16, fontWeight: '700' },
-  signOutHint:       { fontSize: 12, color: '#bbb', textAlign: 'center' },
+  signOutSection:     { marginHorizontal: 16, marginTop: 8, marginBottom: 8, alignItems: 'center' },
+  signOutBtn:         { borderRadius: 12, borderWidth: 1.5, borderColor: '#dc2626', paddingVertical: 14, paddingHorizontal: 40, marginBottom: 8 },
+  signOutBtnText:     { color: '#dc2626', fontSize: 16, fontWeight: '700' },
+  signOutHint:        { fontSize: 12, color: '#bbb', textAlign: 'center' },
+  // FIX: connectionCard was referenced in JSX but was missing from StyleSheet entirely
+  connectionCard:     { backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   connectionLogo:     { width: 44, height: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   connectionLogoText: { color: '#fff', fontSize: 18, fontWeight: '900' },
   connectionInfo:     { flex: 1 },

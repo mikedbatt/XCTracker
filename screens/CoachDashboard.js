@@ -1,23 +1,42 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Alert, Modal, TextInput, KeyboardAvoidingView, Platform,
-} from 'react-native';
-import { auth, db } from '../firebaseConfig';
 import { signOut } from 'firebase/auth';
 import {
-  doc, getDoc, collection, query, where, orderBy,
-  getDocs, updateDoc, arrayUnion, arrayRemove, addDoc, setDoc,
+  arrayRemove,
+  arrayUnion,
+  collection,
+  doc, getDoc,
+  getDocs,
+  orderBy,
+  query,
+  setDoc,
+  updateDoc,
+  where
 } from 'firebase/firestore';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator, Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { auth, db } from '../firebaseConfig';
 import AthleteDetailScreen from '../screens/AthleteDetailScreen';
-import TimeframePicker, { TIMEFRAMES, getDateRange } from '../screens/TimeframePicker';
 import CalendarScreen, { TYPE_COLORS } from '../screens/CalendarScreen';
-import SeasonPlanner, { getActiveSeason, getPhaseForSeason, SPORTS, PhasePill } from '../screens/SeasonPlanner';
-import WorkoutLibrary from '../screens/WorkoutLibrary';
+import SeasonPlanner, { getActiveSeason, getPhaseForSeason } from '../screens/SeasonPlanner';
 import TeamFeed from '../screens/TeamFeed';
+import TimeframePicker, { TIMEFRAMES, getDateRange } from '../screens/TimeframePicker';
+import WorkoutLibrary from '../screens/WorkoutLibrary';
 import ZoneSettings from '../screens/ZoneSettings';
 import {
-  DEFAULT_ZONE_BOUNDARIES, calcMaxHR, calcZoneBreakdownFromRuns,
+  DEFAULT_ZONE_BOUNDARIES,
+  calcMaxHR,
+  calcZoneBreakdownFromRuns,
+  calcZoneBreakdownFromStream
 } from '../zoneConfig';
 
 // ── Daily tip library by phase ────────────────────────────────────────────────
@@ -66,13 +85,11 @@ const PHASE_TIPS = {
   ],
 };
 
-
 function getDailyTip(phaseName) {
   const tips = PHASE_TIPS[phaseName] || PHASE_TIPS["Pre-Season"];
   const dayOfYear = Math.floor((new Date() - new Date(new Date().getFullYear(), 0, 0)) / 86400000);
   return tips[dayOfYear % tips.length];
 }
-
 
 // ── Overtraining detection ────────────────────────────────────────────────────
 async function checkOvertraining(athleteId) {
@@ -104,10 +121,10 @@ async function checkOvertraining(athleteId) {
     const highEffortDays = recentRuns.filter(r => (r.effort || 0) >= 8).length;
     if (highEffortDays >= 4) signals.push({ text: `Effort 8+ on ${highEffortDays} of last 7 days` });
 
-    const hrRuns = recentRuns.filter(r => r.heartRate && r.miles);
+    const hrRuns     = recentRuns.filter(r => r.heartRate && r.miles);
     const prevHRRuns = prevRuns.filter(r => r.heartRate && r.miles);
     if (hrRuns.length >= 2 && prevHRRuns.length >= 2) {
-      const avgHR = hrRuns.reduce((s, r) => s + r.heartRate, 0) / hrRuns.length;
+      const avgHR     = hrRuns.reduce((s, r) => s + r.heartRate, 0) / hrRuns.length;
       const prevAvgHR = prevHRRuns.reduce((s, r) => s + r.heartRate, 0) / prevHRRuns.length;
       if (avgHR > prevAvgHR * 1.05) signals.push({ text: `HR trending ${Math.round(((avgHR - prevAvgHR) / prevAvgHR) * 100)}% higher` });
     }
@@ -126,6 +143,58 @@ async function checkOvertraining(athleteId) {
   } catch { return { alert: false, signals: [] }; }
 }
 
+// ── Zone % helper — same 3-tier system used everywhere else in the app ────────
+// FIX: was using only calcZoneBreakdownFromRuns (avg HR estimate) regardless of
+// whether precise stream data existed. Now recalculates from rawHRStream first
+// so the Z1+Z2 % on each athlete card reflects actual second-by-second HR data
+// when available, and dynamically respects the coach's current zone boundaries.
+function calcAthleteZonePct(recentRuns, age, teamZoneSettings) {
+  const boundaries  = teamZoneSettings?.boundaries  || DEFAULT_ZONE_BOUNDARIES;
+  const customMaxHR = teamZoneSettings?.customMaxHR || null;
+  const maxHR       = calcMaxHR(age, customMaxHR);
+
+  // Tier 1 — raw HR stream: recalculate on the fly with current boundaries
+  const rawStreamRuns = recentRuns.filter(r => r.rawHRStream?.length > 0);
+  if (rawStreamRuns.length > 0) {
+    const combined = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
+    rawStreamRuns.forEach(r => {
+      const bd = calcZoneBreakdownFromStream(r.rawHRStream, maxHR, boundaries);
+      if (bd) bd.forEach(z => { combined[`z${z.zone}`] = (combined[`z${z.zone}`] || 0) + z.seconds; });
+    });
+    const total = Object.values(combined).reduce((s, v) => s + v, 0);
+    if (total > 0) {
+      const easyPct = Object.entries(combined)
+        .filter(([key]) => parseInt(key.replace('z', '')) <= 2)
+        .reduce((s, [, v]) => s + v, 0);
+      return Math.round((easyPct / total) * 100);
+    }
+  }
+
+  // Tier 2 — stored zone seconds (reflect boundaries at sync time)
+  const storedZoneRuns = recentRuns.filter(r => r.hasStreamData && r.zoneSeconds);
+  if (storedZoneRuns.length > 0) {
+    const combined = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
+    storedZoneRuns.forEach(r => {
+      Object.entries(r.zoneSeconds).forEach(([k, v]) => {
+        if (combined[k] !== undefined) combined[k] += v;
+      });
+    });
+    const total = Object.values(combined).reduce((s, v) => s + v, 0);
+    if (total > 0) {
+      const easyPct = (combined.z1 + combined.z2);
+      return Math.round((easyPct / total) * 100);
+    }
+  }
+
+  // Tier 3 — avg HR + duration estimate
+  const breakdown = calcZoneBreakdownFromRuns(recentRuns, age, customMaxHR, boundaries);
+  if (breakdown) {
+    return breakdown.filter(z => z.zone <= 2).reduce((s, z) => s + z.pct, 0);
+  }
+
+  return null;
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function CoachDashboard({ userData }) {
   const [school,              setSchool]              = useState(null);
@@ -133,8 +202,8 @@ export default function CoachDashboard({ userData }) {
   const [athletes,            setAthletes]            = useState([]);
   const [athleteMiles,        setAthleteMiles]        = useState({});
   const [athleteWeeklyMiles,  setAthleteWeeklyMiles]  = useState({});
-  const [athlete3WeekAvg,     setAthlete3WeekAvg]     = useState({}); // 3-week avg weekly miles
-  const [athleteZonePct,      setAthleteZonePct]      = useState({}); // Z1+Z2 % per athlete
+  const [athlete3WeekAvg,     setAthlete3WeekAvg]     = useState({});
+  const [athleteZonePct,      setAthleteZonePct]      = useState({});
   const [pendingAthletes,     setPendingAthletes]     = useState([]);
   const [trainingItems,       setTrainingItems]       = useState([]);
   const [loading,             setLoading]             = useState(true);
@@ -164,10 +233,14 @@ export default function CoachDashboard({ userData }) {
       const schoolData = schoolDoc.exists() ? schoolDoc.data() : null;
       if (schoolData) setSchool(schoolData);
 
-      // Load team-wide zone settings
+      // Load team-wide zone settings — needed before per-athlete zone calc
+      let currentZoneSettings = null;
       try {
         const zoneDoc = await getDoc(doc(db, 'teamZoneSettings', userData.schoolId));
-        if (zoneDoc.exists()) setTeamZoneSettings(zoneDoc.data());
+        if (zoneDoc.exists()) {
+          currentZoneSettings = zoneDoc.data();
+          setTeamZoneSettings(currentZoneSettings);
+        }
       } catch { /* use defaults */ }
 
       const activeSeason = schoolData ? getActiveSeason(schoolData) : null;
@@ -183,7 +256,6 @@ export default function CoachDashboard({ userData }) {
       const approvedAthletes = approvedSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       setAthletes(approvedAthletes);
 
-      // Get start of current calendar week (Monday)
       const now = new Date();
       const dayOfWeek = now.getDay();
       const weekStart = new Date(now);
@@ -204,7 +276,7 @@ export default function CoachDashboard({ userData }) {
           ));
           const allRuns = runsSnap.docs.map(d => ({ ...d.data() }));
 
-          // Timeframe filter
+          // Timeframe filter for period miles
           const filtered = allRuns.filter(r => {
             const d = r.date?.toDate?.();
             if (!d) return false;
@@ -214,7 +286,7 @@ export default function CoachDashboard({ userData }) {
           });
           milesMap[athlete.id] = Math.round(filtered.reduce((s, r) => s + (r.miles || 0), 0) * 10) / 10;
 
-          // Current week miles (Mon–now)
+          // Current week miles
           const weekFiltered = allRuns.filter(r => {
             const d = r.date?.toDate?.();
             return d && d >= weekStart;
@@ -223,11 +295,10 @@ export default function CoachDashboard({ userData }) {
             weekFiltered.reduce((s, r) => s + (r.miles || 0), 0) * 10
           ) / 10;
 
-          // ── 3-week average weekly miles ────────────────────────────────────
+          // 3-week average weekly miles
           const week1Start = new Date(weekStart);
           const week2Start = new Date(weekStart); week2Start.setDate(week2Start.getDate() - 7);
           const week3Start = new Date(weekStart); week3Start.setDate(week3Start.getDate() - 14);
-          const week4Start = new Date(weekStart); week4Start.setDate(week4Start.getDate() - 21);
 
           const w1 = allRuns.filter(r => { const d = r.date?.toDate?.(); return d && d >= week1Start; })
             .reduce((s, r) => s + (r.miles || 0), 0);
@@ -236,12 +307,15 @@ export default function CoachDashboard({ userData }) {
           const w3 = allRuns.filter(r => { const d = r.date?.toDate?.(); return d && d >= week3Start && d < week2Start; })
             .reduce((s, r) => s + (r.miles || 0), 0);
 
-          const avg3 = Math.round(((w1 + w2 + w3) / 3) * 10) / 10;
-          threeWeekAvgMap[athlete.id] = avg3;
+          threeWeekAvgMap[athlete.id] = Math.round(((w1 + w2 + w3) / 3) * 10) / 10;
 
-          // ── Zone 1+2 percentage ────────────────────────────────────────────
+          // ── Zone 1+2 % — FIX: now uses 3-tier stream recalculation ──────────
+          // Previously only used calcZoneBreakdownFromRuns (avg HR estimate).
+          // Now calls calcAthleteZonePct which tries rawHRStream first, then
+          // stored zoneSeconds, then falls back to the avg HR estimate.
+          // This means the Z1+Z2 % on each athlete card is as accurate as the
+          // data available and always reflects the coach's current zone boundaries.
           try {
-            const boundaries = teamZoneSettings?.boundaries || DEFAULT_ZONE_BOUNDARIES;
             const age = athlete.birthdate
               ? Math.floor((new Date() - new Date(athlete.birthdate)) / (365.25 * 86400000))
               : 16;
@@ -250,13 +324,8 @@ export default function CoachDashboard({ userData }) {
               const d = r.date?.toDate?.();
               return d && d >= thirtyDaysAgo;
             });
-            const breakdown = calcZoneBreakdownFromRuns(recentRuns, age, null, boundaries);
-            if (breakdown) {
-              const easyPct = breakdown
-                .filter(z => z.zone <= 2)
-                .reduce((s, z) => s + z.pct, 0);
-              zonePctMap[athlete.id] = easyPct;
-            }
+            const pct = calcAthleteZonePct(recentRuns, age, currentZoneSettings);
+            if (pct !== null) zonePctMap[athlete.id] = pct;
           } catch { /* zone calc failed — skip */ }
 
         } catch (e) {
@@ -266,6 +335,7 @@ export default function CoachDashboard({ userData }) {
           threeWeekAvgMap[athlete.id] = 0;
         }
       }
+
       setAthleteMiles(milesMap);
       setAthleteWeeklyMiles(weeklyMilesMap);
       setAthlete3WeekAvg(threeWeekAvgMap);
@@ -306,7 +376,6 @@ export default function CoachDashboard({ userData }) {
         } catch (e2) { console.error('Training load error:', e2.message); }
       }
 
-      // Check if today's message already sent
       try {
         const today = new Date().toISOString().split('T')[0];
         const tipDoc = await getDoc(doc(db, 'dailyMessages', `${userData.schoolId}_${today}`));
@@ -339,6 +408,8 @@ export default function CoachDashboard({ userData }) {
         onSaved={(newBoundaries) => {
           setTeamZoneSettings(prev => ({ ...prev, boundaries: newBoundaries }));
           setZonesVisible(false);
+          // Reload so athlete cards immediately reflect the new boundaries
+          loadDashboard();
         }}
       />
     );
@@ -365,7 +436,6 @@ export default function CoachDashboard({ userData }) {
       />
     );
   }
-
   if (feedVisible) {
     return (
       <TeamFeed
@@ -375,7 +445,6 @@ export default function CoachDashboard({ userData }) {
       />
     );
   }
-
   if (libraryVisible) {
     return (
       <WorkoutLibrary
@@ -383,7 +452,7 @@ export default function CoachDashboard({ userData }) {
         schoolId={userData.schoolId}
         userData={userData}
         onClose={() => setLibraryVisible(false)}
-        onAddToCalendar={(workout) => {
+        onAddToCalendar={() => {
           setLibraryVisible(false);
           setAddFromDashboard(true);
         }}
@@ -433,16 +502,16 @@ export default function CoachDashboard({ userData }) {
     try {
       const today = new Date().toISOString().split('T')[0];
       await setDoc(doc(db, 'dailyMessages', `${userData.schoolId}_${today}`), {
-        schoolId: userData.schoolId,
-        message: tipText.trim(),
-        sentBy: auth.currentUser.uid,
-        sentByName: `Coach ${userData.lastName}`,
-        date: today,
-        sentAt: new Date(),
+        schoolId:    userData.schoolId,
+        message:     tipText.trim(),
+        sentBy:      auth.currentUser.uid,
+        sentByName:  `Coach ${userData.lastName}`,
+        date:        today,
+        sentAt:      new Date(),
       });
       setTodayTipSent(true);
       setTipModalVisible(false);
-      Alert.alert('Sent! ✅', 'Your message has been pinned to every athlete\'s dashboard.');
+      Alert.alert('Sent! ✅', "Your message has been pinned to every athlete's dashboard.");
     } catch {
       Alert.alert('Error', 'Could not send message. Please try again.');
     }
@@ -461,7 +530,6 @@ export default function CoachDashboard({ userData }) {
   const alertCount    = Object.values(overtTrainingAlerts).filter(a => a.alert).length;
   const filteredAthletes = athletes.filter(a => genderFilter === 'all' || a.gender === genderFilter);
 
-  // Team summary totals
   const teamWeeklyMiles = Math.round(
     filteredAthletes.reduce((s, a) => s + (athleteWeeklyMiles[a.id] || 0), 0) * 10
   ) / 10;
@@ -526,7 +594,7 @@ export default function CoachDashboard({ userData }) {
         contentContainerStyle={{ paddingBottom: 90 }}
       >
 
-        {/* Daily message button — moved to top of scroll */}
+        {/* Daily message button */}
         <View style={styles.msgRow}>
           <TouchableOpacity
             style={[styles.msgBtn, { backgroundColor: todayTipSent ? '#e8f5e9' : primaryColor }]}
@@ -542,7 +610,6 @@ export default function CoachDashboard({ userData }) {
         {activeTab === 'team' && (
           <View style={styles.section}>
 
-            {/* Gender filter — top of content */}
             <View style={styles.genderRow}>
               {['all', 'boys', 'girls'].map(g => (
                 <TouchableOpacity
@@ -557,7 +624,6 @@ export default function CoachDashboard({ userData }) {
               ))}
             </View>
 
-            {/* Timeframe picker — right below gender */}
             <TimeframePicker
               selected={selectedTimeframe}
               onSelect={setSelectedTimeframe}
@@ -587,7 +653,6 @@ export default function CoachDashboard({ userData }) {
                       style={[styles.athleteCard, hasAlert && styles.athleteCardAlert]}
                       onPress={() => setSelectedAthlete(athlete)}
                     >
-                      {/* Top row — name + period miles */}
                       <View style={styles.athleteCardTop}>
                         <Text style={styles.rankNum}>#{index + 1}</Text>
                         <View style={[styles.avatar, { backgroundColor: hasAlert ? '#ef4444' : primaryColor }]}>
@@ -609,36 +674,22 @@ export default function CoachDashboard({ userData }) {
                         <Text style={styles.chevron}>›</Text>
                       </View>
 
-                      {/* Bottom row — weekly miles + zone % */}
                       <View style={styles.athleteCardStats}>
-                        {/* This week miles with 3-week avg indicator */}
                         <View style={styles.athleteStatChip}>
                           <Text style={styles.athleteStatChipLabel}>This week</Text>
-                          <Text style={[
-                            styles.athleteStatChipVal,
-                            mileageHigh && styles.statValRed,
-                          ]}>
-                            {weekMiles} mi
-                            {avg3 > 0 ? ` (avg ${avg3})` : ''}
+                          <Text style={[styles.athleteStatChipVal, mileageHigh && styles.statValRed]}>
+                            {weekMiles} mi{avg3 > 0 ? ` (avg ${avg3})` : ''}
                           </Text>
-                          {mileageHigh && (
-                            <Text style={styles.statFlagRed}>↑ High load</Text>
-                          )}
+                          {mileageHigh && <Text style={styles.statFlagRed}>↑ High load</Text>}
                         </View>
 
-                        {/* Zone 1+2 % */}
                         {zonePct !== undefined && (
                           <View style={styles.athleteStatChip}>
                             <Text style={styles.athleteStatChipLabel}>Z1+Z2 (30d)</Text>
-                            <Text style={[
-                              styles.athleteStatChipVal,
-                              zoneLow && styles.statValRed,
-                            ]}>
+                            <Text style={[styles.athleteStatChipVal, zoneLow && styles.statValRed]}>
                               {zonePct}%
                             </Text>
-                            {zoneLow && (
-                              <Text style={styles.statFlagRed}>↑ Too intense</Text>
-                            )}
+                            {zoneLow && <Text style={styles.statFlagRed}>↑ Too intense</Text>}
                           </View>
                         )}
                       </View>
@@ -842,10 +893,6 @@ const styles = StyleSheet.create({
   emptyCard:            { backgroundColor: '#fff', borderRadius: 12, padding: 20, alignItems: 'center', gap: 10 },
   emptyText:            { color: '#999', fontSize: 14, textAlign: 'center' },
   emptySubText:         { color: '#bbb', fontSize: 13 },
-  addBtn:               { borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8 },
-  addBtnText:           { color: '#fff', fontSize: 14, fontWeight: '700' },
-
-  // Athlete card — two-row layout
   athleteCard:          { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 10 },
   athleteCardAlert:     { borderWidth: 1.5, borderColor: '#ef4444', backgroundColor: '#fff5f5' },
   athleteCardTop:       { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
@@ -855,7 +902,6 @@ const styles = StyleSheet.create({
   athleteStatChipVal:   { fontSize: 14, fontWeight: '700', color: '#333' },
   statValRed:           { color: '#dc2626' },
   statFlagRed:          { fontSize: 11, color: '#dc2626', fontWeight: '600', marginTop: 2 },
-
   rankNum:              { fontSize: 14, fontWeight: '700', color: '#999', width: 24 },
   avatar:               { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   avatarText:           { color: '#fff', fontWeight: 'bold', fontSize: 16 },
@@ -867,14 +913,12 @@ const styles = StyleSheet.create({
   milesNum:             { fontSize: 20, fontWeight: 'bold' },
   milesLabel:           { fontSize: 11, color: '#999' },
   chevron:              { fontSize: 22, color: '#ccc' },
-
   alertSection:         { marginTop: 8 },
   alertSectionTitle:    { fontSize: 15, fontWeight: '700', color: '#ef4444', marginBottom: 10 },
   alertCard:            { backgroundColor: '#fff5f5', borderRadius: 12, padding: 14, marginBottom: 10, borderLeftWidth: 4, borderLeftColor: '#ef4444' },
   alertAthleteName:     { fontSize: 15, fontWeight: '700', color: '#333', marginBottom: 6 },
   alertSignal:          { fontSize: 13, color: '#ef4444', marginBottom: 3 },
   alertRec:             { fontSize: 12, color: '#666', marginTop: 8, fontStyle: 'italic' },
-
   todaySection:         { marginBottom: 24 },
   todayLabel:           { fontSize: 11, fontWeight: '700', color: '#999', letterSpacing: 1, marginBottom: 10 },
   todayCard:            { backgroundColor: '#fff', borderRadius: 12, padding: 16, borderLeftWidth: 4, marginBottom: 8 },
@@ -896,16 +940,12 @@ const styles = StyleSheet.create({
   approveBtnText:       { color: '#fff', fontWeight: '700' },
   denyBtn:              { flex: 1, borderRadius: 8, padding: 10, alignItems: 'center', backgroundColor: '#fee2e2' },
   denyBtnText:          { color: '#dc2626', fontWeight: '700' },
-
-  // Bottom nav
   bottomNav:            { flexDirection: 'row', backgroundColor: '#fff', borderTopWidth: 1, paddingBottom: Platform.OS === 'ios' ? 24 : 8, paddingTop: 10 },
   bottomNavBtn:         { flex: 1, alignItems: 'center', gap: 3 },
   bottomNavPlus:        { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   bottomNavPlusText:    { color: '#fff', fontSize: 24, fontWeight: '300', lineHeight: 32 },
   bottomNavEmoji:       { fontSize: 24, lineHeight: 32 },
   bottomNavLabel:       { fontSize: 11, color: '#888', fontWeight: '500' },
-
-  // Daily message modal
   tipModal:             { flex: 1, backgroundColor: '#f5f5f5' },
   tipModalHeader:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 60, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
   tipModalTitle:        { fontSize: 18, fontWeight: 'bold', color: '#333' },

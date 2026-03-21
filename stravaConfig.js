@@ -123,8 +123,8 @@ export async function fetchStravaHRStream(accessToken, activityId) {
   const data = await response.json();
   if (!data.heartrate || !data.time) return null;
 
-  const hrData    = data.heartrate.data;  // array of HR values (bpm)
-  const timeData  = data.time.data;       // array of seconds from start
+  const hrData   = data.heartrate.data;  // array of HR values (bpm)
+  const timeData = data.time.data;       // array of seconds from start
 
   // Convert to { hr, seconds } pairs where seconds = duration of that HR reading
   const stream = [];
@@ -140,20 +140,16 @@ export async function fetchStravaHRStream(accessToken, activityId) {
 }
 
 // ── Enhanced activity converter with stream data ──────────────────────────────
-// stravaActivityToRunWithStream — fetches HR stream and calculates zone seconds
 export async function fetchRunWithZones(accessToken, activity, userId, schoolId, maxHR, boundaries) {
   const baseRun = stravaActivityToRun(activity, userId, schoolId);
   if (!baseRun) return null;
 
-  // Try to fetch the HR stream for accurate zone data
   try {
     const stream = await fetchStravaHRStream(accessToken, activity.id);
     if (stream && maxHR) {
-      // Import zoneConfig dynamically to avoid circular deps
       const { calcZoneBreakdownFromStream } = await import('./zoneConfig.js');
       const breakdown = calcZoneBreakdownFromStream(stream, maxHR, boundaries);
       if (breakdown) {
-        // Store zone seconds on the run document
         const zoneSeconds = {};
         breakdown.forEach(z => { zoneSeconds[`z${z.zone}`] = z.seconds; });
         return { ...baseRun, zoneSeconds, hasStreamData: true };
@@ -164,4 +160,142 @@ export async function fetchRunWithZones(accessToken, activity, userId, schoolId,
   }
 
   return { ...baseRun, hasStreamData: false };
+}
+
+// ── Auto-sync Strava on app load ──────────────────────────────────────────────
+// Called silently from AthleteDashboard on mount. Does not block the UI.
+// Returns { imported, miles } or null if Strava is not connected / error.
+export async function autoSyncStrava(userId, userData, teamZoneSettings) {
+  try {
+    const {
+      getDoc, doc, getDocs, collection,
+      query, where, setDoc, updateDoc,
+    } = await import('firebase/firestore');
+    const { db } = await import('./firebaseConfig');
+    const {
+      calcMaxHR, calcZoneBreakdownFromStream, DEFAULT_ZONE_BOUNDARIES,
+    } = await import('./zoneConfig');
+
+    // Load user doc to get Strava tokens
+    const userDoc = await getDoc(doc(db, 'users', userId));
+    if (!userDoc.exists()) return null;
+    const data = userDoc.data();
+
+    // Bail out early if Strava is not connected
+    if (!data.stravaAccessToken) return null;
+
+    // Refresh token if expired or expiring within 5 minutes
+    let accessToken = data.stravaAccessToken;
+    const nowSecs = Math.floor(Date.now() / 1000);
+    if (data.stravaTokenExpiry && data.stravaTokenExpiry <= nowSecs + 300) {
+      try {
+        const refreshed = await refreshStravaToken(data.stravaRefreshToken);
+        await updateDoc(doc(db, 'users', userId), {
+          stravaAccessToken:  refreshed.access_token,
+          stravaRefreshToken: refreshed.refresh_token,
+          stravaTokenExpiry:  refreshed.expires_at,
+        });
+        accessToken = refreshed.access_token;
+      } catch (e) {
+        console.log('Auto-sync token refresh failed:', e);
+        return null;
+      }
+    }
+
+    // Work out the sync window — mirrors the logic in StravaConnect.handleSync
+    const ninetyDaysAgo  = Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000);
+    const today          = new Date().toISOString().split('T')[0];
+    const lastSyncStr    = data.stravaLastSync;
+    const lastSyncIsToday = lastSyncStr && lastSyncStr.startsWith(today);
+
+    let lastSync;
+    if (!lastSyncStr || lastSyncIsToday) {
+      lastSync = ninetyDaysAgo;
+    } else {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      yesterday.setHours(0, 0, 0, 0);
+      lastSync = Math.floor(yesterday.getTime() / 1000);
+    }
+
+    // Fetch new activities from Strava
+    const activities = await fetchStravaActivities(accessToken, lastSync);
+    if (!activities || activities.length === 0) return { imported: 0, miles: 0 };
+
+    // Get existing Strava run IDs to skip duplicates
+    const existingSnap = await getDocs(query(
+      collection(db, 'runs'),
+      where('userId', '==', userId),
+      where('source', '==', 'strava')
+    ));
+    const existingIds = new Set(existingSnap.docs.map(d => d.data().stravaId));
+
+    // Zone calculation setup — uses coach-configured team boundaries
+    const boundaries  = teamZoneSettings?.boundaries  || DEFAULT_ZONE_BOUNDARIES;
+    const customMaxHR = teamZoneSettings?.customMaxHR || null;
+    const age = userData?.birthdate
+      ? Math.floor((new Date() - new Date(userData.birthdate)) / (365.25 * 86400000))
+      : 16;
+    const maxHR = calcMaxHR(age, customMaxHR);
+
+    let imported           = 0;
+    let totalMilesImported = 0;
+
+    for (const activity of activities) {
+      // Skip already-imported runs
+      if (existingIds.has(activity.id.toString())) continue;
+
+      const run = stravaActivityToRun(activity, userId, userData?.schoolId);
+      if (!run) continue;
+
+      // Fetch HR stream for accurate zone data if the activity has HR
+      let zoneSeconds = null;
+      let rawHRStream = null;
+      if (activity.average_heartrate && activity.has_heartrate) {
+        try {
+          const stream = await fetchStravaHRStream(accessToken, activity.id);
+          if (stream) {
+            rawHRStream = stream;
+            const breakdown = calcZoneBreakdownFromStream(stream, maxHR, boundaries);
+            if (breakdown) {
+              zoneSeconds = {};
+              breakdown.forEach(z => { zoneSeconds[`z${z.zone}`] = z.seconds; });
+            }
+          }
+          // Small delay to avoid hitting Strava rate limits
+          await new Promise(r => setTimeout(r, 200));
+        } catch (e) {
+          console.log('Auto-sync HR stream fetch:', e);
+        }
+      }
+
+      // Write the run to Firestore
+      await setDoc(doc(collection(db, 'runs')), {
+        ...run,
+        ...(zoneSeconds ? { zoneSeconds, hasStreamData: true } : { hasStreamData: false }),
+        ...(rawHRStream ? { rawHRStream } : {}),
+      });
+
+      totalMilesImported += run.miles;
+      imported++;
+    }
+
+    // Update total miles + sync timestamp if anything was imported
+    if (imported > 0) {
+      const newTotal = Math.round(((data.totalMiles || 0) + totalMilesImported) * 10) / 10;
+      await updateDoc(doc(db, 'users', userId), {
+        totalMiles:     newTotal,
+        stravaLastSync: new Date().toISOString(),
+      });
+    }
+
+    return {
+      imported,
+      miles: Math.round(totalMilesImported * 10) / 10,
+    };
+  } catch (e) {
+    // Auto-sync failures are silent — never crash the dashboard
+    console.log('Auto-sync error:', e);
+    return null;
+  }
 }

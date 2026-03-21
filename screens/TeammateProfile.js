@@ -1,11 +1,4 @@
-import {
-  collection,
-  getDocs,
-  limit,
-  orderBy,
-  query,
-  where
-} from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -16,32 +9,20 @@ import {
   View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
-
-// ── Duration parser ───────────────────────────────────────────────────────────
-function parseDurationMinutes(durationStr) {
-  if (!durationStr) return 0;
-  const parts = durationStr.split(':').map(Number);
-  if (parts.length === 3) return parts[0] * 60 + parts[1] + parts[2] / 60;
-  if (parts.length === 2) return parts[0] + parts[1] / 60;
-  return 0;
-}
-
-// ── HR zone helper ────────────────────────────────────────────────────────────
-function getHRZone(heartRate, age) {
-  if (!heartRate || !age) return null;
-  const maxHR = 220 - age;
-  const pct = heartRate / maxHR;
-  if (pct < 0.60) return { zone: 1, name: 'Recovery',      color: '#64b5f6' };
-  if (pct < 0.70) return { zone: 2, name: 'Aerobic Base',  color: '#4caf50' };
-  if (pct < 0.80) return { zone: 3, name: 'Aerobic Power', color: '#ff9800' };
-  if (pct < 0.90) return { zone: 4, name: 'Threshold',     color: '#f44336' };
-  return              { zone: 5, name: 'Anaerobic',     color: '#9c27b0' };
-}
+import {
+  DEFAULT_ZONE_BOUNDARIES,
+  ZONE_META,
+  calcMaxHR,
+  calcZoneBreakdownFromRuns,
+  calcZoneBreakdownFromStream,
+  formatMinutes,
+} from '../zoneConfig';
 
 export default function TeammateProfile({ athlete, school, onBack }) {
-  const [runs,       setRuns]       = useState([]);
-  const [loading,    setLoading]    = useState(true);
-  const [totalMiles, setTotalMiles] = useState(0);
+  const [runs,            setRuns]            = useState([]);
+  const [loading,         setLoading]         = useState(true);
+  const [totalMiles,      setTotalMiles]       = useState(0);
+  const [teamZoneSettings, setTeamZoneSettings] = useState(null);
 
   const primaryColor = school?.primaryColor || '#2e7d32';
   const myUid = auth.currentUser?.uid;
@@ -55,6 +36,16 @@ export default function TeammateProfile({ athlete, school, onBack }) {
   const loadProfile = async () => {
     setLoading(true);
     try {
+      // FIX: Load the team's zone settings from Firestore so zone breakdown
+      // respects coach-configured boundaries instead of using hardcoded defaults.
+      if (school?.id || athlete.schoolId) {
+        try {
+          const schoolId = school?.id || athlete.schoolId;
+          const zoneDoc = await getDoc(doc(db, 'teamZoneSettings', schoolId));
+          if (zoneDoc.exists()) setTeamZoneSettings(zoneDoc.data());
+        } catch { /* use defaults */ }
+      }
+
       // Load runs
       const runsSnap = await getDocs(query(
         collection(db, 'runs'),
@@ -78,21 +69,78 @@ export default function TeammateProfile({ athlete, school, onBack }) {
     setLoading(false);
   };
 
-  // Duration-based zone breakdown
-  const zoneMinutes = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-  runs.forEach(r => {
-    const zone = getHRZone(r.heartRate, athleteAge);
-    if (!zone) return;
-    const mins = parseDurationMinutes(r.duration);
-    if (mins > 0) zoneMinutes[zone.zone] += mins;
-  });
-  const totalZoneMins = Object.values(zoneMinutes).reduce((s, v) => s + v, 0);
-  const zoneCounts = totalZoneMins > 0
-    ? Object.entries(zoneMinutes)
-        .filter(([, m]) => m > 0)
-        .map(([z, m]) => ({ zone: parseInt(z), minutes: Math.round(m), pct: Math.round((m / totalZoneMins) * 100) }))
-    : [];
-  const fmtMins = (m) => m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
+  // ── Zone breakdown for this month ────────────────────────────────────────
+  // FIX: was using a local hardcoded getHRZone() that ignored team boundaries.
+  // Now uses zoneConfig functions with team-configured boundaries, matching
+  // what the coach sees on the CoachDashboard and AthleteDetailScreen.
+  const getZoneBreakdown = () => {
+    const boundaries = teamZoneSettings?.boundaries || DEFAULT_ZONE_BOUNDARIES;
+    const maxHR = calcMaxHR(athleteAge, teamZoneSettings?.customMaxHR || null);
+
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    const monthRuns = runs.filter(r => {
+      const d = r.date?.toDate?.();
+      return d && d >= monthStart;
+    });
+
+    if (monthRuns.length === 0) return { breakdown: null, hasStreamData: false };
+
+    // Priority 1: raw HR stream data — most accurate
+    const rawStreamRuns = monthRuns.filter(r => r.rawHRStream?.length > 0);
+    if (rawStreamRuns.length > 0) {
+      const combined = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
+      rawStreamRuns.forEach(r => {
+        const bd = calcZoneBreakdownFromStream(r.rawHRStream, maxHR, boundaries);
+        if (bd) bd.forEach(z => { combined[`z${z.zone}`] = (combined[`z${z.zone}`] || 0) + z.seconds; });
+      });
+      const total = Object.values(combined).reduce((s, v) => s + v, 0);
+      if (total > 0) {
+        return {
+          breakdown: Object.entries(combined)
+            .filter(([, s]) => s > 0)
+            .map(([key, secs]) => {
+              const zone = parseInt(key.replace('z', ''));
+              return { zone, seconds: secs, minutes: Math.round(secs / 60), pct: Math.round((secs / total) * 100), ...ZONE_META[zone] };
+            })
+            .sort((a, b) => a.zone - b.zone),
+          hasStreamData: true,
+        };
+      }
+    }
+
+    // Priority 2: stored zone seconds
+    const storedZoneRuns = monthRuns.filter(r => r.hasStreamData && r.zoneSeconds);
+    if (storedZoneRuns.length > 0) {
+      const combined = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
+      storedZoneRuns.forEach(r => {
+        Object.entries(r.zoneSeconds).forEach(([k, v]) => {
+          if (combined[k] !== undefined) combined[k] += v;
+        });
+      });
+      const total = Object.values(combined).reduce((s, v) => s + v, 0);
+      if (total > 0) {
+        return {
+          breakdown: Object.entries(combined)
+            .filter(([, s]) => s > 0)
+            .map(([key, secs]) => {
+              const zone = parseInt(key.replace('z', ''));
+              return { zone, seconds: secs, minutes: Math.round(secs / 60), pct: Math.round((secs / total) * 100), ...ZONE_META[zone] };
+            })
+            .sort((a, b) => a.zone - b.zone),
+          hasStreamData: true,
+        };
+      }
+    }
+
+    // Priority 3: avg HR + duration estimate
+    const bd = calcZoneBreakdownFromRuns(monthRuns, athleteAge, teamZoneSettings?.customMaxHR || null, boundaries);
+    return { breakdown: bd, hasStreamData: false };
+  };
+
+  const { breakdown: zoneBreakdown, hasStreamData } = getZoneBreakdown();
+  const totalZoneMins = zoneBreakdown ? zoneBreakdown.reduce((s, z) => s + z.minutes, 0) : 0;
 
   if (loading) {
     return (
@@ -144,31 +192,33 @@ export default function TeammateProfile({ athlete, school, onBack }) {
           </View>
         </View>
 
-        {/* Zone breakdown */}
-        {zoneCounts.length > 0 && (
+        {/* Zone breakdown — uses team zone settings */}
+        {zoneBreakdown && zoneBreakdown.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Training zone breakdown — this month</Text>
+            <View style={styles.zoneTitleRow}>
+              <Text style={styles.sectionTitle}>Training zones — this month</Text>
+              {hasStreamData
+                ? <View style={styles.preciseBadge}><Text style={styles.preciseBadgeText}>Precise ✓</Text></View>
+                : <Text style={styles.estimatedText}>estimated from avg HR</Text>
+              }
+            </View>
             <View style={styles.zoneCard}>
               <View style={styles.zoneStackedBar}>
-                {zoneCounts.map(z => (
-                  <View key={z.zone} style={[styles.zoneStackedSegment, { flex: z.minutes, backgroundColor: { 1: '#64b5f6', 2: '#4caf50', 3: '#ff9800', 4: '#f44336', 5: '#9c27b0' }[z.zone] }]} />
+                {zoneBreakdown.map(z => (
+                  <View key={z.zone} style={[styles.zoneStackedSegment, { flex: z.minutes, backgroundColor: ZONE_META[z.zone].color }]} />
                 ))}
               </View>
-              {zoneCounts.map(({ zone, minutes, pct }) => {
-                const zoneColors = { 1: '#64b5f6', 2: '#4caf50', 3: '#ff9800', 4: '#f44336', 5: '#9c27b0' };
-                const zoneNames  = { 1: 'Recovery', 2: 'Aerobic Base', 3: 'Aerobic Power', 4: 'Threshold', 5: 'Anaerobic' };
-                return (
-                  <View key={zone} style={styles.zoneRow}>
-                    <View style={[styles.zoneDot, { backgroundColor: zoneColors[zone] }]} />
-                    <Text style={styles.zoneName}>Z{zone} {zoneNames[zone]}</Text>
-                    <View style={styles.zoneBarBg}>
-                      <View style={[styles.zoneBarFill, { width: `${pct}%`, backgroundColor: zoneColors[zone] }]} />
-                    </View>
-                    <Text style={styles.zoneCount}>{fmtMins(minutes)}</Text>
+              {zoneBreakdown.map(z => (
+                <View key={z.zone} style={styles.zoneRow}>
+                  <View style={[styles.zoneDot, { backgroundColor: ZONE_META[z.zone].color }]} />
+                  <Text style={styles.zoneName}>Z{z.zone} {ZONE_META[z.zone].name}</Text>
+                  <View style={styles.zoneBarBg}>
+                    <View style={[styles.zoneBarFill, { width: `${z.pct}%`, backgroundColor: ZONE_META[z.zone].color }]} />
                   </View>
-                );
-              })}
-              <Text style={styles.zoneTotalHint}>{fmtMins(totalZoneMins)} total with HR data</Text>
+                  <Text style={styles.zoneCount}>{formatMinutes(z.minutes)}</Text>
+                </View>
+              ))}
+              <Text style={styles.zoneTotalHint}>{formatMinutes(totalZoneMins)} total with HR data</Text>
             </View>
           </View>
         )}
@@ -181,7 +231,6 @@ export default function TeammateProfile({ athlete, school, onBack }) {
               <Text style={styles.emptyText}>No runs logged yet.</Text>
             </View>
           ) : runs.map(run => {
-            const zone = getHRZone(run.heartRate, athleteAge);
             const runDate = run.date?.toDate?.()?.toLocaleDateString('en-US', {
               weekday: 'short', month: 'short', day: 'numeric'
             });
@@ -194,9 +243,10 @@ export default function TeammateProfile({ athlete, school, onBack }) {
                   </View>
                   <View style={styles.runMiddle}>
                     {run.duration && <Text style={styles.runDetail}>{run.duration}</Text>}
-                    {zone && (
-                      <View style={[styles.zoneBadge, { backgroundColor: zone.color }]}>
-                        <Text style={styles.zoneBadgeText}>Z{zone.zone} {zone.name}</Text>
+                    {run.heartRate && <Text style={styles.runDetail}>{run.heartRate} bpm avg</Text>}
+                    {run.hasStreamData && (
+                      <View style={[styles.zoneBadge, { backgroundColor: '#e8f5e9' }]}>
+                        <Text style={[styles.zoneBadgeText, { color: '#2e7d32' }]}>HR zones ✓</Text>
                       </View>
                     )}
                   </View>
@@ -213,44 +263,48 @@ export default function TeammateProfile({ athlete, school, onBack }) {
 }
 
 const styles = StyleSheet.create({
-  container:       { flex: 1, backgroundColor: '#f5f5f5' },
-  center:          { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header:          { paddingTop: 60, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  backBtn:         { paddingVertical: 6, paddingHorizontal: 10 },
-  backText:        { color: '#fff', fontSize: 17, fontWeight: '600' },
-  headerTitle:     { fontSize: 20, fontWeight: 'bold', color: '#fff' },
-  scroll:          { flex: 1 },
-  summaryCard:     { backgroundColor: '#fff', margin: 16, borderRadius: 14, padding: 24, alignItems: 'center', borderTopWidth: 4 },
-  avatar:          { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
-  avatarText:      { color: '#fff', fontSize: 26, fontWeight: 'bold' },
-  athleteName:     { fontSize: 22, fontWeight: '700', color: '#333', marginBottom: 4 },
-  athleteSub:      { fontSize: 14, color: '#999', marginBottom: 16 },
-  statRow:         { flexDirection: 'row', alignItems: 'center', gap: 24 },
-  statBox:         { alignItems: 'center' },
-  statNum:         { fontSize: 28, fontWeight: 'bold' },
-  statLabel:       { fontSize: 12, color: '#999', marginTop: 2 },
-  statDivider:     { width: 1, height: 36, backgroundColor: '#eee' },
-  section:         { paddingHorizontal: 16, marginBottom: 8 },
-  sectionTitle:    { fontSize: 17, fontWeight: '700', color: '#333', marginBottom: 10 },
-  zoneCard:        { backgroundColor: '#fff', borderRadius: 14, padding: 14, gap: 8 },
-  zoneStackedBar:  { flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginBottom: 4 },
+  container:          { flex: 1, backgroundColor: '#f5f5f5' },
+  center:             { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  header:             { paddingTop: 60, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  backBtn:            { paddingVertical: 6, paddingHorizontal: 10 },
+  backText:           { color: '#fff', fontSize: 17, fontWeight: '600' },
+  headerTitle:        { fontSize: 20, fontWeight: 'bold', color: '#fff' },
+  scroll:             { flex: 1 },
+  summaryCard:        { backgroundColor: '#fff', margin: 16, borderRadius: 14, padding: 24, alignItems: 'center', borderTopWidth: 4 },
+  avatar:             { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  avatarText:         { color: '#fff', fontSize: 26, fontWeight: 'bold' },
+  athleteName:        { fontSize: 22, fontWeight: '700', color: '#333', marginBottom: 4 },
+  athleteSub:         { fontSize: 14, color: '#999', marginBottom: 16 },
+  statRow:            { flexDirection: 'row', alignItems: 'center', gap: 24 },
+  statBox:            { alignItems: 'center' },
+  statNum:            { fontSize: 28, fontWeight: 'bold' },
+  statLabel:          { fontSize: 12, color: '#999', marginTop: 2 },
+  statDivider:        { width: 1, height: 36, backgroundColor: '#eee' },
+  section:            { paddingHorizontal: 16, marginBottom: 8 },
+  zoneTitleRow:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  sectionTitle:       { fontSize: 17, fontWeight: '700', color: '#333', marginBottom: 10 },
+  preciseBadge:       { backgroundColor: '#e8f5e9', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  preciseBadgeText:   { fontSize: 11, color: '#2e7d32', fontWeight: '700' },
+  estimatedText:      { fontSize: 11, color: '#bbb' },
+  zoneCard:           { backgroundColor: '#fff', borderRadius: 14, padding: 14, gap: 8 },
+  zoneStackedBar:     { flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginBottom: 4 },
   zoneStackedSegment: { height: '100%' },
-  zoneTotalHint:   { fontSize: 11, color: '#bbb', textAlign: 'right', marginTop: 2 },
-  zoneRow:         { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  zoneDot:         { width: 10, height: 10, borderRadius: 5 },
-  zoneName:        { fontSize: 13, color: '#555', width: 120 },
-  zoneBarBg:       { flex: 1, height: 8, backgroundColor: '#f0f0f0', borderRadius: 4, overflow: 'hidden' },
-  zoneBarFill:     { height: '100%', borderRadius: 4 },
-  zoneCount:       { fontSize: 12, color: '#666', fontWeight: '600', width: 52, textAlign: 'right' },
-  emptyCard:       { backgroundColor: '#fff', borderRadius: 14, padding: 24, alignItems: 'center' },
-  emptyText:       { fontSize: 15, color: '#999' },
-  runCard:         { backgroundColor: '#fff', borderRadius: 14, marginBottom: 10, padding: 14 },
-  runTop:          { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-  runLeft:         { width: 80 },
-  runMiles:        { fontSize: 17, fontWeight: '700', color: '#333' },
-  runDate:         { fontSize: 12, color: '#999', marginTop: 2 },
-  runMiddle:       { flex: 1, gap: 4 },
-  runDetail:       { fontSize: 14, color: '#555' },
-  zoneBadge:       { alignSelf: 'flex-start', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-  zoneBadgeText:   { color: '#fff', fontSize: 11, fontWeight: '700' },
+  zoneTotalHint:      { fontSize: 11, color: '#bbb', textAlign: 'right', marginTop: 2 },
+  zoneRow:            { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  zoneDot:            { width: 10, height: 10, borderRadius: 5 },
+  zoneName:           { fontSize: 13, color: '#555', width: 120 },
+  zoneBarBg:          { flex: 1, height: 8, backgroundColor: '#f0f0f0', borderRadius: 4, overflow: 'hidden' },
+  zoneBarFill:        { height: '100%', borderRadius: 4 },
+  zoneCount:          { fontSize: 12, color: '#666', fontWeight: '600', width: 52, textAlign: 'right' },
+  emptyCard:          { backgroundColor: '#fff', borderRadius: 14, padding: 24, alignItems: 'center' },
+  emptyText:          { fontSize: 15, color: '#999' },
+  runCard:            { backgroundColor: '#fff', borderRadius: 14, marginBottom: 10, padding: 14 },
+  runTop:             { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  runLeft:            { width: 80 },
+  runMiles:           { fontSize: 17, fontWeight: '700', color: '#333' },
+  runDate:            { fontSize: 12, color: '#999', marginTop: 2 },
+  runMiddle:          { flex: 1, gap: 4 },
+  runDetail:          { fontSize: 14, color: '#555' },
+  zoneBadge:          { alignSelf: 'flex-start', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  zoneBadgeText:      { fontSize: 11, fontWeight: '700' },
 });
