@@ -168,11 +168,16 @@ export default function RunDetailModal({
   let pace = null;
   if (run.miles && run.duration) {
     const parts = run.duration.split(':');
-    if (parts.length === 2) {
-      const totalMinutes = parseInt(parts[0]) + parseInt(parts[1]) / 60;
-      const paceMinutes  = totalMinutes / run.miles;
-      const paceMin      = Math.floor(paceMinutes);
-      const paceSec      = Math.round((paceMinutes - paceMin) * 60);
+    let totalMinutes = null;
+    if (parts.length === 3) {
+      totalMinutes = parseInt(parts[0]) * 60 + parseInt(parts[1]) + parseInt(parts[2]) / 60;
+    } else if (parts.length === 2) {
+      totalMinutes = parseInt(parts[0]) + parseInt(parts[1]) / 60;
+    }
+    if (totalMinutes !== null && !isNaN(totalMinutes)) {
+      const paceMinutes = totalMinutes / run.miles;
+      const paceMin     = Math.floor(paceMinutes);
+      const paceSec     = Math.round((paceMinutes - paceMin) * 60);
       pace = paceMin + ':' + paceSec.toString().padStart(2, '0') + ' /mi';
     }
   }

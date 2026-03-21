@@ -152,8 +152,11 @@ export default function AthleteDashboard({ userData }) {
 
   useEffect(() => {
     loadDashboard();
-    triggerAutoSync();
   }, [selectedTimeframe]);
+
+  useEffect(() => {
+    triggerAutoSync();
+  }, []);
 
   const triggerAutoSync = async () => {
     try {
