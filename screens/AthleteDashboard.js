@@ -475,7 +475,7 @@ export default function AthleteDashboard({ userData }) {
         </View>
 
         <View style={[styles.periodMilesCard, { borderColor: primaryColor + '30' }]}>
-          <Text style={[styles.periodMilesNum, { color: primaryColor }]}>{totalMiles}</Text>
+          <Text style={[styles.periodMilesNum, { color: primaryColor }]}>{Number(totalMiles).toFixed(2)}</Text>
           <Text style={styles.periodMilesLabel}>miles — {selectedTimeframe.label?.toLowerCase() || 'selected period'}</Text>
         </View>
 
@@ -540,7 +540,7 @@ export default function AthleteDashboard({ userData }) {
                     <Text style={[styles.leaderName, isMe && { color: primaryColor, fontWeight: '700' }]}>{isMe ? 'You' : athlete.firstName + ' ' + athlete.lastName}</Text>
                     {!isMe && <Text style={styles.leaderTap}>Tap to view profile</Text>}
                   </View>
-                  <Text style={[styles.leaderMiles, { color: isMe ? primaryColor : '#333' }]}>{miles} mi</Text>
+                  <Text style={[styles.leaderMiles, { color: isMe ? primaryColor : '#333' }]}>{Number(miles).toFixed(2)} mi</Text>
                 </TouchableOpacity>
               );
             })}
@@ -549,7 +549,7 @@ export default function AthleteDashboard({ userData }) {
                 <Text style={[styles.leaderRank, { color: primaryColor }]}>#{myRank}</Text>
                 <View style={[styles.leaderAvatar, { backgroundColor: primaryColor }]}><Text style={[styles.leaderAvatarText, { color: '#fff' }]}>{userData.firstName?.[0]}{userData.lastName?.[0]}</Text></View>
                 <View style={styles.leaderInfo}><Text style={[styles.leaderName, { color: primaryColor, fontWeight: '700' }]}>You</Text></View>
-                <Text style={[styles.leaderMiles, { color: primaryColor }]}>{totalMiles} mi</Text>
+                <Text style={[styles.leaderMiles, { color: primaryColor }]}>{Number(totalMiles).toFixed(2)} mi</Text>
               </View>
             )}
           </View>
