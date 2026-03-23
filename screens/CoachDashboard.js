@@ -685,31 +685,14 @@ export default function CoachDashboard({ userData }) {
 
       {/* ── Header ── */}
       <View style={[styles.header, { backgroundColor: primaryColor }]}>
-        <View style={styles.headerTop}>
-          <View>
+        <View style={styles.headerRow}>
+          <View style={{ flex: 1 }}>
             <Text style={styles.greeting}>Coach {userData.lastName}</Text>
             <Text style={styles.schoolName}>{school?.name || 'XCTracker'}</Text>
           </View>
-          <View style={{ width: 60 }} />
-        </View>
-        <View style={styles.headerStats}>
-          <View style={styles.headerStat}>
-            <Text style={styles.headerStatNum}>{athletes.length}</Text>
-            <Text style={styles.headerStatLabel}>Athletes</Text>
-          </View>
-          <View style={styles.headerStat}>
-            <Text style={styles.headerStatNum}>{pendingAthletes.length}</Text>
-            <Text style={styles.headerStatLabel}>Pending</Text>
-          </View>
-          {alertCount > 0 && (
-            <View style={[styles.headerStat, styles.alertStatBox]}>
-              <Text style={styles.alertStatNum}>⚠️ {alertCount}</Text>
-              <Text style={styles.alertStatLabel}>Alerts</Text>
-            </View>
-          )}
-          <View style={styles.headerStat}>
-            <Text style={styles.headerStatNum}>{school?.joinCode || '--'}</Text>
-            <Text style={styles.headerStatLabel}>Join Code</Text>
+          <View style={styles.headerRight}>
+            <Text style={styles.headerRightText}>{athletes.length} athletes  ·  Code: {school?.joinCode || '--'}</Text>
+            {alertCount > 0 && <Text style={styles.headerAlertText}>⚠️ {alertCount} alert{alertCount > 1 ? 's' : ''}</Text>}
           </View>
         </View>
       </View>
@@ -720,17 +703,19 @@ export default function CoachDashboard({ userData }) {
         contentContainerStyle={{ paddingBottom: 90 }}
       >
 
-        {/* Daily message button */}
-        <View style={styles.msgRow}>
-          <TouchableOpacity
-            style={[styles.msgBtn, { backgroundColor: todayTipSent ? '#e8f5e9' : primaryColor }]}
-            onPress={() => handleOpenTip(currentPhase)}
-          >
-            <Text style={[styles.msgBtnText, { color: todayTipSent ? '#2e7d32' : '#fff' }]}>
-              {todayTipSent ? '✅ Message sent today' : '💬 Send daily message to team'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+        {/* Daily message button — only show when not yet sent */}
+        {!todayTipSent && (
+          <View style={styles.msgRow}>
+            <TouchableOpacity
+              style={[styles.msgBtn, { backgroundColor: primaryColor }]}
+              onPress={() => handleOpenTip(currentPhase)}
+            >
+              <Text style={[styles.msgBtnText, { color: '#fff' }]}>
+                💬 Send daily message to team
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* ── Team ── */}
         <View style={styles.section}>
@@ -957,10 +942,13 @@ const styles = StyleSheet.create({
   shareBtnText:         { fontSize: 15, fontWeight: '600' },
   container:            { flex: 1, backgroundColor: '#f5f5f5' },
   loading:              { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header:               { paddingTop: 60, paddingBottom: 12, paddingHorizontal: 20 },
-  headerTop:            { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
-  greeting:             { fontSize: 22, fontWeight: 'bold', color: '#fff' },
-  schoolName:           { fontSize: 14, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
+  header:               { paddingTop: 56, paddingBottom: 10, paddingHorizontal: 20 },
+  headerRow:            { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  greeting:             { fontSize: 20, fontWeight: 'bold', color: '#fff' },
+  schoolName:           { fontSize: 13, color: 'rgba(255,255,255,0.8)', marginTop: 1 },
+  headerRight:          { alignItems: 'flex-end' },
+  headerRightText:      { fontSize: 12, color: 'rgba(255,255,255,0.85)', fontWeight: '600' },
+  headerAlertText:      { fontSize: 12, color: '#fbbf24', fontWeight: '700', marginTop: 2 },
   profileBtn:           { paddingVertical: 6, paddingHorizontal: 12, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 8 },
   profileBtnText:       { color: '#fff', fontSize: 13, fontWeight: '600' },
   headerStats:          { flexDirection: 'row', alignItems: 'center', gap: 14 },
