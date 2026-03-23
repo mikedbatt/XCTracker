@@ -3,8 +3,8 @@
 // to a Firebase Cloud Function. Never ship a client secret in a production app.
 
 export const STRAVA_CONFIG = {
-  clientId:     '211521',
-  clientSecret: '3f2fe7dbba6b93814d3477f7f0d48cb1e83b2051',
+  clientId:     process.env.EXPO_PUBLIC_STRAVA_CLIENT_ID,
+  clientSecret: process.env.EXPO_PUBLIC_STRAVA_CLIENT_SECRET,
   scopes:       'activity:read_all',
   tokenUrl:     'https://www.strava.com/oauth/token',
   authUrl:      'https://www.strava.com/oauth/authorize',
