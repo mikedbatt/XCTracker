@@ -26,7 +26,7 @@ import {
   stravaActivityToRun,
 } from '../stravaConfig';
 import {
-  DEFAULT_ZONE_BOUNDARIES, calcMaxHR, calcZoneBreakdownFromStream,
+  DEFAULT_ZONE_BOUNDARIES, calcMaxHR, calcZoneBreakdownFromStream, parseBirthdate,
 } from '../zoneConfig';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -219,13 +219,13 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
       try {
         const zoneDoc = await getDoc(doc(db, 'zoneSettings', auth.currentUser.uid));
         if (zoneDoc.exists()) zoneSettings = zoneDoc.data();
-      } catch { /* use defaults */ }
+      } catch (e) { console.warn('Failed to load athlete zone settings, using defaults:', e); }
 
       // Determine age and max HR for zone calculation
       const userSnap2 = await getDoc(doc(db, 'users', auth.currentUser.uid));
       const athleteData = userSnap2.data();
       const age = athleteData?.birthdate
-        ? Math.floor((new Date() - new Date(athleteData.birthdate)) / (365.25 * 86400000))
+        ? Math.floor((new Date() - parseBirthdate(athleteData.birthdate)) / (365.25 * 86400000))
         : 16;
       const boundaries = zoneSettings?.boundaries || DEFAULT_ZONE_BOUNDARIES;
       const maxHR = calcMaxHR(age, zoneSettings?.customMaxHR);

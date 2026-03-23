@@ -12,7 +12,7 @@ import { db } from '../firebaseConfig';
 import {
   DEFAULT_ZONE_BOUNDARIES, ZONE_META, calcMaxHR,
   calcZoneBreakdownFromRuns, calcZoneBreakdownFromStream,
-  formatMinutes,
+  formatMinutes, parseBirthdate,
 } from '../zoneConfig';
 import RunDetailModal from './RunDetailModal';
 
@@ -26,7 +26,7 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
 
   // Athlete age for zone calc
   const athleteAge = athlete.birthdate
-    ? Math.floor((new Date() - new Date(athlete.birthdate)) / (365.25 * 86400000))
+    ? Math.floor((new Date() - parseBirthdate(athlete.birthdate)) / (365.25 * 86400000))
     : 16;
 
   const boundaries  = teamZoneSettings?.boundaries || DEFAULT_ZONE_BOUNDARIES;

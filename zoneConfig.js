@@ -30,6 +30,27 @@ export const ZONE_META = {
   5: { name: 'Anaerobic',     color: '#9c27b0', description: 'Maximum effort. Cannot speak. Short intervals only.' },
 };
 
+// ── Safely parse a birthdate from Firestore or ISO string ────────────────────
+// Firestore can return a Timestamp object (with .toDate()) or an ISO string.
+// Using new Date() on a Timestamp object returns Invalid Date, so we check first.
+export function parseBirthdate(birthdate) {
+  if (!birthdate) return null;
+  if (typeof birthdate.toDate === 'function') return birthdate.toDate();
+  const d = new Date(birthdate);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// ── Validate zone boundaries ──────────────────────────────────────────────────
+// Returns true if boundaries are valid (all numbers, strictly ascending z1–z5,
+// all between 0 and 1). Used defensively before zone calculations.
+export function areZoneBoundariesValid(boundaries) {
+  if (!boundaries) return false;
+  const { z1, z2, z3, z4, z5 } = boundaries;
+  const vals = [z1, z2, z3, z4, z5];
+  if (vals.some(v => typeof v !== 'number' || isNaN(v) || v < 0 || v > 1)) return false;
+  return z1 < z2 && z2 < z3 && z3 < z4 && z4 < z5;
+}
+
 // ── Calculate max HR ──────────────────────────────────────────────────────────
 export function calcMaxHR(age, customMaxHR = null) {
   if (customMaxHR && customMaxHR > 0) return customMaxHR;
@@ -41,6 +62,7 @@ export function calcMaxHR(age, customMaxHR = null) {
 // Returns: { zone: 1-5, name, color } or null
 export function getZoneForHR(heartRate, maxHR, boundaries = DEFAULT_ZONE_BOUNDARIES) {
   if (!heartRate || !maxHR) return null;
+  if (!areZoneBoundariesValid(boundaries)) boundaries = DEFAULT_ZONE_BOUNDARIES;
   const pct = heartRate / maxHR;
   if (pct < boundaries.z2) return { zone: 1, ...ZONE_META[1] };
   if (pct < boundaries.z3) return { zone: 2, ...ZONE_META[2] };

@@ -31,6 +31,7 @@ import {
   calcMaxHR,
   calcZoneBreakdownFromRuns, calcZoneBreakdownFromStream,
   formatMinutes,
+  parseBirthdate,
 } from '../zoneConfig';
 import AthleteProfile from './AthleteProfile';
 import CalendarScreen from './CalendarScreen';
@@ -182,7 +183,7 @@ export default function AthleteDashboard({ userData }) {
       const user = auth.currentUser;
 
       if (userData.birthdate) {
-        const birth = new Date(userData.birthdate);
+        const birth = parseBirthdate(userData.birthdate);
         setAthleteAge(Math.floor((new Date() - birth) / (365.25 * 86400000)));
       }
 
@@ -190,7 +191,7 @@ export default function AthleteDashboard({ userData }) {
         try {
           const teamZoneDoc = await getDoc(doc(db, 'teamZoneSettings', userData.schoolId));
           if (teamZoneDoc.exists()) setTeamZoneSettings(teamZoneDoc.data());
-        } catch {}
+        } catch (e) { console.warn('Failed to load team zone settings, using defaults:', e); }
       }
 
       let currentSchool = school;
@@ -281,7 +282,7 @@ export default function AthleteDashboard({ userData }) {
                 return true;
               });
               milesMap[athlete.id] = Math.round(filtered.reduce((s, d) => s + (d.data().miles || 0), 0) * 10) / 10;
-            } catch { milesMap[athlete.id] = 0; }
+            } catch (e) { console.warn('Failed to load miles for athlete:', e); milesMap[athlete.id] = 0; }
           }));
           setTeamMiles(milesMap);
         } catch (e) { console.log('Team athletes:', e); }

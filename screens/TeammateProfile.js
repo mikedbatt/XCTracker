@@ -16,6 +16,7 @@ import {
   calcZoneBreakdownFromRuns,
   calcZoneBreakdownFromStream,
   formatMinutes,
+  parseBirthdate,
 } from '../zoneConfig';
 
 export default function TeammateProfile({ athlete, school, onBack }) {
@@ -28,7 +29,7 @@ export default function TeammateProfile({ athlete, school, onBack }) {
   const myUid = auth.currentUser?.uid;
 
   const athleteAge = athlete.birthdate
-    ? Math.floor((new Date() - new Date(athlete.birthdate)) / (365.25 * 86400000))
+    ? Math.floor((new Date() - parseBirthdate(athlete.birthdate)) / (365.25 * 86400000))
     : 16;
 
   useEffect(() => { loadProfile(); }, []);
@@ -43,7 +44,7 @@ export default function TeammateProfile({ athlete, school, onBack }) {
           const schoolId = school?.id || athlete.schoolId;
           const zoneDoc = await getDoc(doc(db, 'teamZoneSettings', schoolId));
           if (zoneDoc.exists()) setTeamZoneSettings(zoneDoc.data());
-        } catch { /* use defaults */ }
+        } catch (e) { console.warn('Failed to load team zone settings, using defaults:', e); }
       }
 
       // Load runs

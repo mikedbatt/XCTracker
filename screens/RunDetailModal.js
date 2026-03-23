@@ -197,6 +197,18 @@ export default function RunDetailModal({
       Alert.alert('Missing info', 'Please enter miles for this run.');
       return;
     }
+    if (editDuration) {
+      const parts = editDuration.split(':');
+      const validFormat =
+        (parts.length === 2 || parts.length === 3) &&
+        parts.every(p => /^\d+$/.test(p)) &&
+        parseInt(parts[parts.length - 1]) < 60 &&
+        parseInt(parts[parts.length - 2]) < 60;
+      if (!validFormat) {
+        Alert.alert('Invalid duration', 'Please use MM:SS or HH:MM:SS format (e.g. 42:30 or 1:05:00).');
+        return;
+      }
+    }
     setSaving(true);
     try {
       const newMiles = parseFloat(editMiles);

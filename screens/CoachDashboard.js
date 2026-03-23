@@ -36,7 +36,8 @@ import {
   DEFAULT_ZONE_BOUNDARIES,
   calcMaxHR,
   calcZoneBreakdownFromRuns,
-  calcZoneBreakdownFromStream
+  calcZoneBreakdownFromStream,
+  parseBirthdate,
 } from '../zoneConfig';
 
 // ── Daily tip library by phase ────────────────────────────────────────────────
@@ -241,7 +242,7 @@ export default function CoachDashboard({ userData }) {
           currentZoneSettings = zoneDoc.data();
           setTeamZoneSettings(currentZoneSettings);
         }
-      } catch { /* use defaults */ }
+      } catch (e) { console.warn('Failed to load team zone settings, using defaults:', e); }
 
       const activeSeason = schoolData ? getActiveSeason(schoolData) : null;
       setActiveSeasonData(activeSeason);
@@ -317,16 +318,16 @@ export default function CoachDashboard({ userData }) {
           // data available and always reflects the coach's current zone boundaries.
           try {
             const age = athlete.birthdate
-              ? Math.floor((new Date() - new Date(athlete.birthdate)) / (365.25 * 86400000))
+              ? Math.floor((new Date() - parseBirthdate(athlete.birthdate)) / (365.25 * 86400000))
               : 16;
             const thirtyDaysAgo = new Date(now - 30 * 86400000);
             const recentRuns = allRuns.filter(r => {
               const d = r.date?.toDate?.();
               return d && d >= thirtyDaysAgo;
             });
-            const pct = calcAthleteZonePct(recentRuns, age, currentZoneSettings);
-            if (pct !== null) zonePctMap[athlete.id] = pct;
-          } catch { /* zone calc failed — skip */ }
+            // Store null explicitly so the card can show "No HR data" vs hiding
+            zonePctMap[athlete.id] = calcAthleteZonePct(recentRuns, age, currentZoneSettings);
+          } catch (e) { console.warn('Zone pct calc failed for athlete:', e); }
 
         } catch (e) {
           console.log('Athlete data error:', e);
@@ -380,7 +381,7 @@ export default function CoachDashboard({ userData }) {
         const today = new Date().toISOString().split('T')[0];
         const tipDoc = await getDoc(doc(db, 'dailyMessages', `${userData.schoolId}_${today}`));
         setTodayTipSent(tipDoc.exists());
-      } catch { /* ignore */ }
+      } catch (e) { console.warn('Failed to check daily tip status:', e); }
 
     } catch (error) { console.error('Coach dashboard error:', error); }
     setLoading(false);
@@ -645,7 +646,8 @@ export default function CoachDashboard({ userData }) {
                   const avg3        = athlete3WeekAvg[athlete.id] || 0;
                   const mileageHigh = avg3 > 0 && weekMiles > avg3 * 1.20;
                   const zonePct     = athleteZonePct[athlete.id];
-                  const zoneLow     = zonePct !== undefined && zonePct < 70;
+                  const hasZoneData = zonePct !== undefined;
+                  const zoneLow     = hasZoneData && zonePct !== null && zonePct < 70;
 
                   return (
                     <TouchableOpacity
@@ -683,13 +685,19 @@ export default function CoachDashboard({ userData }) {
                           {mileageHigh && <Text style={styles.statFlagRed}>↑ High load</Text>}
                         </View>
 
-                        {zonePct !== undefined && (
+                        {hasZoneData && (
                           <View style={styles.athleteStatChip}>
                             <Text style={styles.athleteStatChipLabel}>Z1+Z2 (30d)</Text>
-                            <Text style={[styles.athleteStatChipVal, zoneLow && styles.statValRed]}>
-                              {zonePct}%
-                            </Text>
-                            {zoneLow && <Text style={styles.statFlagRed}>↑ Too intense</Text>}
+                            {zonePct !== null ? (
+                              <>
+                                <Text style={[styles.athleteStatChipVal, zoneLow && styles.statValRed]}>
+                                  {zonePct}%
+                                </Text>
+                                {zoneLow && <Text style={styles.statFlagRed}>↑ Too intense</Text>}
+                              </>
+                            ) : (
+                              <Text style={styles.athleteStatChipLabel}>No HR data</Text>
+                            )}
                           </View>
                         )}
                       </View>
