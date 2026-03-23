@@ -8,6 +8,7 @@ import {
   Alert,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -27,13 +28,27 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated })
   const [stravaVisible, setStravaVisible] = useState(false);
   const [stravaLinked,  setStravaLinked]  = useState(false);
   const [activeSection, setActiveSection] = useState('profile');
+  const [showHRZones,   setShowHRZones]   = useState(userData.showHRZones !== false);
+  const [hrZoneLoaded,  setHrZoneLoaded]  = useState(false);
 
   const primaryColor = school?.primaryColor || '#2e7d32';
 
   useEffect(() => {
     loadMessages();
     checkStrava();
+    loadHRZonePref();
   }, []);
+
+  const loadHRZonePref = async () => {
+    try {
+      const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+      if (userDoc.exists()) {
+        const val = userDoc.data().showHRZones;
+        setShowHRZones(val !== false);
+      }
+      setHrZoneLoaded(true);
+    } catch (e) { console.warn('Failed to load HR zone pref:', e); setHrZoneLoaded(true); }
+  };
 
   const checkStrava = async () => {
     try {
@@ -103,6 +118,13 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated })
       Alert.alert('Error', 'Could not save. Please try again.');
     }
     setSaving(false);
+  };
+
+  const handleToggleHRZones = async (value) => {
+    setShowHRZones(value);
+    try {
+      await updateDoc(doc(db, 'users', auth.currentUser.uid), { showHRZones: value });
+    } catch (e) { console.warn('Failed to save HR zone preference:', e); }
   };
 
   const handleSignOut = () => {
@@ -236,6 +258,23 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated })
                   : <Text style={styles.saveBtnText}>Save changes</Text>
                 }
               </TouchableOpacity>
+            </View>
+
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Training preferences</Text>
+              <View style={styles.toggleRow}>
+                <View style={styles.toggleInfo}>
+                  <Text style={styles.toggleLabel}>Show heart rate zones</Text>
+                  <Text style={styles.toggleHint}>Turn off if you don't use a HR monitor or prefer to train by feel</Text>
+                </View>
+                <Switch
+                  value={showHRZones}
+                  onValueChange={handleToggleHRZones}
+                  disabled={!hrZoneLoaded}
+                  trackColor={{ false: '#ddd', true: primaryColor }}
+                  thumbColor="#fff"
+                />
+              </View>
             </View>
 
             <View style={styles.infoCard}>
@@ -377,6 +416,10 @@ const styles = StyleSheet.create({
   genderBtnText:      { fontSize: 14, fontWeight: '700', color: '#444' },
   saveBtn:            { borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 4 },
   saveBtnText:        { color: '#fff', fontSize: 16, fontWeight: '700' },
+  toggleRow:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  toggleInfo:         { flex: 1 },
+  toggleLabel:        { fontSize: 15, fontWeight: '600', color: '#333', marginBottom: 3 },
+  toggleHint:         { fontSize: 12, color: '#999', lineHeight: 17 },
   infoCard:           { backgroundColor: '#fff', borderRadius: 14, padding: 16, gap: 8 },
   infoCardTitle:      { fontSize: 15, fontWeight: '700', color: '#333', marginBottom: 4 },
   infoRow:            { fontSize: 14, color: '#555' },

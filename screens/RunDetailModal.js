@@ -145,7 +145,7 @@ const zoneStyles = StyleSheet.create({
 
 export default function RunDetailModal({
   run, visible, onClose, onDeleted, onUpdated,
-  primaryColor = '#2e7d32', athleteAge = 16, zoneSettings = null,
+  primaryColor = '#2e7d32', athleteAge = 16, zoneSettings = null, showHRZones = true,
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [saving,    setSaving]    = useState(false);
@@ -381,12 +381,14 @@ export default function RunDetailModal({
             </View>
 
             {/* Zone breakdown — uses coach-configured boundaries via zoneSettings prop */}
-            <RunZoneBreakdown
-              run={run}
-              athleteAge={athleteAge}
-              zoneSettings={zoneSettings}
-              primaryColor={primaryColor}
-            />
+            {showHRZones && (
+              <RunZoneBreakdown
+                run={run}
+                athleteAge={athleteAge}
+                zoneSettings={zoneSettings}
+                primaryColor={primaryColor}
+              />
+            )}
 
             {/* Data source */}
             <View style={styles.section}>

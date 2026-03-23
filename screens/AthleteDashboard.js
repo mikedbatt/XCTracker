@@ -150,6 +150,7 @@ export default function AthleteDashboard({ userData }) {
   const [runDate,      setRunDate]      = useState(new Date());
   const [savingRun,    setSavingRun]    = useState(false);
   const [editingRunId, setEditingRunId] = useState(null);
+  const [hrZonePref,   setHrZonePref]   = useState(userData.showHRZones);
 
   useEffect(() => {
     loadDashboard();
@@ -295,7 +296,13 @@ export default function AthleteDashboard({ userData }) {
   if (stravaVisible) return <StravaConnect userData={userData} school={school} onClose={() => setStravaVisible(false)} onSynced={() => { setStravaVisible(false); loadDashboard(); }} />;
   if (feedVisible) return <TeamFeed userData={userData} school={school} onClose={() => setFeedVisible(false)} />;
   if (selectedTeammate) return <TeammateProfile athlete={selectedTeammate} school={school} onBack={() => setSelectedTeammate(null)} />;
-  if (profileVisible) return <AthleteProfile userData={userData} school={school} onClose={() => setProfileVisible(false)} onUpdated={() => setProfileVisible(false)} />;
+  if (profileVisible) return <AthleteProfile userData={userData} school={school} onClose={async () => {
+    try {
+      const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+      if (userDoc.exists()) setHrZonePref(userDoc.data().showHRZones);
+    } catch (e) { console.warn('Failed to refresh HR zone pref:', e); }
+    setProfileVisible(false);
+  }} onUpdated={() => setProfileVisible(false)} />;
 
   const handleLogRunTap = () => setWellnessVisible(true);
   const handleWellnessComplete = (data) => { setPendingWellness(data); setWellnessVisible(false); setLogModalVisible(true); };
@@ -381,6 +388,9 @@ export default function AthleteDashboard({ userData }) {
   const hasStreamData = zoneResult?.hasStreamData || false;
   const analysis = breakdown ? calc8020(breakdown) : null;
   const totalZoneMins = breakdown ? breakdown.reduce((s, z) => s + z.minutes, 0) : 0;
+
+  // Show HR zones if explicitly enabled, or auto-show when preference not yet set and HR data exists
+  const showHRZones = hrZonePref === true || (hrZonePref !== false && breakdown !== null);
 
   return (
     <View style={styles.container}>
@@ -469,7 +479,7 @@ export default function AthleteDashboard({ userData }) {
           <Text style={styles.periodMilesLabel}>miles — {selectedTimeframe.label?.toLowerCase() || 'selected period'}</Text>
         </View>
 
-        {breakdown && (
+        {showHRZones && breakdown && (
           <View style={styles.zoneSection}>
             <View style={styles.zoneSectionHeader}>
               <Text style={styles.zoneSectionTitle}>Training zones — {selectedTimeframe.label?.toLowerCase()}</Text>
@@ -568,7 +578,7 @@ export default function AthleteDashboard({ userData }) {
 
       <WellnessCheckIn visible={wellnessVisible} onComplete={handleWellnessComplete} onSkip={handleWellnessSkip} primaryColor={primaryColor} />
       <WorkoutDetailModal item={selectedWorkout} visible={workoutDetailVisible} onClose={() => { setWorkoutDetailVisible(false); setSelectedWorkout(null); }} primaryColor={primaryColor} />
-      <RunDetailModal run={selectedRun} visible={runDetailVisible} primaryColor={primaryColor} athleteAge={athleteAge} zoneSettings={teamZoneSettings} onClose={() => { setRunDetailVisible(false); setSelectedRun(null); }} onDeleted={() => { setRunDetailVisible(false); setSelectedRun(null); loadDashboard(); }} onUpdated={() => { setSelectedRun(null); loadDashboard(); }} />
+      <RunDetailModal run={selectedRun} visible={runDetailVisible} primaryColor={primaryColor} athleteAge={athleteAge} zoneSettings={teamZoneSettings} showHRZones={showHRZones} onClose={() => { setRunDetailVisible(false); setSelectedRun(null); }} onDeleted={() => { setRunDetailVisible(false); setSelectedRun(null); loadDashboard(); }} onUpdated={() => { setSelectedRun(null); loadDashboard(); }} />
 
       <Modal visible={logModalVisible} animationType="slide" presentationStyle="pageSheet">
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
