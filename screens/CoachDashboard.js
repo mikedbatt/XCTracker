@@ -218,6 +218,7 @@ export default function CoachDashboard({ userData }) {
   const [groupFilter,         setGroupFilter]         = useState('all');
   const [calendarVisible,     setCalendarVisible]     = useState(false);
   const [addFromDashboard,    setAddFromDashboard]    = useState(false);
+  const [pendingWorkout,      setPendingWorkout]      = useState(null);
   const [plannerVisible,      setPlannerVisible]      = useState(false);
   const [selectedAthlete,     setSelectedAthlete]     = useState(null);
   const [selectedTimeframe,   setSelectedTimeframe]   = useState(TIMEFRAMES[0]);
@@ -501,8 +502,10 @@ export default function CoachDashboard({ userData }) {
     return (
       <CalendarScreen
         userData={userData} school={school}
+        groups={groups}
         autoOpenAdd={addFromDashboard}
-        onClose={() => { setCalendarVisible(false); setAddFromDashboard(false); }}
+        prefillWorkout={pendingWorkout}
+        onClose={() => { setCalendarVisible(false); setAddFromDashboard(false); setPendingWorkout(null); }}
       />
     );
   }
@@ -535,7 +538,8 @@ export default function CoachDashboard({ userData }) {
         schoolId={userData.schoolId}
         userData={userData}
         onClose={() => setLibraryVisible(false)}
-        onAddToCalendar={() => {
+        onAddToCalendar={(workout) => {
+          setPendingWorkout(workout);
           setLibraryVisible(false);
           setAddFromDashboard(true);
         }}

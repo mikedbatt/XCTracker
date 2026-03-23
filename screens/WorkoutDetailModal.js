@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { TYPE_COLORS } from './CalendarScreen';
 
-export default function WorkoutDetailModal({ item, visible, onClose, primaryColor = '#2e7d32' }) {
+export default function WorkoutDetailModal({ item, visible, onClose, primaryColor = '#2e7d32', athleteMiles = null, groupName = null }) {
   if (!item) return null;
 
   const color = TYPE_COLORS[item.type] || primaryColor;
@@ -39,6 +39,12 @@ export default function WorkoutDetailModal({ item, visible, onClose, primaryColo
         </View>
 
         <ScrollView style={styles.scroll}>
+          {athleteMiles != null && (
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>DISTANCE{groupName ? ` — ${groupName.toUpperCase()}` : ''}</Text>
+              <Text style={[styles.mileageValue, { color: primaryColor }]}>{athleteMiles} miles</Text>
+            </View>
+          )}
           {item.location && (
             <View style={styles.section}>
               <Text style={styles.sectionLabel}>LOCATION</Text>
@@ -90,6 +96,7 @@ const styles = StyleSheet.create({
   section: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 12 },
   sectionLabel: { fontSize: 11, fontWeight: '700', color: '#999', letterSpacing: 0.5, marginBottom: 8 },
   sectionValue: { fontSize: 16, color: '#333', lineHeight: 22 },
+  mileageValue: { fontSize: 24, fontWeight: 'bold' },
   emptyCard: { backgroundColor: '#fff', borderRadius: 12, padding: 20, margin: 4, alignItems: 'center' },
   emptyText: { color: '#999', fontSize: 14 },
 });

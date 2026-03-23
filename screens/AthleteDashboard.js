@@ -198,6 +198,7 @@ export default function AthleteDashboard({ userData }) {
       }
 
       let currentSchool = school;
+      let loadedGroup = null;
       if (userData.schoolId) {
         const schoolDoc = await getDoc(doc(db, 'schools', userData.schoolId));
         if (schoolDoc.exists()) { currentSchool = schoolDoc.data(); setSchool(currentSchool); }
@@ -209,9 +210,9 @@ export default function AthleteDashboard({ userData }) {
           if (groupId) {
             const groupDoc = await getDoc(doc(db, 'groups', groupId));
             if (groupDoc.exists()) {
-              const grp = { id: groupDoc.id, ...groupDoc.data() };
-              setMyGroup(grp);
-              if (grp.weeklyMilesTarget) setWeeklyTarget(grp.weeklyMilesTarget);
+              loadedGroup = { id: groupDoc.id, ...groupDoc.data() };
+              setMyGroup(loadedGroup);
+              if (loadedGroup.weeklyMilesTarget) setWeeklyTarget(loadedGroup.weeklyMilesTarget);
             }
           } else {
             setMyGroup(null);
@@ -243,9 +244,12 @@ export default function AthleteDashboard({ userData }) {
       const wMiles = runs.filter(r => { const d = r.date?.toDate?.(); return d && d >= weekStart; }).reduce((s, r) => s + (r.miles || 0), 0);
       setWeeklyMiles(Math.round(wMiles * 10) / 10);
 
-      const fourWeeksAgo = new Date(Date.now() - 28 * 86400000);
-      const recentForTarget = await getDocs(query(collection(db, 'runs'), where('userId', '==', user.uid), where('date', '>=', fourWeeksAgo), orderBy('date', 'desc')));
-      setWeeklyTarget(calcWeeklyTarget(recentForTarget.docs.map(d => d.data())));
+      // Only use 110% fallback target if athlete isn't in a group with a target
+      if (!loadedGroup?.weeklyMilesTarget) {
+        const fourWeeksAgo = new Date(Date.now() - 28 * 86400000);
+        const recentForTarget = await getDocs(query(collection(db, 'runs'), where('userId', '==', user.uid), where('date', '>=', fourWeeksAgo), orderBy('date', 'desc')));
+        setWeeklyTarget(calcWeeklyTarget(recentForTarget.docs.map(d => d.data())));
+      }
 
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       if (userDoc.exists()) {
@@ -492,14 +496,12 @@ export default function AthleteDashboard({ userData }) {
           <TimeframePicker selected={selectedTimeframe} onSelect={setSelectedTimeframe} customStart={customStart} customEnd={customEnd} onCustomChange={(s, e) => { setCustomStart(s); setCustomEnd(e); }} activeSeason={getActiveSeason(school)} primaryColor={primaryColor} />
         </View>
 
-        <View style={[styles.periodMilesCard, { borderColor: primaryColor + '30' }]}>
-          <Text style={[styles.periodMilesNum, { color: primaryColor }]}>
-            {Number(totalMiles).toFixed(2)}{selectedTimeframe.key === 'week' && myGroup?.weeklyMilesTarget ? ` / ${myGroup.weeklyMilesTarget}` : ''}
-          </Text>
-          <Text style={styles.periodMilesLabel}>
-            miles — {selectedTimeframe.label?.toLowerCase() || 'selected period'}{selectedTimeframe.key === 'week' && myGroup ? ` (${myGroup.name})` : ''}
-          </Text>
-        </View>
+        {selectedTimeframe.key !== 'week' && (
+          <View style={[styles.periodMilesCard, { borderColor: primaryColor + '30' }]}>
+            <Text style={[styles.periodMilesNum, { color: primaryColor }]}>{Number(totalMiles).toFixed(2)}</Text>
+            <Text style={styles.periodMilesLabel}>miles — {selectedTimeframe.label?.toLowerCase() || 'selected period'}</Text>
+          </View>
+        )}
 
         {showHRZones && breakdown && (
           <View style={styles.zoneSection}>
@@ -532,17 +534,22 @@ export default function AthleteDashboard({ userData }) {
         {isApproved && upcomingWorkouts.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Upcoming workouts</Text>
-            {upcomingWorkouts.map(workout => (
-              <TouchableOpacity key={workout.id} style={styles.workoutCard} onPress={() => { setSelectedWorkout(workout); setWorkoutDetailVisible(true); }}>
-                <View style={[styles.workoutBadge, { backgroundColor: primaryColor }]}><Text style={styles.workoutBadgeText}>{workout.type}</Text></View>
-                <View style={styles.workoutInfo}>
-                  <Text style={styles.workoutTitle}>{workout.title}</Text>
-                  {workout.description && <Text style={styles.workoutDesc} numberOfLines={1}>{workout.description}</Text>}
-                  <Text style={styles.workoutDate}>{workout.date?.toDate?.()?.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</Text>
-                </View>
-                <Text style={styles.chevron}>›</Text>
-              </TouchableOpacity>
-            ))}
+            {upcomingWorkouts.map(workout => {
+              const wkMiles = myGroup && workout.groupMiles?.[myGroup.id]
+                ? workout.groupMiles[myGroup.id]
+                : workout.baseMiles || null;
+              return (
+                <TouchableOpacity key={workout.id} style={styles.workoutCard} onPress={() => { setSelectedWorkout(workout); setWorkoutDetailVisible(true); }}>
+                  <View style={[styles.workoutBadge, { backgroundColor: primaryColor }]}><Text style={styles.workoutBadgeText}>{workout.type}</Text></View>
+                  <View style={styles.workoutInfo}>
+                    <Text style={styles.workoutTitle}>{workout.title}{wkMiles ? ` — ${wkMiles} mi` : ''}</Text>
+                    {workout.description && <Text style={styles.workoutDesc} numberOfLines={1}>{workout.description}</Text>}
+                    <Text style={styles.workoutDate}>{workout.date?.toDate?.()?.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</Text>
+                  </View>
+                  <Text style={styles.chevron}>›</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         )}
 
@@ -622,7 +629,14 @@ export default function AthleteDashboard({ userData }) {
       </ScrollView>
 
       <WellnessCheckIn visible={wellnessVisible} onComplete={handleWellnessComplete} onSkip={handleWellnessSkip} primaryColor={primaryColor} />
-      <WorkoutDetailModal item={selectedWorkout} visible={workoutDetailVisible} onClose={() => { setWorkoutDetailVisible(false); setSelectedWorkout(null); }} primaryColor={primaryColor} />
+      <WorkoutDetailModal
+        item={selectedWorkout}
+        visible={workoutDetailVisible}
+        onClose={() => { setWorkoutDetailVisible(false); setSelectedWorkout(null); }}
+        primaryColor={primaryColor}
+        athleteMiles={selectedWorkout && myGroup ? (selectedWorkout.groupMiles?.[myGroup.id] || selectedWorkout.baseMiles || null) : (selectedWorkout?.baseMiles || null)}
+        groupName={myGroup?.name}
+      />
       <RunDetailModal run={selectedRun} visible={runDetailVisible} primaryColor={primaryColor} athleteAge={athleteAge} zoneSettings={teamZoneSettings} showHRZones={showHRZones} onClose={() => { setRunDetailVisible(false); setSelectedRun(null); }} onDeleted={() => { setRunDetailVisible(false); setSelectedRun(null); loadDashboard(); }} onUpdated={() => { setSelectedRun(null); loadDashboard(); }} />
 
       <Modal visible={logModalVisible} animationType="slide" presentationStyle="pageSheet">
