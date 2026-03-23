@@ -4,6 +4,7 @@ import DatePickerField from './DatePickerField';
 
 export const TIMEFRAMES = [
   { label: 'This week',   key: 'week' },
+  { label: 'Last week',   key: 'last_week' },
   { label: 'This month',  key: 'month' },
   { label: 'Last month',  key: 'last_month' },
   { label: 'This year',   key: 'year' },
@@ -24,6 +25,19 @@ export function getDateRange(timeframe, activeSeason, customStart, customEnd) {
       monday.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
       monday.setHours(0, 0, 0, 0);
       return { start: monday, end: now };
+    }
+    case 'last_week': {
+      // Monday 00:00:00 to Sunday 23:59:59 of the previous week
+      const day = now.getDay(); // 0=Sun
+      const thisMonday = new Date(now);
+      thisMonday.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+      const lastMonday = new Date(thisMonday);
+      lastMonday.setDate(thisMonday.getDate() - 7);
+      lastMonday.setHours(0, 0, 0, 0);
+      const lastSunday = new Date(thisMonday);
+      lastSunday.setDate(thisMonday.getDate() - 1);
+      lastSunday.setHours(23, 59, 59, 999);
+      return { start: lastMonday, end: lastSunday };
     }
     case 'month': {
       // 1st of current month to now

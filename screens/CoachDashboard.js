@@ -18,6 +18,7 @@ import {
   Modal,
   Platform,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -391,6 +392,35 @@ export default function CoachDashboard({ userData }) {
     if (!calendarVisible && !addFromDashboard && !plannerVisible) loadDashboard();
   }, [selectedTimeframe, calendarVisible, addFromDashboard, plannerVisible]);
 
+  // ── Share leaderboard ────────────────────────────────────────────────────
+  const handleShareLeaderboard = async () => {
+    const sorted = [...filteredAthletes]
+      .sort((a, b) => (athleteMiles[b.id] || 0) - (athleteMiles[a.id] || 0));
+
+    if (sorted.length === 0) {
+      Alert.alert('Nothing to share', 'No athlete data for this timeframe.');
+      return;
+    }
+
+    const period = selectedTimeframe.label || 'Selected period';
+    const lines = sorted.map((a, i) => {
+      const miles = Number(athleteMiles[a.id] || 0).toFixed(2);
+      return `${i + 1}. ${a.firstName} ${a.lastName} — ${miles} mi`;
+    });
+
+    const message = [
+      `${school?.name || 'Team'} Leaderboard — ${period}`,
+      '',
+      ...lines,
+      '',
+      `Sent from XCTracker`,
+    ].join('\n');
+
+    try {
+      await Share.share({ message });
+    } catch (e) { console.warn('Share failed:', e); }
+  };
+
   // ── Sub-screen routing ────────────────────────────────────────────────────
   if (selectedAthlete) {
     return <AthleteDetailScreen
@@ -625,12 +655,19 @@ export default function CoachDashboard({ userData }) {
               ))}
             </View>
 
-            <TimeframePicker
-              selected={selectedTimeframe}
-              onSelect={setSelectedTimeframe}
-              activeSeason={activeSeasonData}
-              primaryColor={primaryColor}
-            />
+            <View style={styles.timeframeRow}>
+              <View style={{ flex: 1 }}>
+                <TimeframePicker
+                  selected={selectedTimeframe}
+                  onSelect={setSelectedTimeframe}
+                  activeSeason={activeSeasonData}
+                  primaryColor={primaryColor}
+                />
+              </View>
+              <TouchableOpacity style={[styles.shareBtn, { borderColor: primaryColor }]} onPress={handleShareLeaderboard}>
+                <Text style={[styles.shareBtnText, { color: primaryColor }]}>Share</Text>
+              </TouchableOpacity>
+            </View>
 
             {filteredAthletes.length === 0 ? (
               <View style={styles.emptyCard}>
@@ -871,6 +908,9 @@ export default function CoachDashboard({ userData }) {
 }
 
 const styles = StyleSheet.create({
+  timeframeRow:         { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 0 },
+  shareBtn:             { borderRadius: 10, borderWidth: 1.5, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#fff' },
+  shareBtnText:         { fontSize: 15, fontWeight: '600' },
   container:            { flex: 1, backgroundColor: '#f5f5f5' },
   loading:              { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header:               { paddingTop: 60, paddingBottom: 12, paddingHorizontal: 20 },
