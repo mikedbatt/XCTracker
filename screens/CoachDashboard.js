@@ -686,6 +686,12 @@ export default function CoachDashboard({ userData }) {
                   const hasZoneData = zonePct !== undefined;
                   const zoneLow     = hasZoneData && zonePct !== null && zonePct < 70;
 
+                  // Build compact stat lines
+                  const line1 = `Wk: ${weekMiles} mi${avg3 > 0 ? ` (avg ${avg3})` : ''}${mileageHigh ? '  ↑' : ''}`;
+                  const line2 = hasZoneData && zonePct !== null
+                    ? `Z1+2: ${zonePct}%${zoneLow ? '  ⚠' : ''}`
+                    : null;
+
                   return (
                     <TouchableOpacity
                       key={athlete.id}
@@ -701,7 +707,10 @@ export default function CoachDashboard({ userData }) {
                           <Text style={styles.athleteName}>{athlete.firstName} {athlete.lastName}</Text>
                           {hasAlert
                             ? <Text style={styles.alertText}>⚠️ {overtrain.signals[0]}</Text>
-                            : <Text style={styles.athleteSub}>{selectedTimeframe.label}</Text>
+                            : <>
+                                <Text style={styles.athleteSub}>{line1}</Text>
+                                {line2 && <Text style={styles.athleteSub}>{line2}</Text>}
+                              </>
                           }
                         </View>
                         <View style={styles.milesBox}>
@@ -711,32 +720,6 @@ export default function CoachDashboard({ userData }) {
                           <Text style={styles.milesLabel}>miles</Text>
                         </View>
                         <Text style={styles.chevron}>›</Text>
-                      </View>
-
-                      <View style={styles.athleteCardStats}>
-                        <View style={styles.athleteStatChip}>
-                          <Text style={styles.athleteStatChipLabel}>This week</Text>
-                          <Text style={[styles.athleteStatChipVal, mileageHigh && styles.statValRed]}>
-                            {weekMiles} mi{avg3 > 0 ? ` (avg ${avg3})` : ''}
-                          </Text>
-                          {mileageHigh && <Text style={styles.statFlagRed}>↑ High load</Text>}
-                        </View>
-
-                        {hasZoneData && (
-                          <View style={styles.athleteStatChip}>
-                            <Text style={styles.athleteStatChipLabel}>Z1+Z2 (30d)</Text>
-                            {zonePct !== null ? (
-                              <>
-                                <Text style={[styles.athleteStatChipVal, zoneLow && styles.statValRed]}>
-                                  {zonePct}%
-                                </Text>
-                                {zoneLow && <Text style={styles.statFlagRed}>↑ Too intense</Text>}
-                              </>
-                            ) : (
-                              <Text style={styles.athleteStatChipLabel}>No HR data</Text>
-                            )}
-                          </View>
-                        )}
                       </View>
                     </TouchableOpacity>
                   );
@@ -941,9 +924,9 @@ const styles = StyleSheet.create({
   emptyCard:            { backgroundColor: '#fff', borderRadius: 12, padding: 20, alignItems: 'center', gap: 10 },
   emptyText:            { color: '#999', fontSize: 14, textAlign: 'center' },
   emptySubText:         { color: '#bbb', fontSize: 13 },
-  athleteCard:          { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 10 },
+  athleteCard:          { backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 8 },
   athleteCardAlert:     { borderWidth: 1.5, borderColor: '#ef4444', backgroundColor: '#fff5f5' },
-  athleteCardTop:       { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+  athleteCardTop:       { flexDirection: 'row', alignItems: 'center', gap: 10 },
   athleteCardStats:     { flexDirection: 'row', gap: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#f5f5f5' },
   athleteStatChip:      { flex: 1, backgroundColor: '#f9f9f9', borderRadius: 8, padding: 8 },
   athleteStatChipLabel: { fontSize: 11, color: '#999', marginBottom: 2 },
@@ -951,8 +934,8 @@ const styles = StyleSheet.create({
   statValRed:           { color: '#dc2626' },
   statFlagRed:          { fontSize: 11, color: '#dc2626', fontWeight: '600', marginTop: 2 },
   rankNum:              { fontSize: 14, fontWeight: '700', color: '#999', width: 24 },
-  avatar:               { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  avatarText:           { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  avatar:               { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  avatarText:           { color: '#fff', fontWeight: 'bold', fontSize: 14 },
   athleteInfo:          { flex: 1 },
   athleteName:          { fontSize: 15, fontWeight: '700', color: '#333' },
   athleteSub:           { fontSize: 12, color: '#999', marginTop: 2 },
