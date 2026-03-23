@@ -9,11 +9,12 @@ import {
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 
-export default function GroupManager({ schoolId, athletes, onClose }) {
+export default function GroupManager({ schoolId, athletes, activeSeason, onClose }) {
   const [groups,       setGroups]       = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [newGroupName, setNewGroupName] = useState('');
   const [athleteStats, setAthleteStats] = useState({});
+  const [activeTab,    setActiveTab]    = useState('groups');
 
   const primaryColor = '#2e7d32';
 
@@ -210,9 +211,23 @@ export default function GroupManager({ schoolId, athletes, onClose }) {
         <View style={{ width: 60 }} />
       </View>
 
+      {/* Tabs */}
+      <View style={styles.tabRow}>
+        {[{ key: 'groups', label: 'Groups' }, { key: 'assign', label: 'Assign' }, { key: 'volume', label: 'Volume Plan' }].map(t => (
+          <TouchableOpacity
+            key={t.key}
+            style={[styles.tab, activeTab === t.key && { borderBottomColor: primaryColor, borderBottomWidth: 2 }]}
+            onPress={() => setActiveTab(t.key)}
+          >
+            <Text style={[styles.tabText, activeTab === t.key && { color: primaryColor, fontWeight: '700' }]}>{t.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
 
-        {/* ── Create group ── */}
+        {/* ── Groups tab ── */}
+        {activeTab === 'groups' && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Groups</Text>
           <View style={styles.addRow}>
@@ -273,8 +288,10 @@ export default function GroupManager({ schoolId, athletes, onClose }) {
             );
           })}
         </View>
+        )}
 
-        {/* ── Athlete assignment ── */}
+        {/* ── Assign tab ── */}
+        {activeTab === 'assign' && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Assign Athletes</Text>
           <Text style={styles.sectionHint}>Sorted by 3-week average miles. Tap an athlete to assign.</Text>
@@ -304,6 +321,120 @@ export default function GroupManager({ schoolId, athletes, onClose }) {
           })}
         </View>
 
+        )}
+
+        {/* ── Volume Plan tab ── */}
+        {activeTab === 'volume' && (() => {
+          if (!activeSeason?.seasonStart || !activeSeason?.championshipDate) {
+            return (
+              <View style={styles.section}>
+                <View style={styles.emptyCard}>
+                  <Text style={styles.emptyCardTitle}>No active season</Text>
+                  <Text style={styles.emptyCardText}>Set up a season in Season Planner to plan weekly volumes.</Text>
+                </View>
+              </View>
+            );
+          }
+          if (groups.length === 0) {
+            return (
+              <View style={styles.section}>
+                <View style={styles.emptyCard}>
+                  <Text style={styles.emptyCardTitle}>No groups yet</Text>
+                  <Text style={styles.emptyCardText}>Create groups in the Groups tab first.</Text>
+                </View>
+              </View>
+            );
+          }
+
+          // Generate weeks from season start through championship
+          const seasonStart = new Date(activeSeason.seasonStart);
+          const champDate = new Date(activeSeason.championshipDate);
+          // Find the Monday of or before season start
+          const startDay = seasonStart.getDay();
+          const firstMonday = new Date(seasonStart);
+          firstMonday.setDate(seasonStart.getDate() - (startDay === 0 ? 6 : startDay - 1));
+          firstMonday.setHours(0, 0, 0, 0);
+
+          const weeks = [];
+          let mon = new Date(firstMonday);
+          while (mon <= champDate) {
+            weeks.push(new Date(mon));
+            mon.setDate(mon.getDate() + 7);
+          }
+
+          const getMondayISO = (d) => d.toISOString().split('T')[0];
+          const now = new Date();
+          const currentMondayDay = now.getDay();
+          const currentMonday = new Date(now);
+          currentMonday.setDate(now.getDate() - (currentMondayDay === 0 ? 6 : currentMondayDay - 1));
+          const currentMondayISO = currentMonday.toISOString().split('T')[0];
+
+          const handleVolumeSave = async (groupId, weekISO, value) => {
+            const group = groups.find(g => g.id === groupId);
+            if (!group) return;
+            const plan = { ...(group.weeklyPlan || {}) };
+            if (value === '' || value == null) {
+              delete plan[weekISO];
+            } else {
+              plan[weekISO] = parseFloat(value);
+            }
+            try {
+              await updateDoc(doc(db, 'groups', groupId), { weeklyPlan: plan });
+              setGroups(prev => prev.map(g => g.id === groupId ? { ...g, weeklyPlan: plan } : g));
+            } catch (e) { console.warn('Failed to save volume plan:', e); }
+          };
+
+          return (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Weekly Volume Targets</Text>
+              <Text style={styles.sectionHint}>Set target miles per week for each group across the season.</Text>
+
+              {weeks.map((weekMon, wi) => {
+                const weekISO = getMondayISO(weekMon);
+                const weekLabel = weekMon.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                const isCurrent = weekISO === currentMondayISO;
+                const isPast = weekMon < currentMonday && !isCurrent;
+                return (
+                  <View key={weekISO} style={[styles.volumeWeek, isCurrent && { backgroundColor: primaryColor + '08', borderColor: primaryColor, borderWidth: 1 }]}>
+                    <Text style={[styles.volumeWeekLabel, isCurrent && { color: primaryColor, fontWeight: '700' }]}>
+                      Wk {wi + 1} · {weekLabel}{isCurrent ? '  ← this week' : ''}
+                    </Text>
+                    <View style={styles.volumeGroupRow}>
+                      {groups.map(g => {
+                        const planVal = g.weeklyPlan?.[weekISO];
+                        const displayVal = planVal != null ? String(planVal) : '';
+                        return (
+                          <View key={g.id} style={styles.volumeCell}>
+                            <Text style={styles.volumeCellLabel}>{g.name}</Text>
+                            <TextInput
+                              style={[styles.volumeCellInput, isPast && { opacity: 0.5 }]}
+                              value={displayVal}
+                              onChangeText={(text) => {
+                                const num = text === '' ? null : parseFloat(text);
+                                setGroups(prev => prev.map(gr => {
+                                  if (gr.id !== g.id) return gr;
+                                  const plan = { ...(gr.weeklyPlan || {}) };
+                                  if (num == null || isNaN(num)) delete plan[weekISO]; else plan[weekISO] = num;
+                                  return { ...gr, weeklyPlan: plan };
+                                }));
+                              }}
+                              onBlur={() => handleVolumeSave(g.id, weekISO, g.weeklyPlan?.[weekISO])}
+                              placeholder={g.weeklyMilesTarget ? String(g.weeklyMilesTarget) : '—'}
+                              placeholderTextColor="#ccc"
+                              keyboardType="decimal-pad"
+                              maxLength={5}
+                            />
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          );
+        })()}
+
         <View style={{ height: 60 }} />
       </ScrollView>
     </View>
@@ -311,6 +442,21 @@ export default function GroupManager({ schoolId, athletes, onClose }) {
 }
 
 const styles = StyleSheet.create({
+  // Tabs
+  tabRow:          { flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  tab:             { flex: 1, paddingVertical: 12, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  tabText:         { fontSize: 13, color: '#666' },
+  // Empty state cards
+  emptyCard:       { backgroundColor: '#fff', borderRadius: 14, padding: 24, alignItems: 'center' },
+  emptyCardTitle:  { fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 6 },
+  emptyCardText:   { fontSize: 14, color: '#999', textAlign: 'center' },
+  // Volume plan
+  volumeWeek:      { backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 8 },
+  volumeWeekLabel: { fontSize: 13, fontWeight: '600', color: '#555', marginBottom: 8 },
+  volumeGroupRow:  { flexDirection: 'row', gap: 10 },
+  volumeCell:      { flex: 1, alignItems: 'center' },
+  volumeCellLabel: { fontSize: 11, color: '#999', marginBottom: 4 },
+  volumeCellInput: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 6, width: '100%', textAlign: 'center', fontSize: 15, fontWeight: '600', backgroundColor: '#f9f9f9', color: '#333' },
   container:       { flex: 1, backgroundColor: '#f5f5f5' },
   header:          { paddingTop: 60, paddingBottom: 12, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   backBtn:         { paddingVertical: 6, paddingHorizontal: 10 },

@@ -464,6 +464,7 @@ export default function CoachDashboard({ userData }) {
     return <GroupManager
       schoolId={userData.schoolId}
       athletes={athletes}
+      activeSeason={activeSeasonData}
       onClose={() => { setGroupManagerVisible(false); loadDashboard(); }}
     />;
   }
@@ -471,7 +472,10 @@ export default function CoachDashboard({ userData }) {
     return <CoachProfile
       userData={userData}
       school={school}
-      onClose={() => setProfileVisible(false)}
+      pendingAthletes={pendingAthletes}
+      onApproveAthlete={handleApproveAthlete}
+      onDenyAthlete={handleDenyAthlete}
+      onClose={() => { setProfileVisible(false); loadDashboard(); }}
       onUpdated={() => setProfileVisible(false)}
     />;
   }
@@ -686,9 +690,7 @@ export default function CoachDashboard({ userData }) {
             <Text style={styles.greeting}>Coach {userData.lastName}</Text>
             <Text style={styles.schoolName}>{school?.name || 'XCTracker'}</Text>
           </View>
-          <TouchableOpacity onPress={() => setProfileVisible(true)} style={styles.profileBtn}>
-            <Text style={styles.profileBtnText}>Profile</Text>
-          </TouchableOpacity>
+          <View style={{ width: 60 }} />
         </View>
         <View style={styles.headerStats}>
           <View style={styles.headerStat}>
@@ -712,21 +714,6 @@ export default function CoachDashboard({ userData }) {
         </View>
       </View>
 
-      {/* ── Tabs ── */}
-      <View style={styles.tabs}>
-        {['team', 'training', isAdmin && 'pending'].filter(Boolean).map(tab => (
-          <TouchableOpacity
-            key={tab}
-            style={[styles.tab, activeTab === tab && styles.tabActive]}
-            onPress={() => setActiveTab(tab)}
-          >
-            <Text style={[styles.tabText, activeTab === tab && { color: primaryColor }]}>
-              {tab === 'team' ? 'Team' : tab === 'training' ? 'Training' : `Pending (${pendingAthletes.length})`}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
       <ScrollView
         style={styles.scroll}
         showsVerticalScrollIndicator={false}
@@ -745,56 +732,52 @@ export default function CoachDashboard({ userData }) {
           </TouchableOpacity>
         </View>
 
-        {/* ── Team tab ── */}
-        {activeTab === 'team' && (
-          <View style={styles.section}>
+        {/* ── Team ── */}
+        <View style={styles.section}>
 
-            <View style={styles.genderRow}>
-              {['all', 'boys', 'girls'].map(g => (
+          <View style={styles.timeframeRow}>
+            <View style={{ flex: 1 }}>
+              <TimeframePicker
+                selected={selectedTimeframe}
+                onSelect={setSelectedTimeframe}
+                activeSeason={activeSeasonData}
+                primaryColor={primaryColor}
+              />
+            </View>
+            <TouchableOpacity style={[styles.shareBtn, { borderColor: primaryColor }]} onPress={handleShareLeaderboard}>
+              <Text style={[styles.shareBtnText, { color: primaryColor }]}>Share</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.genderRow}>
+            {['all', 'boys', 'girls'].map(g => (
+              <TouchableOpacity
+                key={g}
+                style={[styles.genderBtn, genderFilter === g && { backgroundColor: primaryColor, borderColor: primaryColor }]}
+                onPress={() => setGenderFilter(g)}
+              >
+                <Text style={[styles.genderBtnText, genderFilter === g && { color: '#fff' }]}>
+                  {g === 'all' ? 'All' : g === 'boys' ? 'Boys' : 'Girls'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {groups.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.groupFilterRow}>
+              {[{ id: 'all', name: 'All' }, { id: 'bygroup', name: 'By Group' }, ...groups, { id: 'unassigned', name: 'Unassigned' }].map(g => (
                 <TouchableOpacity
-                  key={g}
-                  style={[styles.genderBtn, genderFilter === g && { backgroundColor: primaryColor, borderColor: primaryColor }]}
-                  onPress={() => setGenderFilter(g)}
+                  key={g.id}
+                  style={[styles.groupFilterBtn, groupFilter === g.id && { backgroundColor: primaryColor, borderColor: primaryColor }]}
+                  onPress={() => setGroupFilter(g.id)}
                 >
-                  <Text style={[styles.genderBtnText, genderFilter === g && { color: '#fff' }]}>
-                    {g === 'all' ? 'All' : g === 'boys' ? 'Boys' : 'Girls'}
+                  <Text style={[styles.groupFilterBtnText, groupFilter === g.id && { color: '#fff' }]}>
+                    {g.name}
                   </Text>
                 </TouchableOpacity>
               ))}
-            </View>
-
-            {groups.length > 0 && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.groupFilterRow}>
-                {[{ id: 'all', name: 'All' }, { id: 'bygroup', name: 'By Group' }, ...groups, { id: 'unassigned', name: 'Unassigned' }].map(g => (
-                  <TouchableOpacity
-                    key={g.id}
-                    style={[styles.groupFilterBtn, groupFilter === g.id && { backgroundColor: primaryColor, borderColor: primaryColor }]}
-                    onPress={() => setGroupFilter(g.id)}
-                  >
-                    <Text style={[styles.groupFilterBtnText, groupFilter === g.id && { color: '#fff' }]}>
-                      {g.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            )}
-
-            <View style={styles.timeframeRow}>
-              <View style={{ flex: 1 }}>
-                <TimeframePicker
-                  selected={selectedTimeframe}
-                  onSelect={setSelectedTimeframe}
-                  activeSeason={activeSeasonData}
-                  primaryColor={primaryColor}
-                />
-              </View>
-              <TouchableOpacity style={[styles.shareBtn, { borderColor: primaryColor }]} onPress={() => setGroupManagerVisible(true)}>
-                <Text style={[styles.shareBtnText, { color: primaryColor }]}>Groups</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.shareBtn, { borderColor: primaryColor }]} onPress={handleShareLeaderboard}>
-                <Text style={[styles.shareBtnText, { color: primaryColor }]}>Share</Text>
-              </TouchableOpacity>
-            </View>
+            </ScrollView>
+          )}
 
             {filteredAthletes.length === 0 ? (
               <View style={styles.emptyCard}>
@@ -841,10 +824,8 @@ export default function CoachDashboard({ userData }) {
               </View>
             )}
           </View>
-        )}
 
-        {/* ── Training tab ── */}
-        {activeTab === 'training' && (
+          {/* ── Today's training ── */}
           <View style={styles.section}>
             <View style={styles.todaySection}>
               <Text style={styles.todayLabel}>TODAY</Text>
@@ -885,53 +866,18 @@ export default function CoachDashboard({ userData }) {
               ))}
             </View>
           </View>
-        )}
-
-        {/* ── Pending tab ── */}
-        {activeTab === 'pending' && isAdmin && (
-          <View style={styles.section}>
-            {pendingAthletes.length === 0 ? (
-              <View style={styles.emptyCard}><Text style={styles.emptyText}>No pending requests.</Text></View>
-            ) : pendingAthletes.map(athlete => (
-              <View key={athlete.id} style={styles.pendingCard}>
-                <View style={[styles.avatar, { backgroundColor: primaryColor }]}>
-                  <Text style={styles.avatarText}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
-                </View>
-                <View style={styles.athleteInfo}>
-                  <Text style={styles.athleteName}>{athlete.firstName} {athlete.lastName}</Text>
-                  <Text style={styles.athleteSub}>{athlete.email}</Text>
-                  {athlete.isMinor && <Text style={styles.minorTag}>Minor — parent consent required</Text>}
-                </View>
-                <View style={styles.approvalBtns}>
-                  <TouchableOpacity style={[styles.approveBtn, { backgroundColor: primaryColor }]} onPress={() => handleApproveAthlete(athlete)}>
-                    <Text style={styles.approveBtnText}>Approve</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.denyBtn} onPress={() => handleDenyAthlete(athlete)}>
-                    <Text style={styles.denyBtnText}>Deny</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
 
       </ScrollView>
 
       {/* ── Bottom navigation bar ── */}
       <View style={[styles.bottomNav, { borderTopColor: `${primaryColor}30` }]}>
         <TouchableOpacity style={styles.bottomNavBtn} onPress={() => setCalendarVisible(true)}>
-          <Text style={styles.bottomNavEmoji}>📅</Text>
-          <Text style={styles.bottomNavLabel}>Calendar</Text>
+          <Text style={styles.bottomNavEmoji}>📋</Text>
+          <Text style={styles.bottomNavLabel}>Training</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => setAddFromDashboard(true)}>
-          <View style={[styles.bottomNavPlus, { backgroundColor: primaryColor }]}>
-            <Text style={styles.bottomNavPlusText}>+</Text>
-          </View>
-          <Text style={[styles.bottomNavLabel, { color: primaryColor }]}>Add workout</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => setLibraryVisible(true)}>
-          <Text style={styles.bottomNavEmoji}>📚</Text>
-          <Text style={styles.bottomNavLabel}>Library</Text>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => setGroupManagerVisible(true)}>
+          <Text style={styles.bottomNavEmoji}>👥</Text>
+          <Text style={styles.bottomNavLabel}>Groups</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.bottomNavBtn} onPress={() => setFeedVisible(true)}>
           <Text style={styles.bottomNavEmoji}>💬</Text>
@@ -940,6 +886,17 @@ export default function CoachDashboard({ userData }) {
         <TouchableOpacity style={styles.bottomNavBtn} onPress={() => setZonesVisible(true)}>
           <Text style={styles.bottomNavEmoji}>❤️</Text>
           <Text style={styles.bottomNavLabel}>Zones</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => setProfileVisible(true)}>
+          <View>
+            <Text style={styles.bottomNavEmoji}>👤</Text>
+            {pendingAthletes.length > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{pendingAthletes.length}</Text>
+              </View>
+            )}
+          </View>
+          <Text style={styles.bottomNavLabel}>Profile</Text>
         </TouchableOpacity>
       </View>
 
@@ -1081,6 +1038,8 @@ const styles = StyleSheet.create({
   bottomNavPlusText:    { color: '#fff', fontSize: 24, fontWeight: '300', lineHeight: 32 },
   bottomNavEmoji:       { fontSize: 24, lineHeight: 32 },
   bottomNavLabel:       { fontSize: 11, color: '#888', fontWeight: '500' },
+  badge:                { position: 'absolute', top: -4, right: -8, backgroundColor: '#dc2626', borderRadius: 9, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  badgeText:            { color: '#fff', fontSize: 10, fontWeight: '700' },
   tipModal:             { flex: 1, backgroundColor: '#f5f5f5' },
   tipModalHeader:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 60, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
   tipModalTitle:        { fontSize: 18, fontWeight: 'bold', color: '#333' },

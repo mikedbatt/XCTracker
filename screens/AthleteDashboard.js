@@ -212,7 +212,14 @@ export default function AthleteDashboard({ userData }) {
             if (groupDoc.exists()) {
               loadedGroup = { id: groupDoc.id, ...groupDoc.data() };
               setMyGroup(loadedGroup);
-              if (loadedGroup.weeklyMilesTarget) setWeeklyTarget(loadedGroup.weeklyMilesTarget);
+              // Use week-specific plan target, fall back to default
+              const now = new Date();
+              const d = now.getDay();
+              const mon = new Date(now);
+              mon.setDate(now.getDate() - (d === 0 ? 6 : d - 1));
+              const mondayISO = mon.toISOString().split('T')[0];
+              const weekTarget = loadedGroup.weeklyPlan?.[mondayISO] ?? loadedGroup.weeklyMilesTarget;
+              if (weekTarget) setWeeklyTarget(weekTarget);
             }
           } else {
             setMyGroup(null);

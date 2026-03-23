@@ -69,7 +69,7 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
   const [notes, setNotes] = useState('');
   const [baseMiles, setBaseMiles] = useState('');
   const [groupAdjustments, setGroupAdjustments] = useState({});
-  const [viewMode, setViewMode] = useState('month');
+  const [viewMode, setViewMode] = useState('week');
   const [weekStart, setWeekStart] = useState(() => {
     const now = new Date();
     const day = now.getDay();
@@ -324,7 +324,7 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
       {/* View mode toggle */}
       {isCoach && (
         <View style={styles.viewToggle}>
-          {['month', 'week'].map(m => (
+          {['week', 'month'].map(m => (
             <TouchableOpacity
               key={m}
               style={[styles.viewToggleBtn, viewMode === m && { backgroundColor: primaryColor, borderColor: primaryColor }]}
@@ -395,20 +395,10 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
                       </TouchableOpacity>
                     </View>
                     {dayEvents.length === 0 ? (
-                      <Text style={styles.weekDayEmpty}>Rest day</Text>
+                      <Text style={styles.weekDayEmpty}>Rest</Text>
                     ) : dayEvents.map(event => (
                       <TouchableOpacity key={event.id} style={styles.weekEvent} onPress={() => { setDetailItem(event); setDetailVisible(true); }}>
-                        <View style={[styles.weekEventDot, { backgroundColor: TYPE_COLORS[event.type] || primaryColor }]} />
-                        <View style={styles.weekEventInfo}>
-                          <Text style={styles.weekEventTitle}>{event.title}</Text>
-                          {event.groupMiles && groups.length > 0 ? (
-                            <Text style={styles.weekEventMiles}>
-                              {groups.map(g => `${g.name}: ${event.groupMiles[g.id] || event.baseMiles || '—'}mi`).join('  ·  ')}
-                            </Text>
-                          ) : event.baseMiles ? (
-                            <Text style={styles.weekEventMiles}>{event.baseMiles} mi</Text>
-                          ) : null}
-                        </View>
+                        <Text style={styles.weekEventTitle}>{event.type} — {event.title}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -421,7 +411,8 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
                   <Text style={styles.weekTotalsTitle}>Weekly totals</Text>
                   {groups.map(g => {
                     const total = Math.round(weeklyTotals[g.id] * 10) / 10;
-                    const target = g.weeklyMilesTarget;
+                    const weekMondayISO = weekStart.toISOString().split('T')[0];
+                    const target = g.weeklyPlan?.[weekMondayISO] ?? g.weeklyMilesTarget;
                     const diff = target ? Math.round((total - target) * 10) / 10 : null;
                     const onTrack = target && total >= target * 0.9;
                     return (
@@ -603,6 +594,20 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
                 <View style={styles.detailSection}>
                   <Text style={styles.detailLabel}>DETAILS</Text>
                   <Text style={styles.detailValue}>{detailItem.description}</Text>
+                </View>
+              )}
+              {(detailItem.groupMiles || detailItem.baseMiles) && groups.length > 0 && (
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailLabel}>MILEAGE BY GROUP</Text>
+                  {groups.map(g => {
+                    const mi = detailItem.groupMiles?.[g.id] ?? detailItem.baseMiles ?? '—';
+                    return (
+                      <View key={g.id} style={styles.detailMileageRow}>
+                        <Text style={styles.detailValue}>{g.name}</Text>
+                        <Text style={styles.detailMileageVal}>{mi} mi</Text>
+                      </View>
+                    );
+                  })}
                 </View>
               )}
               {detailItem.notes && (
@@ -801,25 +806,24 @@ const styles = StyleSheet.create({
   viewToggleBtn:      { borderRadius: 8, borderWidth: 1.5, borderColor: '#ddd', paddingHorizontal: 14, paddingVertical: 6, backgroundColor: '#fff' },
   viewToggleBtnText:  { fontSize: 13, fontWeight: '600', color: '#666' },
   // Week view
-  weekNav:            { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 },
-  weekNavBtn:         { fontSize: 15, fontWeight: '600' },
-  weekNavLabel:       { fontSize: 15, fontWeight: '700', color: '#333' },
-  weekDay:            { paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  weekDayHeader:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  weekDayLabel:       { fontSize: 14, fontWeight: '600', color: '#555' },
-  weekDayAdd:         { fontSize: 13, fontWeight: '600' },
-  weekDayEmpty:       { fontSize: 13, color: '#bbb', fontStyle: 'italic', paddingLeft: 4 },
-  weekEvent:          { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingVertical: 4 },
-  weekEventDot:       { width: 8, height: 8, borderRadius: 4, marginTop: 5 },
-  weekEventInfo:      { flex: 1 },
-  weekEventTitle:     { fontSize: 14, fontWeight: '600', color: '#333' },
-  weekEventMiles:     { fontSize: 12, color: '#888', marginTop: 1 },
-  weekTotals:         { margin: 16, backgroundColor: '#fff', borderRadius: 12, padding: 14 },
-  weekTotalsTitle:    { fontSize: 14, fontWeight: '700', color: '#333', marginBottom: 8 },
-  weekTotalRow:       { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
-  weekTotalName:      { fontSize: 14, color: '#555' },
-  weekTotalMiles:     { fontSize: 14, fontWeight: '600', color: '#333' },
+  weekNav:            { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10 },
+  weekNavBtn:         { fontSize: 14, fontWeight: '600' },
+  weekNavLabel:       { fontSize: 14, fontWeight: '700', color: '#333' },
+  weekDay:            { paddingHorizontal: 16, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#eee' },
+  weekDayHeader:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 },
+  weekDayLabel:       { fontSize: 14, fontWeight: '700', color: '#111' },
+  weekDayAdd:         { fontSize: 12, fontWeight: '600' },
+  weekDayEmpty:       { fontSize: 12, color: '#bbb', fontStyle: 'italic', paddingLeft: 4 },
+  weekEvent:          { paddingVertical: 2 },
+  weekEventTitle:     { fontSize: 14, color: '#444' },
+  weekTotals:         { marginHorizontal: 16, marginTop: 8, backgroundColor: '#fff', borderRadius: 10, padding: 10 },
+  weekTotalsTitle:    { fontSize: 13, fontWeight: '700', color: '#333', marginBottom: 4 },
+  weekTotalRow:       { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2 },
+  weekTotalName:      { fontSize: 13, color: '#555' },
+  weekTotalMiles:     { fontSize: 13, fontWeight: '600', color: '#333' },
   // Mileage fields in add/edit form
+  detailMileageRow:   { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 },
+  detailMileageVal:   { fontSize: 16, fontWeight: '700', color: '#333' },
   mileageSection:     { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
   mileageRow:         { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 10 },
   mileageLabel:       { fontSize: 14, color: '#555', width: 90 },

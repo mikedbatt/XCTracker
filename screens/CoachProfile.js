@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 
-export default function CoachProfile({ userData, school, onClose, onUpdated }) {
+export default function CoachProfile({ userData, school, pendingAthletes = [], onApproveAthlete, onDenyAthlete, onClose, onUpdated }) {
   const [firstName, setFirstName] = useState(userData.firstName || '');
   const [lastName,  setLastName]  = useState(userData.lastName  || '');
   const [email,     setEmail]     = useState(userData.email     || '');
@@ -150,6 +150,28 @@ export default function CoachProfile({ userData, school, onClose, onUpdated }) {
           </View>
         </View>
 
+        {pendingAthletes.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.pendingTitle}>Pending Approvals ({pendingAthletes.length})</Text>
+            {pendingAthletes.map(athlete => (
+              <View key={athlete.id} style={styles.pendingCard}>
+                <View style={styles.pendingInfo}>
+                  <Text style={styles.pendingName}>{athlete.firstName} {athlete.lastName}</Text>
+                  <Text style={styles.pendingEmail}>{athlete.email}</Text>
+                </View>
+                <View style={styles.pendingBtns}>
+                  <TouchableOpacity style={[styles.approveBtn, { backgroundColor: primaryColor }]} onPress={() => onApproveAthlete && onApproveAthlete(athlete)}>
+                    <Text style={styles.approveBtnText}>Approve</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.denyBtn} onPress={() => onDenyAthlete && onDenyAthlete(athlete)}>
+                    <Text style={styles.denyBtnText}>Deny</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
         <View style={styles.signOutSection}>
           <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
             <Text style={styles.signOutBtnText}>Sign out</Text>
@@ -189,6 +211,17 @@ const styles = StyleSheet.create({
   infoCardTitle:      { fontSize: 15, fontWeight: '700', color: '#333', marginBottom: 4 },
   infoRow:            { fontSize: 14, color: '#555' },
   infoHint:           { fontSize: 12, color: '#999', marginTop: 4, lineHeight: 18 },
+  section:            { padding: 16 },
+  pendingTitle:       { fontSize: 17, fontWeight: '700', color: '#333', marginBottom: 10 },
+  pendingCard:        { backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  pendingInfo:        { flex: 1 },
+  pendingName:        { fontSize: 14, fontWeight: '600', color: '#333' },
+  pendingEmail:       { fontSize: 12, color: '#999', marginTop: 2 },
+  pendingBtns:        { flexDirection: 'row', gap: 6 },
+  approveBtn:         { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
+  approveBtnText:     { color: '#fff', fontSize: 12, fontWeight: '700' },
+  denyBtn:            { borderRadius: 8, borderWidth: 1, borderColor: '#dc2626', paddingHorizontal: 12, paddingVertical: 6 },
+  denyBtnText:        { color: '#dc2626', fontSize: 12, fontWeight: '700' },
   signOutSection:     { marginHorizontal: 16, marginTop: 8, marginBottom: 8, alignItems: 'center' },
   signOutBtn:         { borderRadius: 12, borderWidth: 1.5, borderColor: '#dc2626', paddingVertical: 14, paddingHorizontal: 40, marginBottom: 8 },
   signOutBtnText:     { color: '#dc2626', fontSize: 16, fontWeight: '700' },
