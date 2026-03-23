@@ -27,6 +27,7 @@ import {
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 import AthleteDetailScreen from '../screens/AthleteDetailScreen';
+import CoachProfile from '../screens/CoachProfile';
 import CalendarScreen, { TYPE_COLORS } from '../screens/CalendarScreen';
 import SeasonPlanner, { getActiveSeason, getPhaseForSeason } from '../screens/SeasonPlanner';
 import TeamFeed from '../screens/TeamFeed';
@@ -210,6 +211,7 @@ export default function CoachDashboard({ userData }) {
   const [trainingItems,       setTrainingItems]       = useState([]);
   const [loading,             setLoading]             = useState(true);
   const [activeTab,           setActiveTab]           = useState('team');
+  const [profileVisible,      setProfileVisible]      = useState(false);
   const [calendarVisible,     setCalendarVisible]     = useState(false);
   const [addFromDashboard,    setAddFromDashboard]    = useState(false);
   const [plannerVisible,      setPlannerVisible]      = useState(false);
@@ -422,6 +424,14 @@ export default function CoachDashboard({ userData }) {
   };
 
   // ── Sub-screen routing ────────────────────────────────────────────────────
+  if (profileVisible) {
+    return <CoachProfile
+      userData={userData}
+      school={school}
+      onClose={() => setProfileVisible(false)}
+      onUpdated={() => setProfileVisible(false)}
+    />;
+  }
   if (selectedAthlete) {
     return <AthleteDetailScreen
       athlete={selectedAthlete}
@@ -578,8 +588,8 @@ export default function CoachDashboard({ userData }) {
             <Text style={styles.greeting}>Coach {userData.lastName}</Text>
             <Text style={styles.schoolName}>{school?.name || 'XCTracker'}</Text>
           </View>
-          <TouchableOpacity onPress={handleSignOut} style={styles.signOutBtn}>
-            <Text style={styles.signOutText}>Sign out</Text>
+          <TouchableOpacity onPress={() => setProfileVisible(true)} style={styles.profileBtn}>
+            <Text style={styles.profileBtnText}>Profile</Text>
           </TouchableOpacity>
         </View>
         <View style={styles.headerStats}>
@@ -900,8 +910,8 @@ const styles = StyleSheet.create({
   headerTop:            { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
   greeting:             { fontSize: 22, fontWeight: 'bold', color: '#fff' },
   schoolName:           { fontSize: 14, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
-  signOutBtn:           { paddingVertical: 6, paddingHorizontal: 12, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 8 },
-  signOutText:          { color: '#fff', fontSize: 13 },
+  profileBtn:           { paddingVertical: 6, paddingHorizontal: 12, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 8 },
+  profileBtnText:       { color: '#fff', fontSize: 13, fontWeight: '600' },
   headerStats:          { flexDirection: 'row', alignItems: 'center', gap: 14 },
   headerStat:           { alignItems: 'center' },
   headerStatNum:        { fontSize: 20, fontWeight: 'bold', color: '#fff' },
