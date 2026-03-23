@@ -151,6 +151,8 @@ export default function AthleteDashboard({ userData }) {
   const [savingRun,    setSavingRun]    = useState(false);
   const [editingRunId, setEditingRunId] = useState(null);
   const [hrZonePref,   setHrZonePref]   = useState(userData.showHRZones);
+  const [myGroup,      setMyGroup]      = useState(null);
+  const [leaderboardFilter, setLeaderboardFilter] = useState('all');
 
   useEffect(() => {
     loadDashboard();
@@ -199,6 +201,22 @@ export default function AthleteDashboard({ userData }) {
       if (userData.schoolId) {
         const schoolDoc = await getDoc(doc(db, 'schools', userData.schoolId));
         if (schoolDoc.exists()) { currentSchool = schoolDoc.data(); setSchool(currentSchool); }
+
+        // Load athlete's group and its weekly target
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          const groupId = userDoc.data()?.groupId;
+          if (groupId) {
+            const groupDoc = await getDoc(doc(db, 'groups', groupId));
+            if (groupDoc.exists()) {
+              const grp = { id: groupDoc.id, ...groupDoc.data() };
+              setMyGroup(grp);
+              if (grp.weeklyMilesTarget) setWeeklyTarget(grp.weeklyMilesTarget);
+            }
+          } else {
+            setMyGroup(null);
+          }
+        } catch (e) { console.warn('Failed to load athlete group:', e); }
       }
 
       const activeSeason = getActiveSeason(currentSchool);
@@ -475,8 +493,12 @@ export default function AthleteDashboard({ userData }) {
         </View>
 
         <View style={[styles.periodMilesCard, { borderColor: primaryColor + '30' }]}>
-          <Text style={[styles.periodMilesNum, { color: primaryColor }]}>{Number(totalMiles).toFixed(2)}</Text>
-          <Text style={styles.periodMilesLabel}>miles — {selectedTimeframe.label?.toLowerCase() || 'selected period'}</Text>
+          <Text style={[styles.periodMilesNum, { color: primaryColor }]}>
+            {Number(totalMiles).toFixed(2)}{selectedTimeframe.key === 'week' && myGroup?.weeklyMilesTarget ? ` / ${myGroup.weeklyMilesTarget}` : ''}
+          </Text>
+          <Text style={styles.periodMilesLabel}>
+            miles — {selectedTimeframe.label?.toLowerCase() || 'selected period'}{selectedTimeframe.key === 'week' && myGroup ? ` (${myGroup.name})` : ''}
+          </Text>
         </View>
 
         {showHRZones && breakdown && (
@@ -524,10 +546,32 @@ export default function AthleteDashboard({ userData }) {
           </View>
         )}
 
-        {isApproved && sortedTeam.length > 0 && (
+        {isApproved && sortedTeam.length > 0 && (() => {
+          const displayTeam = leaderboardFilter === 'mygroup' && myGroup
+            ? sortedTeam.filter(a => a.groupId === myGroup.id)
+            : sortedTeam;
+          const displayRank = displayTeam.findIndex(a => a.id === auth.currentUser?.uid) + 1;
+          return (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Team leaderboard — {selectedTimeframe.label?.toLowerCase() || 'selected period'}</Text>
-            {sortedTeam.slice(0, 5).map((athlete, index) => {
+            {myGroup && (
+              <View style={styles.leaderboardToggle}>
+                {['all', 'mygroup'].map(f => (
+                  <TouchableOpacity
+                    key={f}
+                    style={[styles.leaderboardToggleBtn, leaderboardFilter === f && { backgroundColor: primaryColor, borderColor: primaryColor }]}
+                    onPress={() => setLeaderboardFilter(f)}
+                  >
+                    <Text style={[styles.leaderboardToggleBtnText, leaderboardFilter === f && { color: '#fff' }]}>
+                      {f === 'all' ? 'All' : myGroup.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+            <Text style={styles.sectionTitle}>
+              {leaderboardFilter === 'mygroup' && myGroup ? myGroup.name : 'Team'} leaderboard — {selectedTimeframe.label?.toLowerCase() || 'selected period'}
+            </Text>
+            {displayTeam.slice(0, 5).map((athlete, index) => {
               const isMe = athlete.id === auth.currentUser?.uid;
               const miles = teamMiles[athlete.id] || 0;
               return (
@@ -544,16 +588,17 @@ export default function AthleteDashboard({ userData }) {
                 </TouchableOpacity>
               );
             })}
-            {sortedTeam.length > 5 && myRank > 5 && (
+            {displayTeam.length > 5 && displayRank > 5 && (
               <View style={[styles.leaderRow, { backgroundColor: primaryColor + '15', borderColor: primaryColor, borderWidth: 1.5 }]}>
-                <Text style={[styles.leaderRank, { color: primaryColor }]}>#{myRank}</Text>
+                <Text style={[styles.leaderRank, { color: primaryColor }]}>#{displayRank}</Text>
                 <View style={[styles.leaderAvatar, { backgroundColor: primaryColor }]}><Text style={[styles.leaderAvatarText, { color: '#fff' }]}>{userData.firstName?.[0]}{userData.lastName?.[0]}</Text></View>
                 <View style={styles.leaderInfo}><Text style={[styles.leaderName, { color: primaryColor, fontWeight: '700' }]}>You</Text></View>
                 <Text style={[styles.leaderMiles, { color: primaryColor }]}>{Number(totalMiles).toFixed(2)} mi</Text>
               </View>
             )}
           </View>
-        )}
+          );
+        })()}
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>My runs</Text>
@@ -637,6 +682,9 @@ export default function AthleteDashboard({ userData }) {
 }
 
 const styles = StyleSheet.create({
+  leaderboardToggle:       { flexDirection: 'row', gap: 6, marginBottom: 8 },
+  leaderboardToggleBtn:    { borderRadius: 8, borderWidth: 1.5, borderColor: '#ddd', paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#fff' },
+  leaderboardToggleBtnText:{ fontSize: 13, fontWeight: '600', color: '#666' },
   container:           { flex: 1, backgroundColor: '#f5f5f5' },
   loading:             { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header:              { paddingTop: 56, paddingBottom: 16, paddingHorizontal: 20 },

@@ -28,6 +28,7 @@ import {
 import { auth, db } from '../firebaseConfig';
 import AthleteDetailScreen from '../screens/AthleteDetailScreen';
 import CoachProfile from '../screens/CoachProfile';
+import GroupManager from '../screens/GroupManager';
 import CalendarScreen, { TYPE_COLORS } from '../screens/CalendarScreen';
 import SeasonPlanner, { getActiveSeason, getPhaseForSeason } from '../screens/SeasonPlanner';
 import TeamFeed from '../screens/TeamFeed';
@@ -212,6 +213,9 @@ export default function CoachDashboard({ userData }) {
   const [loading,             setLoading]             = useState(true);
   const [activeTab,           setActiveTab]           = useState('team');
   const [profileVisible,      setProfileVisible]      = useState(false);
+  const [groupManagerVisible, setGroupManagerVisible] = useState(false);
+  const [groups,              setGroups]              = useState([]);
+  const [groupFilter,         setGroupFilter]         = useState('all');
   const [calendarVisible,     setCalendarVisible]     = useState(false);
   const [addFromDashboard,    setAddFromDashboard]    = useState(false);
   const [plannerVisible,      setPlannerVisible]      = useState(false);
@@ -246,6 +250,17 @@ export default function CoachDashboard({ userData }) {
           setTeamZoneSettings(currentZoneSettings);
         }
       } catch (e) { console.warn('Failed to load team zone settings, using defaults:', e); }
+
+      // Load training groups
+      try {
+        const groupsSnap = await getDocs(query(
+          collection(db, 'groups'),
+          where('schoolId', '==', userData.schoolId)
+        ));
+        const loadedGroups = groupsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        loadedGroups.sort((a, b) => (a.order || 0) - (b.order || 0));
+        setGroups(loadedGroups);
+      } catch (e) { console.warn('Failed to load groups:', e); }
 
       const activeSeason = schoolData ? getActiveSeason(schoolData) : null;
       setActiveSeasonData(activeSeason);
@@ -405,13 +420,33 @@ export default function CoachDashboard({ userData }) {
     }
 
     const period = selectedTimeframe.label || 'Selected period';
-    const lines = sorted.map((a, i) => {
-      const miles = Number(athleteMiles[a.id] || 0).toFixed(2);
-      return `${i + 1}. ${a.firstName} ${a.lastName} — ${miles} mi`;
-    });
+    const groupName = groupFilter !== 'all' && groupFilter !== 'bygroup'
+      ? (groupFilter === 'unassigned' ? 'Unassigned' : groups.find(g => g.id === groupFilter)?.name)
+      : null;
+
+    let lines;
+    if (groupFilter === 'bygroup') {
+      // Format by group with headers
+      lines = [];
+      [...groups, { id: null, name: 'Unassigned' }].forEach(group => {
+        const groupAthletes = sorted.filter(a => group.id ? a.groupId === group.id : !a.groupId);
+        if (groupAthletes.length === 0) return;
+        lines.push('');
+        lines.push(`── ${group.name}${group.weeklyMilesTarget ? ` (${group.weeklyMilesTarget} mi/wk target)` : ''} ──`);
+        groupAthletes.forEach((a, i) => {
+          const miles = Number(athleteMiles[a.id] || 0).toFixed(2);
+          lines.push(`${i + 1}. ${a.firstName} ${a.lastName} — ${miles} mi`);
+        });
+      });
+    } else {
+      lines = sorted.map((a, i) => {
+        const miles = Number(athleteMiles[a.id] || 0).toFixed(2);
+        return `${i + 1}. ${a.firstName} ${a.lastName} — ${miles} mi`;
+      });
+    }
 
     const message = [
-      `${school?.name || 'Team'} Leaderboard — ${period}`,
+      `${school?.name || 'Team'} Leaderboard${groupName ? ' — ' + groupName : ''} — ${period}`,
       '',
       ...lines,
       '',
@@ -424,6 +459,13 @@ export default function CoachDashboard({ userData }) {
   };
 
   // ── Sub-screen routing ────────────────────────────────────────────────────
+  if (groupManagerVisible) {
+    return <GroupManager
+      schoolId={userData.schoolId}
+      athletes={athletes}
+      onClose={() => { setGroupManagerVisible(false); loadDashboard(); }}
+    />;
+  }
   if (profileVisible) {
     return <CoachProfile
       userData={userData}
@@ -569,7 +611,14 @@ export default function CoachDashboard({ userData }) {
   const activeSeason  = getActiveSeason(school);
   const currentPhase  = activeSeason ? getPhaseForSeason(activeSeason) : getPhaseForSeason(null);
   const alertCount    = Object.values(overtTrainingAlerts).filter(a => a.alert).length;
-  const filteredAthletes = athletes.filter(a => genderFilter === 'all' || a.gender === genderFilter);
+  const filteredAthletes = athletes.filter(a => {
+    if (genderFilter !== 'all' && a.gender !== genderFilter) return false;
+    if (groupFilter !== 'all' && groupFilter !== 'bygroup') {
+      if (groupFilter === 'unassigned') return !a.groupId;
+      if (a.groupId !== groupFilter) return false;
+    }
+    return true;
+  });
 
   const teamWeeklyMiles = Math.round(
     filteredAthletes.reduce((s, a) => s + (athleteWeeklyMiles[a.id] || 0), 0) * 10
@@ -577,6 +626,51 @@ export default function CoachDashboard({ userData }) {
   const teamPeriodMiles = Math.round(
     filteredAthletes.reduce((s, a) => s + (athleteMiles[a.id] || 0), 0) * 10
   ) / 10;
+
+  const renderAthleteCard = (athlete, index) => {
+    const overtrain   = overtTrainingAlerts[athlete.id];
+    const hasAlert    = overtrain?.alert;
+    const weekMiles   = athleteWeeklyMiles[athlete.id] || 0;
+    const avg3        = athlete3WeekAvg[athlete.id] || 0;
+    const mileageHigh = avg3 > 0 && weekMiles > avg3 * 1.20;
+    const zonePct     = athleteZonePct[athlete.id];
+    const hasZoneData = zonePct !== undefined;
+    const zoneLow     = hasZoneData && zonePct !== null && zonePct < 70;
+    const line1 = `Wk: ${weekMiles} mi${avg3 > 0 ? ` (avg ${avg3})` : ''}${mileageHigh ? '  ↑' : ''}`;
+    const line2 = hasZoneData && zonePct !== null ? `Z1+2: ${zonePct}%${zoneLow ? '  ⚠' : ''}` : null;
+
+    return (
+      <TouchableOpacity
+        key={athlete.id}
+        style={[styles.athleteCard, hasAlert && styles.athleteCardAlert]}
+        onPress={() => setSelectedAthlete(athlete)}
+      >
+        <View style={styles.athleteCardTop}>
+          <Text style={styles.rankNum}>#{index + 1}</Text>
+          <View style={[styles.avatar, { backgroundColor: hasAlert ? '#ef4444' : primaryColor }]}>
+            <Text style={styles.avatarText}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
+          </View>
+          <View style={styles.athleteInfo}>
+            <Text style={styles.athleteName}>{athlete.firstName} {athlete.lastName}</Text>
+            {hasAlert
+              ? <Text style={styles.alertText}>⚠️ {overtrain.signals[0]}</Text>
+              : <>
+                  <Text style={styles.athleteSub}>{line1}</Text>
+                  {line2 && <Text style={styles.athleteSub}>{line2}</Text>}
+                </>
+            }
+          </View>
+          <View style={styles.milesBox}>
+            <Text style={[styles.milesNum, { color: hasAlert ? '#ef4444' : primaryColor }]}>
+              {athleteMiles[athlete.id] ?? '—'}
+            </Text>
+            <Text style={styles.milesLabel}>miles</Text>
+          </View>
+          <Text style={styles.chevron}>›</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -665,6 +759,22 @@ export default function CoachDashboard({ userData }) {
               ))}
             </View>
 
+            {groups.length > 0 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.groupFilterRow}>
+                {[{ id: 'all', name: 'All' }, { id: 'bygroup', name: 'By Group' }, ...groups, { id: 'unassigned', name: 'Unassigned' }].map(g => (
+                  <TouchableOpacity
+                    key={g.id}
+                    style={[styles.groupFilterBtn, groupFilter === g.id && { backgroundColor: primaryColor, borderColor: primaryColor }]}
+                    onPress={() => setGroupFilter(g.id)}
+                  >
+                    <Text style={[styles.groupFilterBtnText, groupFilter === g.id && { color: '#fff' }]}>
+                      {g.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+
             <View style={styles.timeframeRow}>
               <View style={{ flex: 1 }}>
                 <TimeframePicker
@@ -674,6 +784,9 @@ export default function CoachDashboard({ userData }) {
                   primaryColor={primaryColor}
                 />
               </View>
+              <TouchableOpacity style={[styles.shareBtn, { borderColor: primaryColor }]} onPress={() => setGroupManagerVisible(true)}>
+                <Text style={[styles.shareBtnText, { color: primaryColor }]}>Groups</Text>
+              </TouchableOpacity>
               <TouchableOpacity style={[styles.shareBtn, { borderColor: primaryColor }]} onPress={handleShareLeaderboard}>
                 <Text style={[styles.shareBtnText, { color: primaryColor }]}>Share</Text>
               </TouchableOpacity>
@@ -684,57 +797,29 @@ export default function CoachDashboard({ userData }) {
                 <Text style={styles.emptyText}>No approved athletes yet.</Text>
                 <Text style={styles.emptySubText}>Share join code: {school?.joinCode}</Text>
               </View>
-            ) : [...filteredAthletes]
+            ) : groupFilter === 'bygroup' ? (
+              // ── By Group view: athletes grouped under headers ──
+              [...groups, { id: null, name: 'Unassigned' }].map(group => {
+                const groupAthletes = athletes
+                  .filter(a => group.id ? a.groupId === group.id : !a.groupId)
+                  .filter(a => genderFilter === 'all' || a.gender === genderFilter)
+                  .sort((a, b) => (athleteMiles[b.id] || 0) - (athleteMiles[a.id] || 0));
+                if (groupAthletes.length === 0) return null;
+                return (
+                  <View key={group.id || 'unassigned'} style={styles.groupSection}>
+                    <Text style={[styles.groupHeader, group.id && { color: primaryColor }]}>
+                      {group.name}{group.weeklyMilesTarget ? ` · ${group.weeklyMilesTarget} mi/wk target` : ''}
+                    </Text>
+                    {groupAthletes.map((athlete, index) => renderAthleteCard(athlete, index))}
+                  </View>
+                );
+              })
+            ) : (
+              // ── Flat sorted view ──
+              [...filteredAthletes]
                 .sort((a, b) => (athleteMiles[b.id] || 0) - (athleteMiles[a.id] || 0))
-                .map((athlete, index) => {
-                  const overtrain   = overtTrainingAlerts[athlete.id];
-                  const hasAlert    = overtrain?.alert;
-                  const weekMiles   = athleteWeeklyMiles[athlete.id] || 0;
-                  const avg3        = athlete3WeekAvg[athlete.id] || 0;
-                  const mileageHigh = avg3 > 0 && weekMiles > avg3 * 1.20;
-                  const zonePct     = athleteZonePct[athlete.id];
-                  const hasZoneData = zonePct !== undefined;
-                  const zoneLow     = hasZoneData && zonePct !== null && zonePct < 70;
-
-                  // Build compact stat lines
-                  const line1 = `Wk: ${weekMiles} mi${avg3 > 0 ? ` (avg ${avg3})` : ''}${mileageHigh ? '  ↑' : ''}`;
-                  const line2 = hasZoneData && zonePct !== null
-                    ? `Z1+2: ${zonePct}%${zoneLow ? '  ⚠' : ''}`
-                    : null;
-
-                  return (
-                    <TouchableOpacity
-                      key={athlete.id}
-                      style={[styles.athleteCard, hasAlert && styles.athleteCardAlert]}
-                      onPress={() => setSelectedAthlete(athlete)}
-                    >
-                      <View style={styles.athleteCardTop}>
-                        <Text style={styles.rankNum}>#{index + 1}</Text>
-                        <View style={[styles.avatar, { backgroundColor: hasAlert ? '#ef4444' : primaryColor }]}>
-                          <Text style={styles.avatarText}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
-                        </View>
-                        <View style={styles.athleteInfo}>
-                          <Text style={styles.athleteName}>{athlete.firstName} {athlete.lastName}</Text>
-                          {hasAlert
-                            ? <Text style={styles.alertText}>⚠️ {overtrain.signals[0]}</Text>
-                            : <>
-                                <Text style={styles.athleteSub}>{line1}</Text>
-                                {line2 && <Text style={styles.athleteSub}>{line2}</Text>}
-                              </>
-                          }
-                        </View>
-                        <View style={styles.milesBox}>
-                          <Text style={[styles.milesNum, { color: hasAlert ? '#ef4444' : primaryColor }]}>
-                            {athleteMiles[athlete.id] ?? '—'}
-                          </Text>
-                          <Text style={styles.milesLabel}>miles</Text>
-                        </View>
-                        <Text style={styles.chevron}>›</Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })
-            }
+                .map((athlete, index) => renderAthleteCard(athlete, index))
+            )}
 
             {/* Overtraining alerts */}
             {filteredAthletes.some(a => overtTrainingAlerts[a.id]?.alert) && (
@@ -901,6 +986,11 @@ export default function CoachDashboard({ userData }) {
 }
 
 const styles = StyleSheet.create({
+  groupSection:         { marginBottom: 16 },
+  groupHeader:          { fontSize: 15, fontWeight: '700', color: '#555', marginBottom: 8, marginTop: 4 },
+  groupFilterRow:       { flexDirection: 'row', marginBottom: 10, maxHeight: 36 },
+  groupFilterBtn:       { borderRadius: 8, borderWidth: 1.5, borderColor: '#ddd', paddingHorizontal: 12, paddingVertical: 6, marginRight: 6, backgroundColor: '#fff' },
+  groupFilterBtnText:   { fontSize: 13, fontWeight: '600', color: '#666' },
   timeframeRow:         { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 0 },
   shareBtn:             { borderRadius: 10, borderWidth: 1.5, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#fff' },
   shareBtnText:         { fontSize: 15, fontWeight: '600' },
