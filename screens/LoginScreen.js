@@ -1,9 +1,9 @@
+import { Ionicons } from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { createUserWithEmailAndPassword, sendPasswordResetEmail, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert, KeyboardAvoidingView, Platform,
   ScrollView,
   StyleSheet,
@@ -11,6 +11,11 @@ import {
   View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
+import Button from '../components/Button';
+import {
+  BRAND, BRAND_ACCENT, BRAND_DARK, BRAND_LIGHT,
+  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
+} from '../constants/design';
 
 const ROLES = [
   { key: 'admin_coach', label: 'Head Coach', description: 'Set up and manage your program' },
@@ -57,7 +62,6 @@ export default function LoginScreen({ onAuthSuccess }) {
     }
   };
 
-  // Calculate age from birthdate fields
   const calculateAge = () => {
     if (!birthYear || !birthMonth || !birthDay) return null;
     const today = new Date();
@@ -68,7 +72,6 @@ export default function LoginScreen({ onAuthSuccess }) {
     return age;
   };
 
-  // Validate age requirements
   const validateAge = () => {
     if (role !== 'athlete') return { valid: true };
     const age = calculateAge();
@@ -94,7 +97,6 @@ export default function LoginScreen({ onAuthSuccess }) {
           return;
         }
 
-        // Validate age for athletes
         const ageCheck = validateAge();
         if (!ageCheck.valid) {
           Alert.alert('Age Verification', ageCheck.message);
@@ -106,7 +108,6 @@ export default function LoginScreen({ onAuthSuccess }) {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
 
-        // Build user document
         const userData = {
           firstName,
           lastName,
@@ -119,7 +120,6 @@ export default function LoginScreen({ onAuthSuccess }) {
           status: role === 'admin_coach' ? 'approved' : 'pending',
         };
 
-        // Add age and parent info for athletes
         if (role === 'athlete') {
           userData.birthdate = `${birthYear}-${birthMonth}-${birthDay}`;
           userData.age = age;
@@ -130,7 +130,6 @@ export default function LoginScreen({ onAuthSuccess }) {
 
         await setDoc(doc(db, 'users', user.uid), userData);
 
-        // If minor athlete, send parent consent notification (placeholder)
         if (role === 'athlete' && age < 18) {
           Alert.alert(
             'Parent Consent Required',
@@ -138,7 +137,6 @@ export default function LoginScreen({ onAuthSuccess }) {
           );
         }
 
-        // Notify parent to call onAuthSuccess with role info
         if (onAuthSuccess) onAuthSuccess({ uid: user.uid, role, status: userData.status });
 
       } else {
@@ -171,7 +169,7 @@ export default function LoginScreen({ onAuthSuccess }) {
         { text: 'Send reset link', onPress: async () => {
           try {
             await sendPasswordResetEmail(auth, email);
-            Alert.alert('Email sent ✅', `Check ${email} for a password reset link. Check your spam folder if you don't see it.`);
+            Alert.alert('Email sent', `Check ${email} for a password reset link. Check your spam folder if you don't see it.`);
           } catch (error) {
             if (error.code === 'auth/user-not-found') {
               Alert.alert('Not found', 'No account found with that email address.');
@@ -232,7 +230,7 @@ export default function LoginScreen({ onAuthSuccess }) {
             <TextInput
               style={[styles.input, styles.halfInput]}
               placeholder="First name"
-              placeholderTextColor="#999"
+              placeholderTextColor={NEUTRAL.muted}
               value={firstName}
               onChangeText={setFirstName}
               autoCapitalize="words"
@@ -240,7 +238,7 @@ export default function LoginScreen({ onAuthSuccess }) {
             <TextInput
               style={[styles.input, styles.halfInput]}
               placeholder="Last name"
-              placeholderTextColor="#999"
+              placeholderTextColor={NEUTRAL.muted}
               value={lastName}
               onChangeText={setLastName}
               autoCapitalize="words"
@@ -252,7 +250,7 @@ export default function LoginScreen({ onAuthSuccess }) {
         <TextInput
           style={styles.input}
           placeholder="Email address"
-          placeholderTextColor="#999"
+          placeholderTextColor={NEUTRAL.muted}
           value={email}
           onChangeText={setEmail}
           keyboardType="email-address"
@@ -260,12 +258,12 @@ export default function LoginScreen({ onAuthSuccess }) {
           autoCorrect={false}
         />
 
-        {/* Password with show/hide eye */}
+        {/* Password with show/hide */}
         <View style={styles.passwordRow}>
           <TextInput
             style={styles.passwordInput}
             placeholder="Password"
-            placeholderTextColor="#999"
+            placeholderTextColor={NEUTRAL.muted}
             value={password}
             onChangeText={setPassword}
             secureTextEntry={!showPassword}
@@ -276,11 +274,11 @@ export default function LoginScreen({ onAuthSuccess }) {
             style={styles.eyeBtn}
             onPress={() => setShowPassword(v => !v)}
           >
-            <Text style={styles.eyeIcon}>{showPassword ? '🙈' : '👁️'}</Text>
+            <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={22} color={NEUTRAL.body} />
           </TouchableOpacity>
         </View>
 
-        {/* Forgot password — only show on sign in */}
+        {/* Forgot password */}
         {!isSignUp && (
           <TouchableOpacity style={styles.forgotBtn} onPress={handleForgotPassword}>
             <Text style={styles.forgotText}>Forgot password?</Text>
@@ -291,16 +289,14 @@ export default function LoginScreen({ onAuthSuccess }) {
         {isSignUp && role === 'athlete' && (
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>I compete on the:</Text>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={styles.row}>
               {['boys', 'girls'].map(g => (
                 <TouchableOpacity
                   key={g}
-                  style={[styles.roleCard, { flex: 1, padding: 14, alignItems: 'center' },
-                    gender === g && { backgroundColor: '#2e7d32', borderColor: '#2e7d32' }]}
+                  style={[styles.genderCard, gender === g && styles.genderCardActive]}
                   onPress={() => setGender(g)}
                 >
-                  <Text style={[{ fontSize: 16, fontWeight: '700', color: '#444' },
-                    gender === g && { color: '#fff' }]}>
+                  <Text style={[styles.genderText, gender === g && styles.genderTextActive]}>
                     {g === 'boys' ? 'Boys team' : 'Girls team'}
                   </Text>
                 </TouchableOpacity>
@@ -317,7 +313,7 @@ export default function LoginScreen({ onAuthSuccess }) {
               <TextInput
                 style={[styles.input, styles.thirdInput]}
                 placeholder="MM"
-                placeholderTextColor="#999"
+                placeholderTextColor={NEUTRAL.muted}
                 value={birthMonth}
                 onChangeText={setBirthMonth}
                 keyboardType="numeric"
@@ -326,7 +322,7 @@ export default function LoginScreen({ onAuthSuccess }) {
               <TextInput
                 style={[styles.input, styles.thirdInput]}
                 placeholder="DD"
-                placeholderTextColor="#999"
+                placeholderTextColor={NEUTRAL.muted}
                 value={birthDay}
                 onChangeText={setBirthDay}
                 keyboardType="numeric"
@@ -335,7 +331,7 @@ export default function LoginScreen({ onAuthSuccess }) {
               <TextInput
                 style={[styles.input, styles.thirdInput]}
                 placeholder="YYYY"
-                placeholderTextColor="#999"
+                placeholderTextColor={NEUTRAL.muted}
                 value={birthYear}
                 onChangeText={setBirthYear}
                 keyboardType="numeric"
@@ -359,7 +355,7 @@ export default function LoginScreen({ onAuthSuccess }) {
             <TextInput
               style={styles.input}
               placeholder="parent@email.com"
-              placeholderTextColor="#999"
+              placeholderTextColor={NEUTRAL.muted}
               value={parentEmail}
               onChangeText={setParentEmail}
               keyboardType="email-address"
@@ -372,27 +368,23 @@ export default function LoginScreen({ onAuthSuccess }) {
         )}
 
         {/* Sign In / Sign Up button */}
-        <TouchableOpacity
-          style={styles.primaryButton}
+        <Button
+          label={isSignUp ? 'Create Account' : 'Sign In'}
           onPress={handleEmailAuth}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.primaryButtonText}>
-              {isSignUp ? 'Create Account' : 'Sign In'}
-            </Text>
-          )}
-        </TouchableOpacity>
+          loading={loading}
+          size="lg"
+          style={{ marginTop: SPACE.sm }}
+        />
 
         {/* Face ID button */}
         {biometricAvailable && !isSignUp && (
-          <TouchableOpacity style={styles.biometricButton} onPress={handleBiometricLogin}>
-            <Text style={styles.biometricButtonText}>
-              Sign in with Face ID / Fingerprint
-            </Text>
-          </TouchableOpacity>
+          <Button
+            label="Sign in with Face ID / Fingerprint"
+            variant="secondary"
+            onPress={handleBiometricLogin}
+            size="lg"
+            style={{ marginTop: SPACE.md }}
+          />
         )}
 
         {/* Toggle sign in / sign up */}
@@ -416,65 +408,65 @@ export default function LoginScreen({ onAuthSuccess }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  scrollContent: { padding: 24, paddingBottom: 48 },
-  header: { alignItems: 'center', marginBottom: 32, marginTop: 40 },
-  title: { fontSize: 36, fontWeight: 'bold', color: '#2e7d32' },
-  subtitle: { fontSize: 16, color: '#666', marginTop: 6 },
-  section: { width: '100%', marginBottom: 8 },
-  sectionLabel: { fontSize: 15, color: '#333', fontWeight: '600', marginBottom: 10 },
-  row: { flexDirection: 'row', gap: 10 },
+  container:        { flex: 1, backgroundColor: NEUTRAL.bg },
+  scrollContent:    { padding: SPACE['2xl'], paddingBottom: SPACE['4xl'] },
+  header:           { alignItems: 'center', marginBottom: SPACE['3xl'], marginTop: SPACE['4xl'] },
+  title:            { fontSize: FONT_SIZE['3xl'], fontWeight: FONT_WEIGHT.bold, color: BRAND },
+  subtitle:         { fontSize: FONT_SIZE.md, color: NEUTRAL.body, marginTop: SPACE.sm },
+  section:          { width: '100%', marginBottom: SPACE.sm },
+  sectionLabel:     { fontSize: FONT_SIZE.base, color: BRAND_DARK, fontWeight: FONT_WEIGHT.semibold, marginBottom: SPACE.md },
+  row:              { flexDirection: 'row', gap: SPACE.md },
   input: {
-    width: '100%', backgroundColor: '#fff', borderRadius: 10,
-    padding: 16, fontSize: 16, marginBottom: 12,
-    borderWidth: 1, borderColor: '#ddd', color: '#333',
+    width: '100%', backgroundColor: NEUTRAL.card, borderRadius: RADIUS.md,
+    padding: SPACE.lg, fontSize: FONT_SIZE.md, marginBottom: SPACE.md,
+    borderWidth: 1, borderColor: NEUTRAL.input, color: BRAND_DARK,
   },
-  halfInput: { flex: 1, width: undefined },
-  thirdInput: { flex: 1, width: undefined },
+  halfInput:        { flex: 1, width: undefined },
+  thirdInput:       { flex: 1, width: undefined },
   roleCard: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
-    borderRadius: 10, padding: 14, marginBottom: 10,
-    borderWidth: 2, borderColor: '#ddd',
+    flexDirection: 'row', alignItems: 'center', backgroundColor: NEUTRAL.card,
+    borderRadius: RADIUS.md, padding: SPACE.lg - 2, marginBottom: SPACE.md,
+    borderWidth: 2, borderColor: NEUTRAL.border,
   },
-  roleCardActive: { borderColor: '#2e7d32', backgroundColor: '#f0faf0' },
-  roleCardInner: { flex: 1 },
-  roleCardTitle: { fontSize: 16, fontWeight: '600', color: '#333' },
-  roleCardTitleActive: { color: '#2e7d32' },
-  roleCardDesc: { fontSize: 13, color: '#999', marginTop: 2 },
-  roleCardDescActive: { color: '#4caf50' },
+  roleCardActive:      { borderColor: BRAND, backgroundColor: BRAND_LIGHT },
+  roleCardInner:       { flex: 1 },
+  roleCardTitle:       { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.semibold, color: BRAND_DARK },
+  roleCardTitleActive: { color: BRAND },
+  roleCardDesc:        { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted, marginTop: 2 },
+  roleCardDescActive:  { color: BRAND_ACCENT },
   radioCircle: {
     width: 22, height: 22, borderRadius: 11,
-    borderWidth: 2, borderColor: '#ddd',
+    borderWidth: 2, borderColor: NEUTRAL.input,
     alignItems: 'center', justifyContent: 'center',
   },
-  radioCircleActive: { borderColor: '#2e7d32' },
-  radioInner: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#2e7d32' },
+  radioCircleActive:   { borderColor: BRAND },
+  radioInner:          { width: 12, height: 12, borderRadius: 6, backgroundColor: BRAND },
+  genderCard: {
+    flex: 1, alignItems: 'center', backgroundColor: NEUTRAL.card,
+    borderRadius: RADIUS.md, padding: SPACE.lg - 2,
+    borderWidth: 2, borderColor: NEUTRAL.border,
+  },
+  genderCardActive:    { backgroundColor: BRAND, borderColor: BRAND },
+  genderText:          { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold, color: NEUTRAL.label },
+  genderTextActive:    { color: '#fff' },
   minorNotice: {
-    backgroundColor: '#fff8e1', borderRadius: 8, padding: 10,
-    borderLeftWidth: 4, borderLeftColor: '#f59e0b', marginTop: 4, marginBottom: 8,
+    backgroundColor: STATUS.warningBg, borderRadius: RADIUS.sm, padding: SPACE.md,
+    borderLeftWidth: 4, borderLeftColor: STATUS.warning, marginTop: SPACE.xs, marginBottom: SPACE.sm,
   },
-  minorNoticeText: { color: '#92400e', fontSize: 13 },
-  primaryButton: {
-    backgroundColor: '#2e7d32', borderRadius: 10, padding: 16,
-    alignItems: 'center', marginTop: 8,
+  minorNoticeText:     { color: '#92400e', fontSize: FONT_SIZE.sm },
+  passwordRow: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: NEUTRAL.card,
+    borderRadius: RADIUS.md, borderWidth: 1, borderColor: NEUTRAL.input, marginBottom: SPACE.md,
   },
-  primaryButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  biometricButton: {
-    backgroundColor: '#fff', borderRadius: 10, padding: 16,
-    alignItems: 'center', marginTop: 12, borderWidth: 2, borderColor: '#2e7d32',
-  },
-  biometricButtonText: { color: '#2e7d32', fontSize: 16, fontWeight: '600' },
-  toggleButton: { marginTop: 20, alignItems: 'center' },
-  toggleText: { color: '#2e7d32', fontSize: 15 },
-  passwordRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 10, borderWidth: 1, borderColor: '#ddd', marginBottom: 12 },
-  passwordInput: { flex: 1, padding: 14, fontSize: 16, color: '#333' },
-  eyeBtn: { paddingHorizontal: 14, paddingVertical: 14 },
-  eyeIcon: { fontSize: 18 },
-  forgotBtn: { alignSelf: 'flex-end', marginTop: -6, marginBottom: 12 },
-  forgotText: { color: '#2e7d32', fontSize: 14, fontWeight: '600' },
-  helperText: { fontSize: 12, color: '#666', marginTop: 4, marginBottom: 8 },
+  passwordInput:       { flex: 1, padding: SPACE.lg - 2, fontSize: FONT_SIZE.md, color: BRAND_DARK },
+  eyeBtn:              { paddingHorizontal: SPACE.lg, paddingVertical: SPACE.lg - 2 },
+  forgotBtn:           { alignSelf: 'flex-end', marginTop: -SPACE.sm, marginBottom: SPACE.md },
+  forgotText:          { color: BRAND, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold },
+  helperText:          { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: SPACE.xs, marginBottom: SPACE.sm },
+  toggleButton:        { marginTop: SPACE.xl, alignItems: 'center' },
+  toggleText:          { color: BRAND, fontSize: FONT_SIZE.base },
   privacyText: {
-    fontSize: 11, color: '#999', textAlign: 'center',
-    marginTop: 20, lineHeight: 16,
+    fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, textAlign: 'center',
+    marginTop: SPACE.xl, lineHeight: 16,
   },
 });

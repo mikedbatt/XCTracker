@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import {
     addDoc,
     collection,
@@ -11,6 +12,7 @@ import {
     where,
 } from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
+
 import {
     ActivityIndicator,
     Alert,
@@ -24,6 +26,7 @@ import {
     View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
+import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SPACE } from '../constants/design';
 
 export default function TeamFeed({ userData, school, onClose }) {
   const [posts,       setPosts]       = useState([]);
@@ -185,9 +188,10 @@ export default function TeamFeed({ userData, school, onClose }) {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: primaryColor }]}>
+      <View style={styles.header}>
         <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-          <Text style={styles.backText}>‹ Back</Text>
+          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+          <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Team Feed</Text>
@@ -277,12 +281,12 @@ export default function TeamFeed({ userData, school, onClose }) {
 const styles = StyleSheet.create({
   container:         { flex: 1, backgroundColor: '#f5f5f5' },
   center:            { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header:            { paddingTop: 60, paddingBottom: 14, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  backBtn:           { paddingVertical: 6, paddingHorizontal: 10 },
-  backText:          { color: '#fff', fontSize: 17, fontWeight: '600' },
+  header:            { backgroundColor: NEUTRAL.card, paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 14, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
+  backBtn:           { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6 },
+  backText:          { color: BRAND_DARK, fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.semibold },
   headerCenter:      { alignItems: 'center' },
-  headerTitle:       { fontSize: 20, fontWeight: 'bold', color: '#fff' },
-  headerSub:         { fontSize: 12, color: 'rgba(255,255,255,0.75)', marginTop: 1 },
+  headerTitle:       { fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  headerSub:         { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: 1 },
   listContent:       { padding: 16, paddingBottom: 8 },
   moderationNote:    { backgroundColor: '#fff3e0', borderRadius: 10, padding: 10, marginBottom: 12 },
   moderationText:    { fontSize: 12, color: '#e65100', textAlign: 'center' },

@@ -16,6 +16,12 @@ import {
     View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
+import Button from '../components/Button';
+import Card from '../components/Card';
+import {
+  BRAND, BRAND_ACCENT, BRAND_DARK, BRAND_LIGHT,
+  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE,
+} from '../constants/design';
 
 export default function AthleteJoinScreen({ onJoinComplete }) {
   const [joinCode, setJoinCode] = useState('');
@@ -24,9 +30,8 @@ export default function AthleteJoinScreen({ onJoinComplete }) {
   const [selectedSchool, setSelectedSchool] = useState(null);
   const [loading, setLoading] = useState(false);
   const [searching, setSearching] = useState(false);
-  const [activeTab, setActiveTab] = useState('code'); // 'code' or 'search'
+  const [activeTab, setActiveTab] = useState('code');
 
-  // Search schools by name
   const handleSearch = async () => {
     if (!searchQuery || searchQuery.length < 3) {
       Alert.alert('Search', 'Please enter at least 3 characters to search.');
@@ -53,7 +58,6 @@ export default function AthleteJoinScreen({ onJoinComplete }) {
     setSearching(false);
   };
 
-  // Join by code
   const handleJoinByCode = async () => {
     if (!joinCode || joinCode.length < 6) {
       Alert.alert('Invalid code', 'Please enter the 6-character join code from your coach.');
@@ -77,20 +81,17 @@ export default function AthleteJoinScreen({ onJoinComplete }) {
     setLoading(false);
   };
 
-  // Send join request to a school
   const handleRequestToJoin = async (school) => {
     setLoading(true);
     try {
       const user = auth.currentUser;
 
-      // Update athlete's user document
       await updateDoc(doc(db, 'users', user.uid), {
         schoolId: school.id,
         status: 'pending',
         requestedAt: new Date(),
       });
 
-      // Add athlete to school's pending list
       await updateDoc(doc(db, 'schools', school.id), {
         pendingAthleteIds: arrayUnion(user.uid),
       });
@@ -143,17 +144,13 @@ export default function AthleteJoinScreen({ onJoinComplete }) {
           <TextInput
             style={[styles.input, styles.codeInput]}
             placeholder="Enter code (e.g. BHS2025)"
-            placeholderTextColor="#999"
+            placeholderTextColor={NEUTRAL.muted}
             value={joinCode}
             onChangeText={setJoinCode}
             autoCapitalize="characters"
             maxLength={8}
           />
-          <TouchableOpacity style={styles.primaryButton} onPress={handleJoinByCode} disabled={loading}>
-            {loading ? <ActivityIndicator color="#fff" /> : (
-              <Text style={styles.primaryButtonText}>Find My School</Text>
-            )}
-          </TouchableOpacity>
+          <Button label="Find My School" onPress={handleJoinByCode} loading={loading} size="lg" />
         </View>
       )}
 
@@ -167,7 +164,7 @@ export default function AthleteJoinScreen({ onJoinComplete }) {
             <TextInput
               style={[styles.input, styles.searchInput]}
               placeholder="School name..."
-              placeholderTextColor="#999"
+              placeholderTextColor={NEUTRAL.muted}
               value={searchQuery}
               onChangeText={setSearchQuery}
               autoCapitalize="words"
@@ -179,7 +176,6 @@ export default function AthleteJoinScreen({ onJoinComplete }) {
             </TouchableOpacity>
           </View>
 
-          {/* Search results */}
           {searchResults.map((school) => (
             <SchoolCard
               key={school.id}
@@ -215,76 +211,59 @@ export default function AthleteJoinScreen({ onJoinComplete }) {
   );
 }
 
-// School card component
 function SchoolCard({ school, onJoin, loading }) {
   return (
-    <View style={styles.schoolCard}>
+    <Card style={styles.schoolCard}>
       <View style={styles.schoolColorBar}>
-        <View style={[styles.colorDot, { backgroundColor: school.primaryColor || '#2e7d32' }]} />
-        <View style={[styles.colorDot, { backgroundColor: school.secondaryColor || '#fff', borderWidth: 1, borderColor: '#ddd' }]} />
+        <View style={[styles.colorDot, { backgroundColor: school.primaryColor || BRAND }]} />
+        <View style={[styles.colorDot, { backgroundColor: school.secondaryColor || '#fff', borderWidth: 1, borderColor: NEUTRAL.border }]} />
       </View>
       <View style={styles.schoolInfo}>
         <Text style={styles.schoolName}>{school.name}</Text>
         {school.mascot ? <Text style={styles.schoolMascot}>{school.mascot}</Text> : null}
         <Text style={styles.schoolLocation}>{school.city}, {school.state}</Text>
       </View>
-      <TouchableOpacity style={styles.joinButton} onPress={onJoin} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" size="small" /> : (
-          <Text style={styles.joinButtonText}>Request to Join</Text>
-        )}
-      </TouchableOpacity>
-    </View>
+      <Button label="Request to Join" onPress={onJoin} loading={loading} size="sm" />
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  content: { padding: 24, paddingBottom: 48 },
-  header: { marginBottom: 24, marginTop: 20 },
-  title: { fontSize: 26, fontWeight: 'bold', color: '#2e7d32' },
-  subtitle: { fontSize: 15, color: '#666', marginTop: 6 },
+  container:     { flex: 1, backgroundColor: NEUTRAL.bg },
+  content:       { padding: SPACE['2xl'], paddingBottom: SPACE['4xl'] },
+  header:        { marginBottom: SPACE['2xl'], marginTop: SPACE.xl },
+  title:         { fontSize: 26, fontWeight: FONT_WEIGHT.bold, color: BRAND },
+  subtitle:      { fontSize: FONT_SIZE.base, color: NEUTRAL.body, marginTop: SPACE.sm },
   tabs: {
-    flexDirection: 'row', backgroundColor: '#e0e0e0',
-    borderRadius: 10, padding: 4, marginBottom: 24,
+    flexDirection: 'row', backgroundColor: NEUTRAL.border,
+    borderRadius: RADIUS.md, padding: SPACE.xs, marginBottom: SPACE['2xl'],
   },
-  tab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8 },
-  tabActive: { backgroundColor: '#fff' },
-  tabText: { fontSize: 15, color: '#666', fontWeight: '500' },
-  tabTextActive: { color: '#2e7d32', fontWeight: '700' },
-  section: { marginBottom: 16 },
-  sectionLabel: { fontSize: 15, fontWeight: '600', color: '#333', marginBottom: 10 },
-  sectionDesc: { fontSize: 14, color: '#666', marginBottom: 14, lineHeight: 20 },
+  tab:           { flex: 1, paddingVertical: SPACE.md, alignItems: 'center', borderRadius: RADIUS.sm },
+  tabActive:     { backgroundColor: NEUTRAL.card },
+  tabText:       { fontSize: FONT_SIZE.base, color: NEUTRAL.body, fontWeight: FONT_WEIGHT.medium },
+  tabTextActive: { color: BRAND, fontWeight: FONT_WEIGHT.bold },
+  section:       { marginBottom: SPACE.lg },
+  sectionLabel:  { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.semibold, color: BRAND_DARK, marginBottom: SPACE.md },
+  sectionDesc:   { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginBottom: SPACE.lg - 2, lineHeight: 20 },
   input: {
-    backgroundColor: '#fff', borderRadius: 10, padding: 14,
-    fontSize: 16, marginBottom: 12, borderWidth: 1, borderColor: '#ddd', color: '#333',
+    backgroundColor: NEUTRAL.card, borderRadius: RADIUS.md, padding: SPACE.lg - 2,
+    fontSize: FONT_SIZE.md, marginBottom: SPACE.md, borderWidth: 1, borderColor: NEUTRAL.input, color: BRAND_DARK,
   },
-  codeInput: { textAlign: 'center', fontSize: 22, fontWeight: '700', letterSpacing: 4 },
-  searchRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
-  searchInput: { flex: 1, marginBottom: 0 },
+  codeInput:     { textAlign: 'center', fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.bold, letterSpacing: 4 },
+  searchRow:     { flexDirection: 'row', gap: SPACE.md, marginBottom: SPACE.md },
+  searchInput:   { flex: 1, marginBottom: 0 },
   searchButton: {
-    backgroundColor: '#2e7d32', borderRadius: 10,
-    paddingHorizontal: 16, justifyContent: 'center',
+    backgroundColor: BRAND, borderRadius: RADIUS.md,
+    paddingHorizontal: SPACE.lg, justifyContent: 'center',
   },
-  searchButtonText: { color: '#fff', fontWeight: '700' },
-  primaryButton: {
-    backgroundColor: '#2e7d32', borderRadius: 10, padding: 16, alignItems: 'center',
-  },
-  primaryButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  schoolCard: {
-    backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 12,
-    borderWidth: 1, borderColor: '#ddd', flexDirection: 'row', alignItems: 'center', gap: 12,
-  },
-  schoolColorBar: { flexDirection: 'column', gap: 4 },
-  colorDot: { width: 20, height: 20, borderRadius: 10 },
-  schoolInfo: { flex: 1 },
-  schoolName: { fontSize: 16, fontWeight: '700', color: '#333' },
-  schoolMascot: { fontSize: 13, color: '#666', marginTop: 2 },
-  schoolLocation: { fontSize: 13, color: '#999', marginTop: 2 },
-  joinButton: {
-    backgroundColor: '#2e7d32', borderRadius: 8,
-    paddingHorizontal: 14, paddingVertical: 10,
-  },
-  joinButtonText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  skipButton: { marginTop: 20, alignItems: 'center' },
-  skipText: { color: '#999', fontSize: 14 },
+  searchButtonText: { color: '#fff', fontWeight: FONT_WEIGHT.bold },
+  schoolCard:    { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
+  schoolColorBar: { flexDirection: 'column', gap: SPACE.xs },
+  colorDot:      { width: 20, height: 20, borderRadius: RADIUS.full },
+  schoolInfo:    { flex: 1 },
+  schoolName:    { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  schoolMascot:  { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginTop: 2 },
+  schoolLocation: { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted, marginTop: 2 },
+  skipButton:    { marginTop: SPACE.xl, alignItems: 'center' },
+  skipText:      { color: NEUTRAL.muted, fontSize: FONT_SIZE.sm },
 });

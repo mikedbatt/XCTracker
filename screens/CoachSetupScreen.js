@@ -1,15 +1,18 @@
 import { doc, setDoc, updateDoc } from 'firebase/firestore';
 import React, { useState } from 'react';
 import {
-    ActivityIndicator,
     Alert, ScrollView,
     StyleSheet,
     Text, TextInput, TouchableOpacity,
     View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
+import Button from '../components/Button';
+import {
+  BRAND, BRAND_DARK, BRAND_LIGHT,
+  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SPACE, STATUS,
+} from '../constants/design';
 
-// Generate a random 6-character join code
 const generateJoinCode = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
@@ -58,7 +61,6 @@ export default function CoachSetupScreen({ onSetupComplete }) {
       const primaryColor = selectedColors.name === 'Custom' ? customPrimary : selectedColors.primary;
       const secondaryColor = selectedColors.name === 'Custom' ? customSecondary : selectedColors.secondary;
 
-      // Create the school document
       const schoolRef = doc(db, 'schools', `school_${user.uid}`);
       await setDoc(schoolRef, {
         name: schoolName,
@@ -75,7 +77,6 @@ export default function CoachSetupScreen({ onSetupComplete }) {
         athleteCount: 0,
       });
 
-      // Update the coach's user document with their school
       await updateDoc(doc(db, 'users', user.uid), {
         schoolId: `school_${user.uid}`,
         status: 'approved',
@@ -103,51 +104,48 @@ export default function CoachSetupScreen({ onSetupComplete }) {
         <Text style={styles.subtitle}>Tell us about your school so athletes can find you</Text>
       </View>
 
-      {/* School name */}
       <Text style={styles.label}>School name</Text>
       <TextInput
         style={styles.input}
         placeholder="e.g. Boise High School"
-        placeholderTextColor="#999"
+        placeholderTextColor={NEUTRAL.muted}
         value={schoolName}
         onChangeText={setSchoolName}
         autoCapitalize="words"
       />
 
-      {/* Mascot */}
       <Text style={styles.label}>Mascot (optional)</Text>
       <TextInput
         style={styles.input}
         placeholder="e.g. Braves, Eagles, Warriors"
-        placeholderTextColor="#999"
+        placeholderTextColor={NEUTRAL.muted}
         value={mascot}
         onChangeText={setMascot}
         autoCapitalize="words"
       />
-      {/* School logo URL */}
-<Text style={styles.label}>School logo URL (optional)</Text>
-<TextInput
-  style={styles.input}
-  placeholder="https://yourschool.edu/logo.png"
-  placeholderTextColor="#999"
-  value={logoUrl}
-  onChangeText={setLogoUrl}
-  autoCapitalize="none"
-  autoCorrect={false}
-  keyboardType="url"
-/>
-<Text style={styles.helperText}>
-  Right-click your school logo on your school website and copy the image URL
-</Text>
 
-      {/* Location */}
+      <Text style={styles.label}>School logo URL (optional)</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="https://yourschool.edu/logo.png"
+        placeholderTextColor={NEUTRAL.muted}
+        value={logoUrl}
+        onChangeText={setLogoUrl}
+        autoCapitalize="none"
+        autoCorrect={false}
+        keyboardType="url"
+      />
+      <Text style={styles.helperText}>
+        Right-click your school logo on your school website and copy the image URL
+      </Text>
+
       <View style={styles.row}>
         <View style={styles.flex}>
           <Text style={styles.label}>City</Text>
           <TextInput
             style={styles.input}
             placeholder="City"
-            placeholderTextColor="#999"
+            placeholderTextColor={NEUTRAL.muted}
             value={city}
             onChangeText={setCity}
             autoCapitalize="words"
@@ -158,7 +156,7 @@ export default function CoachSetupScreen({ onSetupComplete }) {
           <TextInput
             style={styles.input}
             placeholder="State"
-            placeholderTextColor="#999"
+            placeholderTextColor={NEUTRAL.muted}
             value={state}
             onChangeText={setState}
             autoCapitalize="characters"
@@ -167,7 +165,6 @@ export default function CoachSetupScreen({ onSetupComplete }) {
         </View>
       </View>
 
-      {/* School colors */}
       <Text style={styles.label}>School colors</Text>
       <View style={styles.colorsGrid}>
         {SCHOOL_COLORS.map((colorOption) => (
@@ -182,7 +179,7 @@ export default function CoachSetupScreen({ onSetupComplete }) {
             {colorOption.primary ? (
               <View style={styles.colorSwatches}>
                 <View style={[styles.swatch, { backgroundColor: colorOption.primary }]} />
-                <View style={[styles.swatch, { backgroundColor: colorOption.secondary, borderWidth: 1, borderColor: '#ddd' }]} />
+                <View style={[styles.swatch, { backgroundColor: colorOption.secondary, borderWidth: 1, borderColor: NEUTRAL.border }]} />
               </View>
             ) : (
               <Text style={styles.customLabel}>Custom</Text>
@@ -192,7 +189,6 @@ export default function CoachSetupScreen({ onSetupComplete }) {
         ))}
       </View>
 
-      {/* Custom color inputs */}
       {selectedColors?.name === 'Custom' && (
         <View style={styles.customColors}>
           <Text style={styles.helperText}>Enter hex color codes (e.g. #1a237e)</Text>
@@ -202,7 +198,7 @@ export default function CoachSetupScreen({ onSetupComplete }) {
               <TextInput
                 style={styles.input}
                 placeholder="#000000"
-                placeholderTextColor="#999"
+                placeholderTextColor={NEUTRAL.muted}
                 value={customPrimary}
                 onChangeText={setCustomPrimary}
                 autoCapitalize="none"
@@ -213,7 +209,7 @@ export default function CoachSetupScreen({ onSetupComplete }) {
               <TextInput
                 style={styles.input}
                 placeholder="#ffffff"
-                placeholderTextColor="#999"
+                placeholderTextColor={NEUTRAL.muted}
                 value={customSecondary}
                 onChangeText={setCustomSecondary}
                 autoCapitalize="none"
@@ -223,7 +219,6 @@ export default function CoachSetupScreen({ onSetupComplete }) {
         </View>
       )}
 
-      {/* Info box */}
       <View style={styles.infoBox}>
         <Text style={styles.infoTitle}>Your join code</Text>
         <Text style={styles.infoText}>
@@ -232,57 +227,47 @@ export default function CoachSetupScreen({ onSetupComplete }) {
         </Text>
       </View>
 
-      {/* Submit */}
-      <TouchableOpacity
-        style={styles.primaryButton}
+      <Button
+        label="Create My Program"
         onPress={handleCreateSchool}
-        disabled={loading}
-      >
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.primaryButtonText}>Create My Program</Text>
-        )}
-      </TouchableOpacity>
+        loading={loading}
+        size="lg"
+      />
 
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  content: { padding: 24, paddingBottom: 48 },
-  header: { marginBottom: 28, marginTop: 20 },
-  title: { fontSize: 26, fontWeight: 'bold', color: '#2e7d32' },
-  subtitle: { fontSize: 15, color: '#666', marginTop: 6 },
-  label: { fontSize: 14, fontWeight: '600', color: '#444', marginBottom: 6, marginTop: 4 },
+  container:     { flex: 1, backgroundColor: NEUTRAL.bg },
+  content:       { padding: SPACE['2xl'], paddingBottom: SPACE['4xl'] },
+  header:        { marginBottom: SPACE['2xl'], marginTop: SPACE.xl },
+  title:         { fontSize: 26, fontWeight: FONT_WEIGHT.bold, color: BRAND },
+  subtitle:      { fontSize: FONT_SIZE.base, color: NEUTRAL.body, marginTop: SPACE.sm },
+  label:         { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.label, marginBottom: SPACE.sm, marginTop: SPACE.xs },
   input: {
-    backgroundColor: '#fff', borderRadius: 10, padding: 14,
-    fontSize: 16, marginBottom: 14, borderWidth: 1, borderColor: '#ddd', color: '#333',
+    backgroundColor: NEUTRAL.card, borderRadius: RADIUS.md, padding: SPACE.lg - 2,
+    fontSize: FONT_SIZE.md, marginBottom: SPACE.lg - 2, borderWidth: 1, borderColor: NEUTRAL.input, color: BRAND_DARK,
   },
-  row: { flexDirection: 'row', gap: 12 },
-  flex: { flex: 1 },
-  stateField: { width: 80 },
-  colorsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
+  row:           { flexDirection: 'row', gap: SPACE.md },
+  flex:          { flex: 1 },
+  stateField:    { width: 80 },
+  colorsGrid:    { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.md, marginBottom: SPACE.lg },
   colorCard: {
-    width: '22%', backgroundColor: '#fff', borderRadius: 10,
-    padding: 10, alignItems: 'center', borderWidth: 2, borderColor: '#ddd',
+    width: '22%', backgroundColor: NEUTRAL.card, borderRadius: RADIUS.md,
+    padding: SPACE.md, alignItems: 'center', borderWidth: 2, borderColor: NEUTRAL.border,
   },
-  colorCardActive: { borderColor: '#2e7d32' },
-  colorSwatches: { flexDirection: 'row', gap: 4, marginBottom: 6 },
-  swatch: { width: 20, height: 20, borderRadius: 10 },
-  customLabel: { fontSize: 18, marginBottom: 4 },
-  colorName: { fontSize: 10, color: '#666', textAlign: 'center' },
-  customColors: { marginBottom: 8 },
-  helperText: { fontSize: 12, color: '#666', marginBottom: 8 },
+  colorCardActive: { borderColor: BRAND },
+  colorSwatches: { flexDirection: 'row', gap: SPACE.xs, marginBottom: SPACE.sm },
+  swatch:        { width: 20, height: 20, borderRadius: RADIUS.full },
+  customLabel:   { fontSize: FONT_SIZE.lg, marginBottom: SPACE.xs },
+  colorName:     { fontSize: 10, color: NEUTRAL.body, textAlign: 'center' },
+  customColors:  { marginBottom: SPACE.sm },
+  helperText:    { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginBottom: SPACE.sm },
   infoBox: {
-    backgroundColor: '#e8f5e9', borderRadius: 10, padding: 14,
-    borderLeftWidth: 4, borderLeftColor: '#2e7d32', marginBottom: 20,
+    backgroundColor: BRAND_LIGHT, borderRadius: RADIUS.md, padding: SPACE.lg - 2,
+    borderLeftWidth: 4, borderLeftColor: BRAND, marginBottom: SPACE.xl,
   },
-  infoTitle: { fontWeight: '700', color: '#2e7d32', marginBottom: 4 },
-  infoText: { fontSize: 13, color: '#444', lineHeight: 18 },
-  primaryButton: {
-    backgroundColor: '#2e7d32', borderRadius: 10, padding: 16, alignItems: 'center',
-  },
-  primaryButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  infoTitle:     { fontWeight: FONT_WEIGHT.bold, color: BRAND, marginBottom: SPACE.xs },
+  infoText:      { fontSize: FONT_SIZE.sm, color: NEUTRAL.label, lineHeight: 18 },
 });

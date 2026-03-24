@@ -8,6 +8,12 @@ import {
     View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
+import Button from '../components/Button';
+import Card from '../components/Card';
+import {
+  BRAND, BRAND_DARK, BRAND_LIGHT,
+  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SPACE, STATUS,
+} from '../constants/design';
 
 export default function ParentLinkScreen({ onLinkComplete }) {
   const [athleteEmail, setAthleteEmail] = useState('');
@@ -43,14 +49,12 @@ export default function ParentLinkScreen({ onLinkComplete }) {
     try {
       const user = auth.currentUser;
 
-      // Update parent's document with linked athlete
       await updateDoc(doc(db, 'users', user.uid), {
         linkedAthleteIds: arrayUnion(foundAthlete.id),
         schoolId: foundAthlete.schoolId || null,
         status: 'approved',
       });
 
-      // Add parent to athlete's PENDING list so athlete can approve
       await updateDoc(doc(db, 'users', foundAthlete.id), {
         pendingParentIds: arrayUnion(user.uid),
       });
@@ -74,21 +78,19 @@ export default function ParentLinkScreen({ onLinkComplete }) {
         <Text style={styles.subtitle}>Stay connected to your athlete's training</Text>
       </View>
 
-      {/* What parents can see */}
-      <View style={styles.infoBox}>
+      <Card style={styles.infoBox}>
         <Text style={styles.infoTitle}>As a parent you can see:</Text>
-        <Text style={styles.infoItem}>📅  Upcoming races and workouts</Text>
-        <Text style={styles.infoItem}>📍  Race locations and times</Text>
-        <Text style={styles.infoItem}>🏃  Your athlete's weekly mileage</Text>
-        <Text style={styles.infoItem}>📋  Coach notes and announcements</Text>
-      </View>
+        <Text style={styles.infoItem}>Upcoming races and workouts</Text>
+        <Text style={styles.infoItem}>Race locations and times</Text>
+        <Text style={styles.infoItem}>Your athlete's weekly mileage</Text>
+        <Text style={styles.infoItem}>Coach notes and announcements</Text>
+      </Card>
 
-      {/* Find athlete */}
       <Text style={styles.label}>Your athlete's email address</Text>
       <TextInput
         style={styles.input}
         placeholder="athlete@email.com"
-        placeholderTextColor="#999"
+        placeholderTextColor={NEUTRAL.muted}
         value={athleteEmail}
         onChangeText={setAthleteEmail}
         keyboardType="email-address"
@@ -96,15 +98,16 @@ export default function ParentLinkScreen({ onLinkComplete }) {
         autoCorrect={false}
       />
 
-      <TouchableOpacity style={styles.primaryButton} onPress={handleFindAthlete} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : (
-          <Text style={styles.primaryButtonText}>Find Athlete</Text>
-        )}
-      </TouchableOpacity>
+      <Button
+        label="Find Athlete"
+        onPress={handleFindAthlete}
+        loading={loading}
+        size="lg"
+        style={{ marginBottom: SPACE.xl }}
+      />
 
-      {/* Found athlete confirmation */}
       {foundAthlete && (
-        <View style={styles.athleteCard}>
+        <Card style={styles.athleteCard}>
           <View style={styles.athleteAvatar}>
             <Text style={styles.avatarText}>
               {foundAthlete.firstName?.[0]}{foundAthlete.lastName?.[0]}
@@ -116,15 +119,10 @@ export default function ParentLinkScreen({ onLinkComplete }) {
             </Text>
             <Text style={styles.athleteEmail}>{foundAthlete.email}</Text>
           </View>
-          <TouchableOpacity style={styles.linkButton} onPress={handleLinkToAthlete} disabled={loading}>
-            {loading ? <ActivityIndicator color="#fff" size="small" /> : (
-              <Text style={styles.linkButtonText}>Link</Text>
-            )}
-          </TouchableOpacity>
-        </View>
+          <Button label="Link" onPress={handleLinkToAthlete} loading={loading} size="sm" />
+        </Card>
       )}
 
-      {/* Privacy note */}
       <View style={styles.privacyBox}>
         <Text style={styles.privacyTitle}>Privacy note</Text>
         <Text style={styles.privacyText}>
@@ -134,7 +132,6 @@ export default function ParentLinkScreen({ onLinkComplete }) {
         </Text>
       </View>
 
-      {/* Skip */}
       <TouchableOpacity style={styles.skipButton} onPress={() => onLinkComplete && onLinkComplete()}>
         <Text style={styles.skipText}>Skip for now — I'll link an athlete later</Text>
       </TouchableOpacity>
@@ -144,49 +141,34 @@ export default function ParentLinkScreen({ onLinkComplete }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  content: { padding: 24, paddingBottom: 48 },
-  header: { marginBottom: 24, marginTop: 20 },
-  title: { fontSize: 26, fontWeight: 'bold', color: '#2e7d32' },
-  subtitle: { fontSize: 15, color: '#666', marginTop: 6 },
-  infoBox: {
-    backgroundColor: '#e8f5e9', borderRadius: 12, padding: 16,
-    marginBottom: 24, borderLeftWidth: 4, borderLeftColor: '#2e7d32',
-  },
-  infoTitle: { fontWeight: '700', color: '#2e7d32', marginBottom: 10, fontSize: 15 },
-  infoItem: { fontSize: 14, color: '#444', marginBottom: 6, lineHeight: 20 },
-  label: { fontSize: 14, fontWeight: '600', color: '#444', marginBottom: 8 },
+  container:     { flex: 1, backgroundColor: NEUTRAL.bg },
+  content:       { padding: SPACE['2xl'], paddingBottom: SPACE['4xl'] },
+  header:        { marginBottom: SPACE['2xl'], marginTop: SPACE.xl },
+  title:         { fontSize: 26, fontWeight: FONT_WEIGHT.bold, color: BRAND },
+  subtitle:      { fontSize: FONT_SIZE.base, color: NEUTRAL.body, marginTop: SPACE.sm },
+  infoBox:       { backgroundColor: BRAND_LIGHT, borderLeftWidth: 4, borderLeftColor: BRAND },
+  infoTitle:     { fontWeight: FONT_WEIGHT.bold, color: BRAND, marginBottom: SPACE.md, fontSize: FONT_SIZE.base },
+  infoItem:      { fontSize: FONT_SIZE.sm, color: NEUTRAL.label, marginBottom: SPACE.sm, lineHeight: 20 },
+  label:         { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.label, marginBottom: SPACE.sm },
   input: {
-    backgroundColor: '#fff', borderRadius: 10, padding: 14,
-    fontSize: 16, marginBottom: 14, borderWidth: 1, borderColor: '#ddd', color: '#333',
+    backgroundColor: NEUTRAL.card, borderRadius: RADIUS.md, padding: SPACE.lg - 2,
+    fontSize: FONT_SIZE.md, marginBottom: SPACE.lg - 2, borderWidth: 1, borderColor: NEUTRAL.input, color: BRAND_DARK,
   },
-  primaryButton: {
-    backgroundColor: '#2e7d32', borderRadius: 10, padding: 16, alignItems: 'center', marginBottom: 20,
-  },
-  primaryButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  athleteCard: {
-    backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 16,
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    borderWidth: 2, borderColor: '#2e7d32',
-  },
+  athleteCard:   { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, borderWidth: 2, borderColor: BRAND },
   athleteAvatar: {
-    width: 48, height: 48, borderRadius: 24,
-    backgroundColor: '#2e7d32', alignItems: 'center', justifyContent: 'center',
+    width: 48, height: 48, borderRadius: RADIUS.full,
+    backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center',
   },
-  avatarText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
-  athleteInfo: { flex: 1 },
-  athleteName: { fontSize: 16, fontWeight: '700', color: '#333' },
-  athleteEmail: { fontSize: 13, color: '#999', marginTop: 2 },
-  linkButton: {
-    backgroundColor: '#2e7d32', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 10,
-  },
-  linkButtonText: { color: '#fff', fontWeight: '700' },
+  avatarText:    { color: '#fff', fontWeight: FONT_WEIGHT.bold, fontSize: FONT_SIZE.lg },
+  athleteInfo:   { flex: 1 },
+  athleteName:   { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  athleteEmail:  { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted, marginTop: 2 },
   privacyBox: {
-    backgroundColor: '#fff8e1', borderRadius: 10, padding: 14,
-    borderLeftWidth: 4, borderLeftColor: '#f59e0b', marginBottom: 20,
+    backgroundColor: STATUS.warningBg, borderRadius: RADIUS.md, padding: SPACE.lg - 2,
+    borderLeftWidth: 4, borderLeftColor: STATUS.warning, marginBottom: SPACE.xl,
   },
-  privacyTitle: { fontWeight: '700', color: '#92400e', marginBottom: 6 },
-  privacyText: { fontSize: 13, color: '#666', lineHeight: 18 },
-  skipButton: { alignItems: 'center', marginTop: 8 },
-  skipText: { color: '#999', fontSize: 14 },
+  privacyTitle:  { fontWeight: FONT_WEIGHT.bold, color: '#92400e', marginBottom: SPACE.sm },
+  privacyText:   { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, lineHeight: 18 },
+  skipButton:    { alignItems: 'center', marginTop: SPACE.sm },
+  skipText:      { color: NEUTRAL.muted, fontSize: FONT_SIZE.sm },
 });

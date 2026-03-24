@@ -1,11 +1,17 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import {
     Modal,
+    Platform,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
 } from 'react-native';
+import {
+  BRAND, BRAND_DARK,
+  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE,
+} from '../constants/design';
 
 const SLEEP_OPTIONS = [
   { value: 1, label: 'Terrible', emoji: '😴' },
@@ -31,7 +37,7 @@ const MOOD_OPTIONS = [
   { value: 5, label: 'Pumped', emoji: '🔥' },
 ];
 
-function OptionRow({ options, selected, onSelect, primaryColor }) {
+function OptionRow({ options, selected, onSelect }) {
   return (
     <View style={styles.optionRow}>
       {options.map(opt => (
@@ -39,14 +45,14 @@ function OptionRow({ options, selected, onSelect, primaryColor }) {
           key={opt.value}
           style={[
             styles.optionBtn,
-            selected === opt.value && { backgroundColor: primaryColor, borderColor: primaryColor },
+            selected === opt.value && { backgroundColor: BRAND, borderColor: BRAND },
           ]}
           onPress={() => onSelect(opt.value)}
         >
           <Text style={styles.optionEmoji}>{opt.emoji}</Text>
           <Text style={[
             styles.optionLabel,
-            selected === opt.value && { color: '#fff', fontWeight: '700' },
+            selected === opt.value && { color: '#fff', fontWeight: FONT_WEIGHT.bold },
           ]}>
             {opt.label}
           </Text>
@@ -56,7 +62,7 @@ function OptionRow({ options, selected, onSelect, primaryColor }) {
   );
 }
 
-export default function WellnessCheckIn({ visible, onComplete, onSkip, primaryColor = '#2e7d32' }) {
+export default function WellnessCheckIn({ visible, onComplete, onSkip, onClose, primaryColor }) {
   const [sleep, setSleep] = useState(null);
   const [legs, setLegs] = useState(null);
   const [mood, setMood] = useState(null);
@@ -68,32 +74,43 @@ export default function WellnessCheckIn({ visible, onComplete, onSkip, primaryCo
     setSleep(null); setLegs(null); setMood(null);
   };
 
+  const handleClose = () => {
+    setSleep(null); setLegs(null); setMood(null);
+    if (onClose) onClose();
+    else onSkip();
+  };
+
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
       <View style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.title}>Quick check-in</Text>
-          <Text style={styles.subtitle}>How are you feeling before this run?</Text>
+          <View>
+            <Text style={styles.title}>Quick check-in</Text>
+            <Text style={styles.subtitle}>How are you feeling before this run?</Text>
+          </View>
+          <TouchableOpacity onPress={handleClose} style={styles.closeBtn}>
+            <Ionicons name="close" size={24} color={NEUTRAL.body} />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.body}>
           <Text style={styles.sectionLabel}>Sleep last night</Text>
-          <OptionRow options={SLEEP_OPTIONS} selected={sleep} onSelect={setSleep} primaryColor={primaryColor} />
+          <OptionRow options={SLEEP_OPTIONS} selected={sleep} onSelect={setSleep} />
 
           <Text style={styles.sectionLabel}>How are your legs?</Text>
-          <OptionRow options={LEGS_OPTIONS} selected={legs} onSelect={setLegs} primaryColor={primaryColor} />
+          <OptionRow options={LEGS_OPTIONS} selected={legs} onSelect={setLegs} />
 
           <Text style={styles.sectionLabel}>Mood right now</Text>
-          <OptionRow options={MOOD_OPTIONS} selected={mood} onSelect={setMood} primaryColor={primaryColor} />
+          <OptionRow options={MOOD_OPTIONS} selected={mood} onSelect={setMood} />
         </View>
 
         <View style={styles.footer}>
           <TouchableOpacity
-            style={[styles.doneBtn, { backgroundColor: canContinue ? primaryColor : '#ccc' }]}
+            style={[styles.doneBtn, { backgroundColor: canContinue ? BRAND : NEUTRAL.input }]}
             onPress={handleDone}
             disabled={!canContinue}
           >
-            <Text style={styles.doneBtnText}>Log my run →</Text>
+            <Text style={styles.doneBtnText}>Log my run</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.skipBtn} onPress={onSkip}>
             <Text style={styles.skipBtnText}>Skip check-in</Text>
@@ -105,29 +122,31 @@ export default function WellnessCheckIn({ visible, onComplete, onSkip, primaryCo
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  container:    { flex: 1, backgroundColor: NEUTRAL.bg },
   header: {
-    paddingTop: 60, paddingBottom: 24, paddingHorizontal: 24,
-    backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee',
+    paddingTop: Platform.OS === 'ios' ? SPACE['5xl'] : SPACE['3xl'], paddingBottom: SPACE.xl, paddingHorizontal: SPACE['2xl'],
+    backgroundColor: NEUTRAL.card, borderBottomWidth: 1, borderBottomColor: NEUTRAL.border,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
   },
-  title: { fontSize: 26, fontWeight: 'bold', color: '#333' },
-  subtitle: { fontSize: 15, color: '#666', marginTop: 6 },
-  body: { flex: 1, padding: 24 },
+  title:        { fontSize: 26, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  subtitle:     { fontSize: FONT_SIZE.base, color: NEUTRAL.body, marginTop: SPACE.sm },
+  closeBtn:     { padding: SPACE.sm, marginTop: SPACE.xs },
+  body:         { flex: 1, padding: SPACE['2xl'] },
   sectionLabel: {
-    fontSize: 15, fontWeight: '700', color: '#333',
-    marginBottom: 12, marginTop: 20,
+    fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK,
+    marginBottom: SPACE.md, marginTop: SPACE.xl,
   },
-  optionRow: { flexDirection: 'row', gap: 8 },
+  optionRow:    { flexDirection: 'row', gap: SPACE.sm },
   optionBtn: {
-    flex: 1, alignItems: 'center', paddingVertical: 12,
-    borderRadius: 12, backgroundColor: '#fff',
-    borderWidth: 1.5, borderColor: '#ddd',
+    flex: 1, alignItems: 'center', paddingVertical: SPACE.md,
+    borderRadius: RADIUS.lg, backgroundColor: NEUTRAL.card,
+    borderWidth: 1.5, borderColor: NEUTRAL.border,
   },
-  optionEmoji: { fontSize: 20, marginBottom: 4 },
-  optionLabel: { fontSize: 11, color: '#666', fontWeight: '500' },
-  footer: { padding: 24, paddingBottom: 40, gap: 12 },
-  doneBtn: { borderRadius: 14, padding: 18, alignItems: 'center' },
-  doneBtnText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  skipBtn: { alignItems: 'center', padding: 10 },
-  skipBtnText: { color: '#999', fontSize: 15 },
+  optionEmoji:  { fontSize: 20, marginBottom: SPACE.xs },
+  optionLabel:  { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, fontWeight: FONT_WEIGHT.medium },
+  footer:       { padding: SPACE['2xl'], paddingBottom: SPACE['4xl'], gap: SPACE.md },
+  doneBtn:      { borderRadius: RADIUS.lg, padding: SPACE.lg + 2, alignItems: 'center' },
+  doneBtnText:  { color: '#fff', fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.bold },
+  skipBtn:      { alignItems: 'center', padding: SPACE.md },
+  skipBtnText:  { color: NEUTRAL.muted, fontSize: FONT_SIZE.base },
 });

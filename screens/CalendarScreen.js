@@ -14,7 +14,9 @@ import {
   View,
 } from 'react-native';
 import { Calendar } from 'react-native-calendars';
+import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../firebaseConfig';
+import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SPACE } from '../constants/design';
 import DatePickerField from './DatePickerField';
 import RunDetailModal from './RunDetailModal';
 
@@ -309,9 +311,10 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: primaryColor }]}>
-        <TouchableOpacity onPress={onClose}>
-          <Text style={styles.headerBack}>← Back</Text>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={onClose} style={styles.backBtn}>
+          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+          <Text style={styles.headerBack}>Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Team Calendar</Text>
         {isCoach ? (
@@ -830,9 +833,10 @@ const styles = StyleSheet.create({
   mileageInput:       { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 8, width: 70, textAlign: 'center', fontSize: 15, backgroundColor: '#f9f9f9', color: '#333' },
   mileageTotal:       { fontSize: 13, color: '#888', fontWeight: '600' },
   container: { flex: 1, backgroundColor: '#f5f5f5' },
-  header: { paddingTop: 60, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  headerBack: { color: '#fff', fontSize: 15, fontWeight: '600', width: 60 },
-  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
+  header: { backgroundColor: NEUTRAL.card, paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  headerBack: { color: BRAND_DARK, fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.semibold },
+  headerTitle: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
   addBtn: { backgroundColor: 'rgba(255,255,255,0.25)', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, width: 60, alignItems: 'center' },
   addBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },

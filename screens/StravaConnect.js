@@ -11,13 +11,15 @@ import {
 } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Alert, ScrollView,
+  ActivityIndicator, Alert, Platform, ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../firebaseConfig';
+import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, SPACE, STRAVA_ORANGE } from '../constants/design';
 import {
   STRAVA_CONFIG, exchangeStravaCode,
   fetchStravaActivities,
@@ -319,9 +321,10 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
   if (loading) {
     return (
       <View style={styles.container}>
-        <View style={[styles.header, { backgroundColor: primaryColor }]}>
+        <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-            <Text style={styles.backText}>‹ Back</Text>
+            <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+            <Text style={styles.backText}>Back</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Strava Sync</Text>
           <View style={{ width: 60 }} />
@@ -470,10 +473,10 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
 const styles = StyleSheet.create({
   container:          { flex: 1, backgroundColor: '#f5f5f5' },
   center:             { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header:             { paddingTop: 60, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  backBtn:            { paddingVertical: 6, paddingHorizontal: 10 },
-  backText:           { color: '#fff', fontSize: 17, fontWeight: '600' },
-  headerTitle:        { fontSize: 20, fontWeight: 'bold', color: '#fff' },
+  header:             { backgroundColor: NEUTRAL.card, paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
+  backBtn:            { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6 },
+  backText:           { color: BRAND_DARK, fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.semibold },
+  headerTitle:        { fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
   scroll:             { flex: 1 },
   brandCard:          { backgroundColor: '#fff', margin: 16, borderRadius: 14, padding: 24, alignItems: 'center' },
   stravaLogo:         { backgroundColor: '#fc4c02', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8, marginBottom: 12 },

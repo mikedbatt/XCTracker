@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { signOut } from 'firebase/auth';
 import {
   arrayRemove,
@@ -26,6 +27,10 @@ import {
   View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
+import {
+  BRAND, BRAND_ACCENT, BRAND_DARK, BRAND_LIGHT,
+  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS, STRAVA_ORANGE,
+} from '../constants/design';
 import AthleteDetailScreen from '../screens/AthleteDetailScreen';
 import CoachProfile from '../screens/CoachProfile';
 import GroupManager from '../screens/GroupManager';
@@ -476,7 +481,7 @@ export default function CoachDashboard({ userData }) {
       onApproveAthlete={handleApproveAthlete}
       onDenyAthlete={handleDenyAthlete}
       onClose={() => { setProfileVisible(false); loadDashboard(); }}
-      onUpdated={() => setProfileVisible(false)}
+      onUpdated={() => { setProfileVisible(false); loadDashboard(); }}
     />;
   }
   if (selectedAthlete) {
@@ -609,7 +614,7 @@ export default function CoachDashboard({ userData }) {
     setSendingTip(false);
   };
 
-  if (loading) return <View style={styles.loading}><ActivityIndicator size="large" color="#2e7d32" /></View>;
+  if (loading) return <View style={styles.loading}><ActivityIndicator size="large" color={BRAND} /></View>;
 
   const primaryColor  = school?.primaryColor || '#2e7d32';
   const isAdmin       = userData.coachRole === 'admin';
@@ -669,7 +674,7 @@ export default function CoachDashboard({ userData }) {
             }
           </View>
           <View style={styles.milesBox}>
-            <Text style={[styles.milesNum, { color: hasAlert ? '#ef4444' : primaryColor }]}>
+            <Text style={[styles.milesNum, { color: hasAlert ? STATUS.error : BRAND }]}>
               {athleteMiles[athlete.id] ?? '—'}
             </Text>
             <Text style={styles.milesLabel}>miles</Text>
@@ -684,7 +689,7 @@ export default function CoachDashboard({ userData }) {
     <View style={styles.container}>
 
       {/* ── Header ── */}
-      <View style={[styles.header, { backgroundColor: primaryColor }]}>
+      <View style={styles.header}>
         <View style={styles.headerRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.greeting}>Coach {userData.lastName}</Text>
@@ -707,7 +712,7 @@ export default function CoachDashboard({ userData }) {
         {!todayTipSent && (
           <View style={styles.msgRow}>
             <TouchableOpacity
-              style={[styles.msgBtn, { backgroundColor: primaryColor }]}
+              style={styles.msgBtn}
               onPress={() => handleOpenTip(currentPhase)}
             >
               <Text style={[styles.msgBtnText, { color: '#fff' }]}>
@@ -729,8 +734,8 @@ export default function CoachDashboard({ userData }) {
                 primaryColor={primaryColor}
               />
             </View>
-            <TouchableOpacity style={[styles.shareBtn, { borderColor: primaryColor }]} onPress={handleShareLeaderboard}>
-              <Text style={[styles.shareBtnText, { color: primaryColor }]}>Share</Text>
+            <TouchableOpacity style={styles.shareBtn} onPress={handleShareLeaderboard}>
+              <Text style={styles.shareBtnText}>Share</Text>
             </TouchableOpacity>
           </View>
 
@@ -738,7 +743,7 @@ export default function CoachDashboard({ userData }) {
             {['all', 'boys', 'girls'].map(g => (
               <TouchableOpacity
                 key={g}
-                style={[styles.genderBtn, genderFilter === g && { backgroundColor: primaryColor, borderColor: primaryColor }]}
+                style={[styles.genderBtn, genderFilter === g && { backgroundColor: BRAND, borderColor: BRAND }]}
                 onPress={() => setGenderFilter(g)}
               >
                 <Text style={[styles.genderBtnText, genderFilter === g && { color: '#fff' }]}>
@@ -753,7 +758,7 @@ export default function CoachDashboard({ userData }) {
               {[{ id: 'all', name: 'All' }, { id: 'bygroup', name: 'By Group' }, ...groups, { id: 'unassigned', name: 'Unassigned' }].map(g => (
                 <TouchableOpacity
                   key={g.id}
-                  style={[styles.groupFilterBtn, groupFilter === g.id && { backgroundColor: primaryColor, borderColor: primaryColor }]}
+                  style={[styles.groupFilterBtn, groupFilter === g.id && { backgroundColor: BRAND, borderColor: BRAND }]}
                   onPress={() => setGroupFilter(g.id)}
                 >
                   <Text style={[styles.groupFilterBtnText, groupFilter === g.id && { color: '#fff' }]}>
@@ -779,7 +784,7 @@ export default function CoachDashboard({ userData }) {
                 if (groupAthletes.length === 0) return null;
                 return (
                   <View key={group.id || 'unassigned'} style={styles.groupSection}>
-                    <Text style={[styles.groupHeader, group.id && { color: primaryColor }]}>
+                    <Text style={[styles.groupHeader, group.id && { color: BRAND }]}>
                       {group.name}{group.weeklyMilesTarget ? ` · ${group.weeklyMilesTarget} mi/wk target` : ''}
                     </Text>
                     {groupAthletes.map((athlete, index) => renderAthleteCard(athlete, index))}
@@ -855,26 +860,26 @@ export default function CoachDashboard({ userData }) {
       </ScrollView>
 
       {/* ── Bottom navigation bar ── */}
-      <View style={[styles.bottomNav, { borderTopColor: `${primaryColor}30` }]}>
+      <View style={styles.bottomNav}>
         <TouchableOpacity style={styles.bottomNavBtn} onPress={() => setCalendarVisible(true)}>
-          <Text style={styles.bottomNavEmoji}>📋</Text>
+          <Ionicons name="calendar-outline" size={24} color={NEUTRAL.muted} />
           <Text style={styles.bottomNavLabel}>Training</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.bottomNavBtn} onPress={() => setGroupManagerVisible(true)}>
-          <Text style={styles.bottomNavEmoji}>👥</Text>
+          <Ionicons name="people-outline" size={24} color={NEUTRAL.muted} />
           <Text style={styles.bottomNavLabel}>Groups</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.bottomNavBtn} onPress={() => setFeedVisible(true)}>
-          <Text style={styles.bottomNavEmoji}>💬</Text>
+          <Ionicons name="chatbubbles-outline" size={24} color={NEUTRAL.muted} />
           <Text style={styles.bottomNavLabel}>Feed</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.bottomNavBtn} onPress={() => setZonesVisible(true)}>
-          <Text style={styles.bottomNavEmoji}>❤️</Text>
+          <Ionicons name="heart-outline" size={24} color={NEUTRAL.muted} />
           <Text style={styles.bottomNavLabel}>Zones</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.bottomNavBtn} onPress={() => setProfileVisible(true)}>
           <View>
-            <Text style={styles.bottomNavEmoji}>👤</Text>
+            <Ionicons name="person-outline" size={24} color={NEUTRAL.muted} />
             {pendingAthletes.length > 0 && (
               <View style={styles.badge}>
                 <Text style={styles.badgeText}>{pendingAthletes.length}</Text>
@@ -913,7 +918,7 @@ export default function CoachDashboard({ userData }) {
                 💡 Auto-generated based on your current training phase. Make it your own.
               </Text>
               <TouchableOpacity
-                style={[styles.tipSendBtn, { backgroundColor: tipText.trim() ? primaryColor : '#ccc' }]}
+                style={[styles.tipSendBtn, { backgroundColor: tipText.trim() ? BRAND : NEUTRAL.input }]}
                 onPress={handleSendTip}
                 disabled={sendingTip || !tipText.trim()}
               >
@@ -932,110 +937,107 @@ export default function CoachDashboard({ userData }) {
 }
 
 const styles = StyleSheet.create({
-  groupSection:         { marginBottom: 16 },
-  groupHeader:          { fontSize: 15, fontWeight: '700', color: '#555', marginBottom: 8, marginTop: 4 },
-  groupFilterRow:       { flexDirection: 'row', marginBottom: 10, maxHeight: 36 },
-  groupFilterBtn:       { borderRadius: 8, borderWidth: 1.5, borderColor: '#ddd', paddingHorizontal: 12, paddingVertical: 6, marginRight: 6, backgroundColor: '#fff' },
-  groupFilterBtnText:   { fontSize: 13, fontWeight: '600', color: '#666' },
-  timeframeRow:         { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 0 },
-  shareBtn:             { borderRadius: 10, borderWidth: 1.5, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#fff' },
-  shareBtnText:         { fontSize: 15, fontWeight: '600' },
-  container:            { flex: 1, backgroundColor: '#f5f5f5' },
+  groupSection:         { marginBottom: SPACE.lg },
+  groupHeader:          { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: NEUTRAL.label, marginBottom: SPACE.sm, marginTop: SPACE.xs },
+  groupFilterRow:       { flexDirection: 'row', marginBottom: SPACE.md, maxHeight: 36 },
+  groupFilterBtn:       { borderRadius: RADIUS.sm, borderWidth: 1.5, borderColor: NEUTRAL.border, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm, marginRight: SPACE.sm, backgroundColor: NEUTRAL.card },
+  groupFilterBtnText:   { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.body },
+  timeframeRow:         { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: SPACE.md, marginBottom: 0 },
+  shareBtn:             { borderRadius: RADIUS.md, borderWidth: 1.5, borderColor: BRAND, paddingHorizontal: SPACE.lg - 2, paddingVertical: SPACE.md, backgroundColor: NEUTRAL.card },
+  shareBtnText:         { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.semibold, color: BRAND },
+  container:            { flex: 1, backgroundColor: NEUTRAL.bg },
   loading:              { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header:               { paddingTop: 56, paddingBottom: 10, paddingHorizontal: 20 },
+  header:               { backgroundColor: NEUTRAL.card, paddingTop: Platform.OS === 'ios' ? SPACE['5xl'] : SPACE['3xl'], paddingBottom: SPACE.md, paddingHorizontal: SPACE.xl, borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
   headerRow:            { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  greeting:             { fontSize: 20, fontWeight: 'bold', color: '#fff' },
-  schoolName:           { fontSize: 13, color: 'rgba(255,255,255,0.8)', marginTop: 1 },
+  greeting:             { fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  schoolName:           { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginTop: 1 },
   headerRight:          { alignItems: 'flex-end' },
-  headerRightText:      { fontSize: 12, color: 'rgba(255,255,255,0.85)', fontWeight: '600' },
-  headerAlertText:      { fontSize: 12, color: '#fbbf24', fontWeight: '700', marginTop: 2 },
-  profileBtn:           { paddingVertical: 6, paddingHorizontal: 12, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 8 },
-  profileBtnText:       { color: '#fff', fontSize: 13, fontWeight: '600' },
-  headerStats:          { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  headerRightText:      { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, fontWeight: FONT_WEIGHT.semibold },
+  headerAlertText:      { fontSize: FONT_SIZE.xs, color: STATUS.error, fontWeight: FONT_WEIGHT.bold, marginTop: 2 },
+  profileBtn:           { paddingVertical: SPACE.sm, paddingHorizontal: SPACE.md, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: RADIUS.sm },
+  profileBtnText:       { color: '#fff', fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold },
+  headerStats:          { flexDirection: 'row', alignItems: 'center', gap: SPACE.lg - 2 },
   headerStat:           { alignItems: 'center' },
-  headerStatNum:        { fontSize: 20, fontWeight: 'bold', color: '#fff' },
-  headerStatLabel:      { fontSize: 11, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
-  alertStatBox:         { backgroundColor: 'rgba(239,68,68,0.3)', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
-  alertStatNum:         { fontSize: 16, fontWeight: 'bold', color: '#fff' },
+  headerStatNum:        { fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold, color: '#fff' },
+  headerStatLabel:      { fontSize: FONT_SIZE.xs, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
+  alertStatBox:         { backgroundColor: 'rgba(239,68,68,0.3)', borderRadius: RADIUS.sm, paddingHorizontal: SPACE.sm, paddingVertical: SPACE.xs },
+  alertStatNum:         { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold, color: '#fff' },
   alertStatLabel:       { fontSize: 10, color: 'rgba(255,255,255,0.9)', marginTop: 1 },
-  tabs:                 { flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
-  tab:                  { flex: 1, paddingVertical: 14, alignItems: 'center' },
-  tabActive:            { borderBottomWidth: 2, borderBottomColor: '#2e7d32' },
-  tabText:              { fontSize: 14, fontWeight: '600', color: '#999' },
+  tabs:                 { flexDirection: 'row', backgroundColor: NEUTRAL.card, borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
+  tab:                  { flex: 1, paddingVertical: SPACE.lg - 2, alignItems: 'center' },
+  tabActive:            { borderBottomWidth: 2, borderBottomColor: BRAND },
+  tabText:              { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.muted },
   scroll:               { flex: 1 },
-  msgRow:               { paddingHorizontal: 16, marginTop: 12, marginBottom: 4 },
-  msgBtn:               { borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14, alignItems: 'center' },
-  msgBtnText:           { fontSize: 13, fontWeight: '700' },
-  section:              { padding: 16 },
-  genderRow:            { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  genderBtn:            { flex: 1, borderRadius: 10, paddingVertical: 10, alignItems: 'center', backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#ddd' },
-  genderBtnText:        { fontSize: 14, fontWeight: '600', color: '#666' },
-  emptyCard:            { backgroundColor: '#fff', borderRadius: 12, padding: 20, alignItems: 'center', gap: 10 },
-  emptyText:            { color: '#999', fontSize: 14, textAlign: 'center' },
-  emptySubText:         { color: '#bbb', fontSize: 13 },
-  athleteCard:          { backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 8 },
-  athleteCardAlert:     { borderWidth: 1.5, borderColor: '#ef4444', backgroundColor: '#fff5f5' },
-  athleteCardTop:       { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  athleteCardStats:     { flexDirection: 'row', gap: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#f5f5f5' },
-  athleteStatChip:      { flex: 1, backgroundColor: '#f9f9f9', borderRadius: 8, padding: 8 },
-  athleteStatChipLabel: { fontSize: 11, color: '#999', marginBottom: 2 },
-  athleteStatChipVal:   { fontSize: 14, fontWeight: '700', color: '#333' },
-  statValRed:           { color: '#dc2626' },
-  statFlagRed:          { fontSize: 11, color: '#dc2626', fontWeight: '600', marginTop: 2 },
-  rankNum:              { fontSize: 14, fontWeight: '700', color: '#999', width: 24 },
-  avatar:               { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
-  avatarText:           { color: '#fff', fontWeight: 'bold', fontSize: 14 },
+  msgRow:               { paddingHorizontal: SPACE.lg, marginTop: SPACE.md, marginBottom: SPACE.xs },
+  msgBtn:               { backgroundColor: BRAND_LIGHT, borderRadius: RADIUS.md, paddingVertical: SPACE.md, paddingHorizontal: SPACE.lg - 2, alignItems: 'center' },
+  msgBtnText:           { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND },
+  section:              { padding: SPACE.lg },
+  genderRow:            { flexDirection: 'row', gap: SPACE.sm, marginBottom: SPACE.md },
+  genderBtn:            { flex: 1, borderRadius: RADIUS.md, paddingVertical: SPACE.md, alignItems: 'center', backgroundColor: NEUTRAL.card, borderWidth: 1.5, borderColor: NEUTRAL.border },
+  genderBtnText:        { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.body },
+  emptyCard:            { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.xl, alignItems: 'center', gap: SPACE.md, ...SHADOW.sm },
+  emptyText:            { color: NEUTRAL.muted, fontSize: FONT_SIZE.sm, textAlign: 'center' },
+  emptySubText:         { color: NEUTRAL.muted, fontSize: FONT_SIZE.sm },
+  athleteCard:          { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.md, marginBottom: SPACE.sm, ...SHADOW.sm },
+  athleteCardAlert:     { borderWidth: 1.5, borderColor: STATUS.error, backgroundColor: STATUS.errorBg },
+  athleteCardTop:       { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
+  athleteCardStats:     { flexDirection: 'row', gap: SPACE.md, paddingTop: SPACE.md, borderTopWidth: 1, borderTopColor: NEUTRAL.bg },
+  athleteStatChip:      { flex: 1, backgroundColor: NEUTRAL.bg, borderRadius: RADIUS.sm, padding: SPACE.sm },
+  athleteStatChipLabel: { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginBottom: 2 },
+  athleteStatChipVal:   { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  statValRed:           { color: STATUS.error },
+  statFlagRed:          { fontSize: FONT_SIZE.xs, color: STATUS.error, fontWeight: FONT_WEIGHT.semibold, marginTop: 2 },
+  rankNum:              { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: NEUTRAL.muted, width: 24 },
+  avatar:               { width: 38, height: 38, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center' },
+  avatarText:           { color: '#fff', fontWeight: FONT_WEIGHT.bold, fontSize: FONT_SIZE.sm },
   athleteInfo:          { flex: 1 },
-  athleteName:          { fontSize: 15, fontWeight: '700', color: '#333' },
-  athleteSub:           { fontSize: 12, color: '#999', marginTop: 2 },
-  alertText:            { fontSize: 12, color: '#ef4444', marginTop: 2, fontWeight: '600' },
+  athleteName:          { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  athleteSub:           { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 2 },
+  alertText:            { fontSize: FONT_SIZE.xs, color: STATUS.error, marginTop: 2, fontWeight: FONT_WEIGHT.semibold },
   milesBox:             { alignItems: 'center' },
-  milesNum:             { fontSize: 20, fontWeight: 'bold' },
-  milesLabel:           { fontSize: 11, color: '#999' },
-  chevron:              { fontSize: 22, color: '#ccc' },
-  alertSection:         { marginTop: 8 },
-  alertSectionTitle:    { fontSize: 15, fontWeight: '700', color: '#ef4444', marginBottom: 10 },
-  alertCard:            { backgroundColor: '#fff5f5', borderRadius: 12, padding: 14, marginBottom: 10, borderLeftWidth: 4, borderLeftColor: '#ef4444' },
-  alertAthleteName:     { fontSize: 15, fontWeight: '700', color: '#333', marginBottom: 6 },
-  alertSignal:          { fontSize: 13, color: '#ef4444', marginBottom: 3 },
-  alertRec:             { fontSize: 12, color: '#666', marginTop: 8, fontStyle: 'italic' },
-  todaySection:         { marginBottom: 24 },
-  todayLabel:           { fontSize: 11, fontWeight: '700', color: '#999', letterSpacing: 1, marginBottom: 10 },
-  todayCard:            { backgroundColor: '#fff', borderRadius: 12, padding: 16, borderLeftWidth: 4, marginBottom: 8 },
-  upcomingSection:      { marginBottom: 16 },
-  upcomingHeader:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  upcomingSectionTitle: { fontSize: 16, fontWeight: '700', color: '#333' },
-  typeBadge:            { alignSelf: 'flex-start', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, marginBottom: 8 },
-  typeBadgeText:        { color: '#fff', fontSize: 11, fontWeight: '700' },
-  trainingCard:         { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 10, flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  milesNum:             { fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold },
+  milesLabel:           { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted },
+  chevron:              { fontSize: 22, color: NEUTRAL.input },
+  alertSection:         { marginTop: SPACE.sm },
+  alertSectionTitle:    { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: STATUS.error, marginBottom: SPACE.md },
+  alertCard:            { backgroundColor: STATUS.errorBg, borderRadius: RADIUS.lg, padding: SPACE.lg - 2, marginBottom: SPACE.md, borderLeftWidth: 4, borderLeftColor: STATUS.error },
+  alertAthleteName:     { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.sm },
+  alertSignal:          { fontSize: FONT_SIZE.sm, color: STATUS.error, marginBottom: 3 },
+  alertRec:             { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: SPACE.sm, fontStyle: 'italic' },
+  todaySection:         { marginBottom: SPACE['2xl'] },
+  todayLabel:           { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, color: NEUTRAL.muted, letterSpacing: 1, marginBottom: SPACE.md },
+  todayCard:            { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, borderLeftWidth: 4, marginBottom: SPACE.sm, ...SHADOW.sm },
+  upcomingSection:      { marginBottom: SPACE.lg },
+  upcomingHeader:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACE.md },
+  upcomingSectionTitle: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  typeBadge:            { alignSelf: 'flex-start', borderRadius: RADIUS.sm, paddingHorizontal: SPACE.md, paddingVertical: 5, marginBottom: SPACE.sm },
+  typeBadgeText:        { color: '#fff', fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
+  trainingCard:         { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg - 2, marginBottom: SPACE.md, flexDirection: 'row', alignItems: 'flex-start', gap: SPACE.md, ...SHADOW.sm },
   trainingInfo:         { flex: 1 },
-  trainingTitle:        { fontSize: 15, fontWeight: '700', color: '#333' },
-  trainingDesc:         { fontSize: 13, color: '#666', marginTop: 2 },
-  trainingNotes:        { fontSize: 13, color: '#888', marginTop: 4, fontStyle: 'italic' },
-  trainingDate:         { fontSize: 12, color: '#999', marginTop: 4 },
-  pendingCard:          { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 10, gap: 10 },
-  minorTag:             { fontSize: 11, color: '#f59e0b', marginTop: 4, fontWeight: '600' },
-  approvalBtns:         { flexDirection: 'row', gap: 8 },
-  approveBtn:           { flex: 1, borderRadius: 8, padding: 10, alignItems: 'center' },
-  approveBtnText:       { color: '#fff', fontWeight: '700' },
-  denyBtn:              { flex: 1, borderRadius: 8, padding: 10, alignItems: 'center', backgroundColor: '#fee2e2' },
-  denyBtnText:          { color: '#dc2626', fontWeight: '700' },
-  bottomNav:            { flexDirection: 'row', backgroundColor: '#fff', borderTopWidth: 1, paddingBottom: Platform.OS === 'ios' ? 24 : 8, paddingTop: 10 },
-  bottomNavBtn:         { flex: 1, alignItems: 'center', gap: 3 },
-  bottomNavPlus:        { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  bottomNavPlusText:    { color: '#fff', fontSize: 24, fontWeight: '300', lineHeight: 32 },
-  bottomNavEmoji:       { fontSize: 24, lineHeight: 32 },
-  bottomNavLabel:       { fontSize: 11, color: '#888', fontWeight: '500' },
-  badge:                { position: 'absolute', top: -4, right: -8, backgroundColor: '#dc2626', borderRadius: 9, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  badgeText:            { color: '#fff', fontSize: 10, fontWeight: '700' },
-  tipModal:             { flex: 1, backgroundColor: '#f5f5f5' },
-  tipModalHeader:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 60, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
-  tipModalTitle:        { fontSize: 18, fontWeight: 'bold', color: '#333' },
-  tipModalCancel:       { color: '#dc2626', fontSize: 16, width: 60 },
-  tipModalBody:         { padding: 20 },
-  tipModalSubtitle:     { fontSize: 14, color: '#666', lineHeight: 20, marginBottom: 16 },
-  tipModalInput:        { backgroundColor: '#fff', borderRadius: 12, padding: 16, fontSize: 16, color: '#333', borderWidth: 1, borderColor: '#ddd', minHeight: 180, textAlignVertical: 'top', lineHeight: 24, marginBottom: 12 },
-  tipModalHint:         { fontSize: 12, color: '#999', marginBottom: 24, lineHeight: 18 },
-  tipSendBtn:           { borderRadius: 12, padding: 18, alignItems: 'center', marginBottom: 40 },
-  tipSendBtnText:       { color: '#fff', fontSize: 17, fontWeight: 'bold' },
+  trainingTitle:        { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  trainingDesc:         { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginTop: 2 },
+  trainingNotes:        { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted, marginTop: SPACE.xs, fontStyle: 'italic' },
+  trainingDate:         { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: SPACE.xs },
+  pendingCard:          { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg - 2, marginBottom: SPACE.md, gap: SPACE.md },
+  minorTag:             { fontSize: FONT_SIZE.xs, color: STATUS.warning, marginTop: SPACE.xs, fontWeight: FONT_WEIGHT.semibold },
+  approvalBtns:         { flexDirection: 'row', gap: SPACE.sm },
+  approveBtn:           { flex: 1, borderRadius: RADIUS.sm, padding: SPACE.md, alignItems: 'center' },
+  approveBtnText:       { color: '#fff', fontWeight: FONT_WEIGHT.bold },
+  denyBtn:              { flex: 1, borderRadius: RADIUS.sm, padding: SPACE.md, alignItems: 'center', backgroundColor: STATUS.errorBg },
+  denyBtnText:          { color: STATUS.error, fontWeight: FONT_WEIGHT.bold },
+  bottomNav:            { flexDirection: 'row', backgroundColor: NEUTRAL.card, borderTopWidth: 1, borderTopColor: NEUTRAL.border, paddingBottom: Platform.OS === 'ios' ? SPACE['2xl'] : SPACE.sm, paddingTop: SPACE.md, ...SHADOW.sm },
+  bottomNavBtn:         { flex: 1, alignItems: 'center', gap: 2 },
+  bottomNavLabel:       { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, fontWeight: FONT_WEIGHT.medium },
+  badge:                { position: 'absolute', top: -4, right: -8, backgroundColor: STATUS.error, borderRadius: 9, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  badgeText:            { color: '#fff', fontSize: 10, fontWeight: FONT_WEIGHT.bold },
+  tipModal:             { flex: 1, backgroundColor: NEUTRAL.bg },
+  tipModalHeader:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: SPACE.xl, paddingTop: 60, backgroundColor: NEUTRAL.card, borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
+  tipModalTitle:        { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  tipModalCancel:       { color: STATUS.error, fontSize: FONT_SIZE.md, width: 60 },
+  tipModalBody:         { padding: SPACE.xl },
+  tipModalSubtitle:     { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, lineHeight: 20, marginBottom: SPACE.lg },
+  tipModalInput:        { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, fontSize: FONT_SIZE.md, color: BRAND_DARK, borderWidth: 1, borderColor: NEUTRAL.input, minHeight: 180, textAlignVertical: 'top', lineHeight: 24, marginBottom: SPACE.md },
+  tipModalHint:         { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginBottom: SPACE['2xl'], lineHeight: 18 },
+  tipSendBtn:           { borderRadius: RADIUS.lg, padding: SPACE.lg + 2, alignItems: 'center', marginBottom: SPACE['4xl'] },
+  tipSendBtnText:       { color: '#fff', fontSize: 17, fontWeight: FONT_WEIGHT.bold },
 });

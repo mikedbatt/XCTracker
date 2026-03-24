@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { signOut, updateEmail } from 'firebase/auth';
 import {
   doc, getDoc, updateDoc
@@ -6,6 +7,7 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   ScrollView,
   StyleSheet,
   Switch,
@@ -15,6 +17,11 @@ import {
   View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
+import Button from '../components/Button';
+import {
+  AVATAR_COLORS, BRAND, BRAND_DARK, BRAND_LIGHT,
+  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS, STRAVA_ORANGE,
+} from '../constants/design';
 import StravaConnect from './StravaConnect';
 
 export default function AthleteProfile({ userData, school, onClose, onUpdated }) {
@@ -30,8 +37,7 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated })
   const [activeSection, setActiveSection] = useState('profile');
   const [showHRZones,   setShowHRZones]   = useState(userData.showHRZones !== false);
   const [hrZoneLoaded,  setHrZoneLoaded]  = useState(false);
-
-  const primaryColor = school?.primaryColor || '#2e7d32';
+  const [avatarColor,   setAvatarColor]   = useState(userData.avatarColor || BRAND);
 
   useEffect(() => {
     loadMessages();
@@ -91,6 +97,7 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated })
         firstName: firstName.trim(),
         lastName:  lastName.trim(),
         gender,
+        avatarColor,
       };
 
       // Update email if changed
@@ -154,17 +161,18 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated })
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { backgroundColor: primaryColor }]}>
+      <View style={styles.header}>
         <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-          <Text style={styles.backText}>‹ Back</Text>
+          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+          <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>My Profile</Text>
         <View style={{ width: 60 }} />
       </View>
 
       {/* Avatar block */}
-      <View style={[styles.avatarSection, { backgroundColor: primaryColor }]}>
-        <View style={styles.avatar}>
+      <View style={styles.avatarSection}>
+        <View style={[styles.avatar, { backgroundColor: avatarColor }]}>
           <Text style={styles.avatarText}>
             {(firstName[0] || '?')}{(lastName[0] || '')}
           </Text>
@@ -181,10 +189,10 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated })
         {sections.map(s => (
           <TouchableOpacity
             key={s}
-            style={[styles.tab, activeSection === s && { borderBottomColor: primaryColor, borderBottomWidth: 2 }]}
+            style={[styles.tab, activeSection === s && { borderBottomColor: BRAND, borderBottomWidth: 2 }]}
             onPress={() => setActiveSection(s)}
           >
-            <Text style={[styles.tabText, activeSection === s && { color: primaryColor, fontWeight: '700' }]}>
+            <Text style={[styles.tabText, activeSection === s && { color: BRAND, fontWeight: '700' }]}>
               {sectionLabels[s]}
               {s === 'messages' && messages.length > 0 ? ` (${messages.length})` : ''}
             </Text>
@@ -238,7 +246,7 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated })
                 {['boys', 'girls'].map(g => (
                   <TouchableOpacity
                     key={g}
-                    style={[styles.genderBtn, gender === g && { backgroundColor: primaryColor, borderColor: primaryColor }]}
+                    style={[styles.genderBtn, gender === g && { backgroundColor: BRAND, borderColor: BRAND }]}
                     onPress={() => setGender(g)}
                   >
                     <Text style={[styles.genderBtnText, gender === g && { color: '#fff' }]}>
@@ -248,16 +256,25 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated })
                 ))}
               </View>
 
-              <TouchableOpacity
-                style={[styles.saveBtn, { backgroundColor: primaryColor }]}
+              <Text style={styles.fieldLabel}>Avatar color</Text>
+              <View style={styles.avatarColorRow}>
+                {AVATAR_COLORS.map(color => (
+                  <TouchableOpacity
+                    key={color}
+                    style={[styles.avatarColorBtn, { backgroundColor: color }, avatarColor === color && styles.avatarColorBtnActive]}
+                    onPress={() => setAvatarColor(color)}
+                  >
+                    {avatarColor === color && <Ionicons name="checkmark" size={16} color="#fff" />}
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Button
+                label="Save changes"
                 onPress={handleSave}
-                disabled={saving}
-              >
-                {saving
-                  ? <ActivityIndicator color="#fff" />
-                  : <Text style={styles.saveBtnText}>Save changes</Text>
-                }
-              </TouchableOpacity>
+                loading={saving}
+                style={{ marginTop: SPACE.sm }}
+              />
             </View>
 
             <View style={styles.card}>
@@ -271,7 +288,7 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated })
                   value={showHRZones}
                   onValueChange={handleToggleHRZones}
                   disabled={!hrZoneLoaded}
-                  trackColor={{ false: '#ddd', true: primaryColor }}
+                  trackColor={{ false: '#ddd', true: BRAND }}
                   thumbColor="#fff"
                 />
               </View>
@@ -293,7 +310,7 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated })
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Coach messages — last 30 days</Text>
             {loadingMsgs ? (
-              <ActivityIndicator color={primaryColor} style={{ marginTop: 20 }} />
+              <ActivityIndicator color={BRAND} style={{ marginTop: 20 }} />
             ) : messages.length === 0 ? (
               <View style={styles.emptyCard}>
                 <Text style={styles.emptyTitle}>No messages yet</Text>
@@ -305,9 +322,9 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated })
               const msgDate = new Date(msg.date + 'T12:00:00')
                 .toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
               return (
-                <View key={msg.id} style={[styles.messageCard, isToday && { borderLeftColor: primaryColor }]}>
+                <View key={msg.id} style={[styles.messageCard, isToday && { borderLeftColor: BRAND }]}>
                   <View style={styles.messageHeader}>
-                    <Text style={[styles.messageDate, isToday && { color: primaryColor, fontWeight: '700' }]}>
+                    <Text style={[styles.messageDate, isToday && { color: BRAND, fontWeight: '700' }]}>
                       {isToday ? '📣 Today' : msgDate}
                     </Text>
                     <Text style={styles.messageSender}>{msg.sentByName}</Text>
@@ -336,10 +353,10 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated })
                 </Text>
               </View>
               <TouchableOpacity
-                style={[styles.connectionBtn, { borderColor: stravaLinked ? '#dc2626' : primaryColor }]}
+                style={[styles.connectionBtn, { borderColor: stravaLinked ? '#dc2626' : BRAND }]}
                 onPress={() => setStravaVisible(true)}
               >
-                <Text style={[styles.connectionBtnText, { color: stravaLinked ? '#dc2626' : primaryColor }]}>
+                <Text style={[styles.connectionBtnText, { color: stravaLinked ? '#dc2626' : BRAND }]}>
                   {stravaLinked ? 'Manage' : 'Connect'}
                 </Text>
               </TouchableOpacity>
@@ -390,59 +407,57 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated })
 }
 
 const styles = StyleSheet.create({
-  container:          { flex: 1, backgroundColor: '#f5f5f5' },
-  header:             { paddingTop: 60, paddingBottom: 12, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  backBtn:            { paddingVertical: 6, paddingHorizontal: 10 },
-  backText:           { color: '#fff', fontSize: 17, fontWeight: '600' },
-  headerTitle:        { fontSize: 20, fontWeight: 'bold', color: '#fff' },
-  avatarSection:      { alignItems: 'center', paddingBottom: 20, paddingTop: 4 },
-  avatar:             { width: 68, height: 68, borderRadius: 34, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  avatarText:         { color: '#fff', fontSize: 26, fontWeight: 'bold' },
-  avatarName:         { color: '#fff', fontSize: 20, fontWeight: '700' },
-  avatarSub:          { color: 'rgba(255,255,255,0.75)', fontSize: 13, marginTop: 3 },
-  tabRow:             { flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
-  tab:                { flex: 1, paddingVertical: 12, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  tabText:            { fontSize: 13, color: '#666' },
+  container:          { flex: 1, backgroundColor: NEUTRAL.bg },
+  header:             { backgroundColor: NEUTRAL.card, paddingTop: Platform.OS === 'ios' ? SPACE['5xl'] : SPACE['3xl'], paddingBottom: SPACE.md, paddingHorizontal: SPACE.xl, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
+  backBtn:            { flexDirection: 'row', alignItems: 'center', gap: SPACE.xs, paddingVertical: SPACE.sm },
+  backText:           { color: BRAND_DARK, fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.semibold },
+  headerTitle:        { fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  avatarSection:      { backgroundColor: NEUTRAL.card, alignItems: 'center', paddingBottom: SPACE.xl, paddingTop: SPACE.sm },
+  avatar:             { width: 68, height: 68, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center', marginBottom: SPACE.sm },
+  avatarText:         { color: '#fff', fontSize: 26, fontWeight: FONT_WEIGHT.bold },
+  avatarName:         { color: BRAND_DARK, fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold },
+  avatarSub:          { color: NEUTRAL.body, fontSize: FONT_SIZE.sm, marginTop: 3 },
+  tabRow:             { flexDirection: 'row', backgroundColor: NEUTRAL.card, borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
+  tab:                { flex: 1, paddingVertical: SPACE.md, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  tabText:            { fontSize: FONT_SIZE.sm, color: NEUTRAL.body },
   scroll:             { flex: 1 },
-  section:            { padding: 16 },
-  sectionTitle:       { fontSize: 17, fontWeight: '700', color: '#333', marginBottom: 12 },
-  card:               { backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 16 },
-  cardTitle:          { fontSize: 16, fontWeight: '700', color: '#333', marginBottom: 14 },
-  fieldLabel:         { fontSize: 13, fontWeight: '600', color: '#666', marginBottom: 6, marginTop: 8 },
-  fieldHint:          { fontSize: 11, color: '#bbb', marginTop: -8, marginBottom: 8 },
-  input:              { backgroundColor: '#f5f5f5', borderRadius: 10, padding: 13, fontSize: 15, color: '#333', borderWidth: 1, borderColor: '#e0e0e0', marginBottom: 4 },
-  genderRow:          { flexDirection: 'row', gap: 10, marginBottom: 16 },
-  genderBtn:          { flex: 1, borderRadius: 10, borderWidth: 1.5, borderColor: '#ddd', padding: 12, alignItems: 'center', backgroundColor: '#f5f5f5' },
-  genderBtnText:      { fontSize: 14, fontWeight: '700', color: '#444' },
-  saveBtn:            { borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 4 },
-  saveBtnText:        { color: '#fff', fontSize: 16, fontWeight: '700' },
-  toggleRow:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  section:            { padding: SPACE.lg },
+  sectionTitle:       { fontSize: 17, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.md },
+  card:               { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, marginBottom: SPACE.lg, ...SHADOW.sm },
+  cardTitle:          { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.lg - 2 },
+  fieldLabel:         { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.body, marginBottom: SPACE.sm, marginTop: SPACE.sm },
+  fieldHint:          { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: -SPACE.sm, marginBottom: SPACE.sm },
+  input:              { backgroundColor: NEUTRAL.bg, borderRadius: RADIUS.md, padding: SPACE.md, fontSize: FONT_SIZE.base, color: BRAND_DARK, borderWidth: 1, borderColor: NEUTRAL.border, marginBottom: SPACE.xs },
+  genderRow:          { flexDirection: 'row', gap: SPACE.md, marginBottom: SPACE.lg },
+  genderBtn:          { flex: 1, borderRadius: RADIUS.md, borderWidth: 1.5, borderColor: NEUTRAL.border, padding: SPACE.md, alignItems: 'center', backgroundColor: NEUTRAL.bg },
+  genderBtnText:      { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: NEUTRAL.label },
+  avatarColorRow:     { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.md, marginBottom: SPACE.lg },
+  avatarColorBtn:     { width: 36, height: 36, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center' },
+  avatarColorBtnActive: { borderWidth: 3, borderColor: NEUTRAL.card, ...SHADOW.md },
+  toggleRow:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.md },
   toggleInfo:         { flex: 1 },
-  toggleLabel:        { fontSize: 15, fontWeight: '600', color: '#333', marginBottom: 3 },
-  toggleHint:         { fontSize: 12, color: '#999', lineHeight: 17 },
-  infoCard:           { backgroundColor: '#fff', borderRadius: 14, padding: 16, gap: 8 },
-  infoCardTitle:      { fontSize: 15, fontWeight: '700', color: '#333', marginBottom: 4 },
-  infoRow:            { fontSize: 14, color: '#555' },
-  infoHint:           { fontSize: 12, color: '#999', marginTop: 4, lineHeight: 18 },
-  emptyCard:          { backgroundColor: '#fff', borderRadius: 14, padding: 32, alignItems: 'center' },
-  emptyTitle:         { fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 6 },
-  emptySub:           { fontSize: 14, color: '#999', textAlign: 'center' },
-  messageCard:        { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 10, borderLeftWidth: 3, borderLeftColor: '#ddd' },
-  messageHeader:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  messageDate:        { fontSize: 13, color: '#666', fontWeight: '600' },
-  messageSender:      { fontSize: 12, color: '#999' },
-  messageText:        { fontSize: 15, color: '#333', lineHeight: 22 },
-  signOutSection:     { marginHorizontal: 16, marginTop: 8, marginBottom: 8, alignItems: 'center' },
-  signOutBtn:         { borderRadius: 12, borderWidth: 1.5, borderColor: '#dc2626', paddingVertical: 14, paddingHorizontal: 40, marginBottom: 8 },
-  signOutBtnText:     { color: '#dc2626', fontSize: 16, fontWeight: '700' },
-  signOutHint:        { fontSize: 12, color: '#bbb', textAlign: 'center' },
-  // FIX: connectionCard was referenced in JSX but was missing from StyleSheet entirely
-  connectionCard:     { backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  connectionLogo:     { width: 44, height: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  connectionLogoText: { color: '#fff', fontSize: 18, fontWeight: '900' },
+  toggleLabel:        { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.semibold, color: BRAND_DARK, marginBottom: 3 },
+  toggleHint:         { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, lineHeight: 17 },
+  infoCard:           { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, gap: SPACE.sm, ...SHADOW.sm },
+  infoCardTitle:      { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.xs },
+  infoRow:            { fontSize: FONT_SIZE.sm, color: NEUTRAL.label },
+  infoHint:           { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: SPACE.xs, lineHeight: 18 },
+  emptyCard:          { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE['3xl'], alignItems: 'center', ...SHADOW.sm },
+  emptyTitle:         { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.semibold, color: BRAND_DARK, marginBottom: SPACE.sm },
+  emptySub:           { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted, textAlign: 'center' },
+  messageCard:        { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg - 2, marginBottom: SPACE.md, borderLeftWidth: 3, borderLeftColor: NEUTRAL.border, ...SHADOW.sm },
+  messageHeader:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACE.sm },
+  messageDate:        { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, fontWeight: FONT_WEIGHT.semibold },
+  messageSender:      { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted },
+  messageText:        { fontSize: FONT_SIZE.base, color: BRAND_DARK, lineHeight: 22 },
+  signOutSection:     { marginHorizontal: SPACE.lg, marginTop: SPACE.sm, marginBottom: SPACE.sm, alignItems: 'center' },
+  signOutHint:        { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, textAlign: 'center', marginTop: SPACE.sm },
+  connectionCard:     { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg - 2, marginBottom: SPACE.md, flexDirection: 'row', alignItems: 'center', gap: SPACE.md, ...SHADOW.sm },
+  connectionLogo:     { width: 44, height: 44, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center' },
+  connectionLogoText: { color: '#fff', fontSize: FONT_SIZE.lg, fontWeight: '900' },
   connectionInfo:     { flex: 1 },
-  connectionName:     { fontSize: 15, fontWeight: '700', color: '#333' },
-  connectionStatus:   { fontSize: 12, color: '#666', marginTop: 2 },
-  connectionBtn:      { borderRadius: 8, borderWidth: 1.5, paddingHorizontal: 14, paddingVertical: 7 },
-  connectionBtnText:  { fontSize: 13, fontWeight: '700' },
+  connectionName:     { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  connectionStatus:   { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: 2 },
+  connectionBtn:      { borderRadius: RADIUS.sm, borderWidth: 1.5, paddingHorizontal: SPACE.lg - 2, paddingVertical: SPACE.sm },
+  connectionBtnText:  { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold },
 });

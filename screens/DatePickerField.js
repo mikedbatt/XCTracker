@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import React, { useState } from 'react';
 import {
@@ -7,21 +8,25 @@ import {
   Text, TouchableOpacity,
   View,
 } from 'react-native';
+import {
+  BRAND, BRAND_DARK,
+  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SPACE, STATUS,
+} from '../constants/design';
 
 export default function DatePickerField({
   label,
   value,
   onChange,
-  primaryColor = '#2e7d32',
+  primaryColor, // kept for backwards compat but ignored — always uses BRAND
   minimumDate,
   maximumDate,
   mode = 'date',
 }) {
   const [show, setShow] = useState(false);
-  // Safely convert any date format to a valid JS Date
+
   const toValidDate = (val) => {
     if (!val) return undefined;
-    if (val?.toDate) return val.toDate();           // Firestore Timestamp
+    if (val?.toDate) return val.toDate();
     if (val instanceof Date && !isNaN(val.getTime())) return val;
     if (typeof val === 'string') {
       const d = new Date(val);
@@ -36,8 +41,6 @@ export default function DatePickerField({
 
   const handleOpen = () => {
     setShow(true);
-    // Pre-fire onChange with today if no value set yet
-    // iOS spinner only fires onChange on scroll, not on open
     if (!value) onChange(new Date());
   };
 
@@ -58,19 +61,18 @@ export default function DatePickerField({
     if (selectedDate) onChange(selectedDate);
   };
 
-  // iOS uses a modal, Android shows inline
   if (Platform.OS === 'ios') {
     return (
       <View style={styles.container}>
         {label && <Text style={styles.label}>{label}</Text>}
         <TouchableOpacity
-          style={[styles.trigger, { borderColor: value ? primaryColor : '#ddd' }]}
+          style={[styles.trigger, value && styles.triggerActive]}
           onPress={handleOpen}
         >
-          <Text style={[styles.triggerText, { color: value ? '#333' : '#999' }]}>
+          <Text style={[styles.triggerText, { color: value ? BRAND_DARK : NEUTRAL.muted }]}>
             {mode === 'time' ? formatTime(date) : formatDate(date)}
           </Text>
-          <Text style={[styles.icon, { color: primaryColor }]}>📅</Text>
+          <Ionicons name="calendar-outline" size={20} color={BRAND} />
         </TouchableOpacity>
 
         <Modal visible={show} transparent animationType="slide">
@@ -82,7 +84,7 @@ export default function DatePickerField({
                 </TouchableOpacity>
                 <Text style={styles.modalTitle}>{label || 'Select date'}</Text>
                 <TouchableOpacity onPress={() => setShow(false)}>
-                  <Text style={[styles.modalDone, { color: primaryColor }]}>Done</Text>
+                  <Text style={styles.modalDone}>Done</Text>
                 </TouchableOpacity>
               </View>
               <DateTimePicker
@@ -106,13 +108,13 @@ export default function DatePickerField({
     <View style={styles.container}>
       {label && <Text style={styles.label}>{label}</Text>}
       <TouchableOpacity
-        style={[styles.trigger, { borderColor: value ? primaryColor : '#ddd' }]}
+        style={[styles.trigger, value && styles.triggerActive]}
         onPress={handleOpen}
       >
-        <Text style={[styles.triggerText, { color: value ? '#333' : '#999' }]}>
+        <Text style={[styles.triggerText, { color: value ? BRAND_DARK : NEUTRAL.muted }]}>
           {mode === 'time' ? formatTime(date) : formatDate(date)}
         </Text>
-        <Text style={[styles.icon, { color: primaryColor }]}>📅</Text>
+        <Ionicons name="calendar-outline" size={20} color={BRAND} />
       </TouchableOpacity>
       {show && (
         <DateTimePicker
@@ -129,31 +131,31 @@ export default function DatePickerField({
 }
 
 const styles = StyleSheet.create({
-  container: { marginBottom: 16 },
-  label: { fontSize: 14, fontWeight: '600', color: '#444', marginBottom: 8 },
+  container:    { marginBottom: SPACE.lg },
+  label:        { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.label, marginBottom: SPACE.sm },
   trigger: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#fff', borderRadius: 10, borderWidth: 1.5,
-    paddingHorizontal: 14, paddingVertical: 14,
+    backgroundColor: NEUTRAL.card, borderRadius: RADIUS.md, borderWidth: 1.5,
+    borderColor: NEUTRAL.input, paddingHorizontal: SPACE.lg - 2, paddingVertical: SPACE.lg - 2,
   },
-  triggerText: { fontSize: 16, flex: 1 },
-  icon: { fontSize: 18, marginLeft: 8 },
+  triggerActive: { borderColor: BRAND },
+  triggerText:  { fontSize: FONT_SIZE.md, flex: 1 },
   modalOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    paddingBottom: 30,
+    backgroundColor: NEUTRAL.card,
+    borderTopLeftRadius: SPACE.xl, borderTopRightRadius: SPACE.xl,
+    paddingBottom: SPACE['3xl'],
   },
   modalHeader: {
     flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', padding: 16,
-    borderBottomWidth: 1, borderBottomColor: '#eee',
+    alignItems: 'center', padding: SPACE.lg,
+    borderBottomWidth: 1, borderBottomColor: NEUTRAL.border,
   },
-  modalTitle: { fontSize: 16, fontWeight: '600', color: '#333' },
-  modalCancel: { fontSize: 16, color: '#c0392b', fontWeight: '600' },
-  modalDone: { fontSize: 16, fontWeight: '700' },
-  picker: { height: 200 },
+  modalTitle:   { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.semibold, color: BRAND_DARK },
+  modalCancel:  { fontSize: FONT_SIZE.md, color: STATUS.error, fontWeight: FONT_WEIGHT.semibold },
+  modalDone:    { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold, color: BRAND },
+  picker:       { height: 200 },
 });

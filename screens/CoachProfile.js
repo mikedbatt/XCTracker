@@ -1,9 +1,11 @@
+import { Ionicons } from '@expo/vector-icons';
 import { signOut, updateEmail } from 'firebase/auth';
 import { doc, updateDoc } from 'firebase/firestore';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,6 +14,22 @@ import {
   View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
+import Button from '../components/Button';
+import {
+  BRAND, BRAND_DARK, BRAND_LIGHT,
+  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
+} from '../constants/design';
+
+const SCHOOL_COLORS = [
+  { name: 'Navy & Gold', primary: '#1a237e', secondary: '#ffd600' },
+  { name: 'Red & White', primary: '#c62828', secondary: '#ffffff' },
+  { name: 'Green & White', primary: '#2e7d32', secondary: '#ffffff' },
+  { name: 'Purple & Gold', primary: '#6a1b9a', secondary: '#ffd600' },
+  { name: 'Black & Orange', primary: '#212121', secondary: '#f57c00' },
+  { name: 'Blue & White', primary: '#1565c0', secondary: '#ffffff' },
+  { name: 'Maroon & Gold', primary: '#880e4f', secondary: '#ffd600' },
+  { name: 'Custom', primary: null, secondary: null },
+];
 
 export default function CoachProfile({ userData, school, pendingAthletes = [], onApproveAthlete, onDenyAthlete, onClose, onUpdated }) {
   const [firstName, setFirstName] = useState(userData.firstName || '');
@@ -19,7 +37,20 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
   const [email,     setEmail]     = useState(userData.email     || '');
   const [saving,    setSaving]    = useState(false);
 
-  const primaryColor = school?.primaryColor || '#2e7d32';
+  // School editing state
+  const [schoolName, setSchoolName]       = useState(school?.name || '');
+  const [mascot, setMascot]               = useState(school?.mascot || '');
+  const [selectedColors, setSelectedColors] = useState(() => {
+    if (!school?.primaryColor) return null;
+    const match = SCHOOL_COLORS.find(c => c.primary === school.primaryColor);
+    return match || { name: 'Custom', primary: null, secondary: null };
+  });
+  const [customPrimary, setCustomPrimary]   = useState(school?.primaryColor || '');
+  const [customSecondary, setCustomSecondary] = useState(school?.secondaryColor || '');
+  const [savingSchool, setSavingSchool]     = useState(false);
+  const [editingSchool, setEditingSchool]   = useState(false);
+
+  const isAdmin = userData.coachRole === 'admin';
 
   const handleSave = async () => {
     if (!firstName.trim() || !lastName.trim()) {
@@ -59,6 +90,31 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
     setSaving(false);
   };
 
+  const handleSaveSchool = async () => {
+    if (!schoolName.trim()) {
+      Alert.alert('Required', 'Please enter a school name.');
+      return;
+    }
+    setSavingSchool(true);
+    try {
+      const primaryColor = selectedColors?.name === 'Custom' ? customPrimary : selectedColors?.primary;
+      const secondaryColor = selectedColors?.name === 'Custom' ? customSecondary : selectedColors?.secondary;
+
+      await updateDoc(doc(db, 'schools', userData.schoolId), {
+        name: schoolName.trim(),
+        mascot: mascot.trim(),
+        ...(primaryColor && { primaryColor }),
+        ...(secondaryColor && { secondaryColor }),
+      });
+      Alert.alert('Saved!', 'School info has been updated.');
+      setEditingSchool(false);
+      onUpdated && onUpdated();
+    } catch {
+      Alert.alert('Error', 'Could not save school info. Please try again.');
+    }
+    setSavingSchool(false);
+  };
+
   const handleSignOut = () => {
     Alert.alert(
       'Sign out',
@@ -72,15 +128,16 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { backgroundColor: primaryColor }]}>
+      <View style={styles.header}>
         <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-          <Text style={styles.backText}>‹ Back</Text>
+          <Ionicons name="chevron-back" size={22} color="#fff" />
+          <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>My Profile</Text>
         <View style={{ width: 60 }} />
       </View>
 
-      <View style={[styles.avatarSection, { backgroundColor: primaryColor }]}>
+      <View style={styles.avatarSection}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>
             {(firstName[0] || '?')}{(lastName[0] || '')}
@@ -101,7 +158,7 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
               value={firstName}
               onChangeText={setFirstName}
               placeholder="First name"
-              placeholderTextColor="#999"
+              placeholderTextColor={NEUTRAL.muted}
               autoCapitalize="words"
             />
 
@@ -111,7 +168,7 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
               value={lastName}
               onChangeText={setLastName}
               placeholder="Last name"
-              placeholderTextColor="#999"
+              placeholderTextColor={NEUTRAL.muted}
               autoCapitalize="words"
             />
 
@@ -121,32 +178,141 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
               value={email}
               onChangeText={setEmail}
               placeholder="Email"
-              placeholderTextColor="#999"
+              placeholderTextColor={NEUTRAL.muted}
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
             />
             <Text style={styles.fieldHint}>Changing email requires a recent sign-in</Text>
 
-            <TouchableOpacity
-              style={[styles.saveBtn, { backgroundColor: primaryColor }]}
+            <Button
+              label="Save changes"
               onPress={handleSave}
-              disabled={saving}
-            >
-              {saving
-                ? <ActivityIndicator color="#fff" />
-                : <Text style={styles.saveBtnText}>Save changes</Text>
-              }
-            </TouchableOpacity>
+              loading={saving}
+              style={{ marginTop: SPACE.xs }}
+            />
           </View>
 
-          <View style={styles.infoCard}>
-            <Text style={styles.infoCardTitle}>School info</Text>
-            <Text style={styles.infoRow}>🏫  {school?.name || 'School not set'}</Text>
-            <Text style={styles.infoRow}>🔑  Join code: {school?.joinCode || '—'}</Text>
-            <Text style={styles.infoHint}>
-              Share this join code with athletes so they can join your team.
-            </Text>
+          {/* School info card */}
+          <View style={styles.card}>
+            <View style={styles.cardTitleRow}>
+              <Text style={styles.cardTitle}>School info</Text>
+              {isAdmin && !editingSchool && (
+                <TouchableOpacity onPress={() => setEditingSchool(true)}>
+                  <Text style={styles.editLink}>Edit</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {editingSchool ? (
+              <>
+                <Text style={styles.fieldLabel}>School name</Text>
+                <TextInput
+                  style={styles.input}
+                  value={schoolName}
+                  onChangeText={setSchoolName}
+                  placeholder="School name"
+                  placeholderTextColor={NEUTRAL.muted}
+                  autoCapitalize="words"
+                />
+
+                <Text style={styles.fieldLabel}>Mascot</Text>
+                <TextInput
+                  style={styles.input}
+                  value={mascot}
+                  onChangeText={setMascot}
+                  placeholder="e.g. Braves, Eagles"
+                  placeholderTextColor={NEUTRAL.muted}
+                  autoCapitalize="words"
+                />
+
+                <Text style={styles.fieldLabel}>Team colors</Text>
+                <View style={styles.colorsGrid}>
+                  {SCHOOL_COLORS.map((colorOption) => (
+                    <TouchableOpacity
+                      key={colorOption.name}
+                      style={[
+                        styles.colorCard,
+                        selectedColors?.name === colorOption.name && styles.colorCardActive,
+                      ]}
+                      onPress={() => setSelectedColors(colorOption)}
+                    >
+                      {colorOption.primary ? (
+                        <View style={styles.colorSwatches}>
+                          <View style={[styles.swatch, { backgroundColor: colorOption.primary }]} />
+                          <View style={[styles.swatch, { backgroundColor: colorOption.secondary, borderWidth: 1, borderColor: NEUTRAL.border }]} />
+                        </View>
+                      ) : (
+                        <Text style={{ fontSize: FONT_SIZE.sm }}>Custom</Text>
+                      )}
+                      <Text style={styles.colorName}>{colorOption.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {selectedColors?.name === 'Custom' && (
+                  <View style={styles.customRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.fieldLabel}>Primary</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={customPrimary}
+                        onChangeText={setCustomPrimary}
+                        placeholder="#000000"
+                        placeholderTextColor={NEUTRAL.muted}
+                        autoCapitalize="none"
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.fieldLabel}>Secondary</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={customSecondary}
+                        onChangeText={setCustomSecondary}
+                        placeholder="#ffffff"
+                        placeholderTextColor={NEUTRAL.muted}
+                        autoCapitalize="none"
+                      />
+                    </View>
+                  </View>
+                )}
+
+                <View style={styles.schoolBtnRow}>
+                  <Button
+                    label="Save school info"
+                    onPress={handleSaveSchool}
+                    loading={savingSchool}
+                    style={{ flex: 1 }}
+                  />
+                  <Button
+                    label="Cancel"
+                    variant="secondary"
+                    onPress={() => setEditingSchool(false)}
+                  />
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={styles.infoRow}>{school?.name || 'School not set'}</Text>
+                {school?.mascot ? <Text style={styles.infoRowSub}>{school.mascot}</Text> : null}
+                <View style={styles.joinCodeRow}>
+                  <Ionicons name="key-outline" size={16} color={NEUTRAL.body} />
+                  <Text style={styles.infoRow}>Join code: {school?.joinCode || '—'}</Text>
+                </View>
+                {school?.primaryColor && (
+                  <View style={styles.currentColorsRow}>
+                    <View style={[styles.currentSwatch, { backgroundColor: school.primaryColor }]} />
+                    {school.secondaryColor && (
+                      <View style={[styles.currentSwatch, { backgroundColor: school.secondaryColor, borderWidth: 1, borderColor: NEUTRAL.border }]} />
+                    )}
+                    <Text style={styles.infoRowSub}>Team colors</Text>
+                  </View>
+                )}
+                <Text style={styles.fieldHint}>
+                  Share the join code with athletes so they can join your team.
+                </Text>
+              </>
+            )}
           </View>
         </View>
 
@@ -160,7 +326,7 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
                   <Text style={styles.pendingEmail}>{athlete.email}</Text>
                 </View>
                 <View style={styles.pendingBtns}>
-                  <TouchableOpacity style={[styles.approveBtn, { backgroundColor: primaryColor }]} onPress={() => onApproveAthlete && onApproveAthlete(athlete)}>
+                  <TouchableOpacity style={styles.approveBtn} onPress={() => onApproveAthlete && onApproveAthlete(athlete)}>
                     <Text style={styles.approveBtnText}>Approve</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.denyBtn} onPress={() => onDenyAthlete && onDenyAthlete(athlete)}>
@@ -173,9 +339,12 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
         )}
 
         <View style={styles.signOutSection}>
-          <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
-            <Text style={styles.signOutBtnText}>Sign out</Text>
-          </TouchableOpacity>
+          <Button
+            label="Sign out"
+            variant="destructive"
+            onPress={handleSignOut}
+            style={{ paddingHorizontal: SPACE['4xl'] }}
+          />
           <Text style={styles.signOutHint}>
             You'll need your email and password to sign back in.
           </Text>
@@ -188,42 +357,51 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
 }
 
 const styles = StyleSheet.create({
-  container:          { flex: 1, backgroundColor: '#f5f5f5' },
-  header:             { paddingTop: 60, paddingBottom: 12, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  backBtn:            { paddingVertical: 6, paddingHorizontal: 10 },
-  backText:           { color: '#fff', fontSize: 17, fontWeight: '600' },
-  headerTitle:        { fontSize: 20, fontWeight: 'bold', color: '#fff' },
-  avatarSection:      { alignItems: 'center', paddingBottom: 20, paddingTop: 4 },
-  avatar:             { width: 68, height: 68, borderRadius: 34, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  avatarText:         { color: '#fff', fontSize: 26, fontWeight: 'bold' },
-  avatarName:         { color: '#fff', fontSize: 20, fontWeight: '700' },
-  avatarSub:          { color: 'rgba(255,255,255,0.75)', fontSize: 13, marginTop: 3 },
+  container:          { flex: 1, backgroundColor: NEUTRAL.bg },
+  header:             { backgroundColor: BRAND, paddingTop: Platform.OS === 'ios' ? SPACE['5xl'] : SPACE['3xl'], paddingBottom: SPACE.md, paddingHorizontal: SPACE.xl, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  backBtn:            { flexDirection: 'row', alignItems: 'center', gap: SPACE.xs, paddingVertical: SPACE.sm },
+  backText:           { color: '#fff', fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.semibold },
+  headerTitle:        { fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold, color: '#fff' },
+  avatarSection:      { backgroundColor: BRAND, alignItems: 'center', paddingBottom: SPACE.xl, paddingTop: SPACE.xs },
+  avatar:             { width: 68, height: 68, borderRadius: RADIUS.full, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center', marginBottom: SPACE.sm },
+  avatarText:         { color: '#fff', fontSize: 26, fontWeight: FONT_WEIGHT.bold },
+  avatarName:         { color: '#fff', fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold },
+  avatarSub:          { color: 'rgba(255,255,255,0.75)', fontSize: FONT_SIZE.sm, marginTop: 3 },
   scroll:             { flex: 1 },
-  section:            { padding: 16 },
-  card:               { backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 16 },
-  cardTitle:          { fontSize: 16, fontWeight: '700', color: '#333', marginBottom: 14 },
-  fieldLabel:         { fontSize: 13, fontWeight: '600', color: '#666', marginBottom: 6, marginTop: 8 },
-  fieldHint:          { fontSize: 11, color: '#bbb', marginTop: -8, marginBottom: 8 },
-  input:              { backgroundColor: '#f5f5f5', borderRadius: 10, padding: 13, fontSize: 15, color: '#333', borderWidth: 1, borderColor: '#e0e0e0', marginBottom: 4 },
-  saveBtn:            { borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 4 },
-  saveBtnText:        { color: '#fff', fontSize: 16, fontWeight: '700' },
-  infoCard:           { backgroundColor: '#fff', borderRadius: 14, padding: 16, gap: 8 },
-  infoCardTitle:      { fontSize: 15, fontWeight: '700', color: '#333', marginBottom: 4 },
-  infoRow:            { fontSize: 14, color: '#555' },
-  infoHint:           { fontSize: 12, color: '#999', marginTop: 4, lineHeight: 18 },
-  section:            { padding: 16 },
-  pendingTitle:       { fontSize: 17, fontWeight: '700', color: '#333', marginBottom: 10 },
-  pendingCard:        { backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  section:            { padding: SPACE.lg },
+  card:               { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, marginBottom: SPACE.lg, ...SHADOW.sm },
+  cardTitleRow:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACE.lg - 2 },
+  cardTitle:          { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.lg - 2 },
+  editLink:           { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: BRAND },
+  fieldLabel:         { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.body, marginBottom: SPACE.sm, marginTop: SPACE.sm },
+  fieldHint:          { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: -SPACE.sm, marginBottom: SPACE.sm },
+  input:              { backgroundColor: NEUTRAL.bg, borderRadius: RADIUS.md, padding: SPACE.md, fontSize: FONT_SIZE.base, color: BRAND_DARK, borderWidth: 1, borderColor: NEUTRAL.border, marginBottom: SPACE.xs },
+  infoRow:            { fontSize: FONT_SIZE.sm, color: NEUTRAL.label },
+  infoRowSub:         { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted, marginTop: 2 },
+  joinCodeRow:        { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginTop: SPACE.sm },
+  currentColorsRow:   { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginTop: SPACE.md },
+  currentSwatch:      { width: 24, height: 24, borderRadius: RADIUS.full },
+  colorsGrid:         { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.sm, marginBottom: SPACE.md },
+  colorCard: {
+    width: '22%', backgroundColor: NEUTRAL.bg, borderRadius: RADIUS.sm,
+    padding: SPACE.sm, alignItems: 'center', borderWidth: 2, borderColor: NEUTRAL.border,
+  },
+  colorCardActive:    { borderColor: BRAND },
+  colorSwatches:      { flexDirection: 'row', gap: SPACE.xs, marginBottom: SPACE.xs },
+  swatch:             { width: 18, height: 18, borderRadius: RADIUS.full },
+  colorName:          { fontSize: 9, color: NEUTRAL.body, textAlign: 'center' },
+  customRow:          { flexDirection: 'row', gap: SPACE.md },
+  schoolBtnRow:       { flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.sm },
+  pendingTitle:       { fontSize: 17, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.md },
+  pendingCard:        { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.md, marginBottom: SPACE.sm, flexDirection: 'row', alignItems: 'center', gap: SPACE.md, ...SHADOW.sm },
   pendingInfo:        { flex: 1 },
-  pendingName:        { fontSize: 14, fontWeight: '600', color: '#333' },
-  pendingEmail:       { fontSize: 12, color: '#999', marginTop: 2 },
-  pendingBtns:        { flexDirection: 'row', gap: 6 },
-  approveBtn:         { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
-  approveBtnText:     { color: '#fff', fontSize: 12, fontWeight: '700' },
-  denyBtn:            { borderRadius: 8, borderWidth: 1, borderColor: '#dc2626', paddingHorizontal: 12, paddingVertical: 6 },
-  denyBtnText:        { color: '#dc2626', fontSize: 12, fontWeight: '700' },
-  signOutSection:     { marginHorizontal: 16, marginTop: 8, marginBottom: 8, alignItems: 'center' },
-  signOutBtn:         { borderRadius: 12, borderWidth: 1.5, borderColor: '#dc2626', paddingVertical: 14, paddingHorizontal: 40, marginBottom: 8 },
-  signOutBtnText:     { color: '#dc2626', fontSize: 16, fontWeight: '700' },
-  signOutHint:        { fontSize: 12, color: '#bbb', textAlign: 'center' },
+  pendingName:        { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: BRAND_DARK },
+  pendingEmail:       { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 2 },
+  pendingBtns:        { flexDirection: 'row', gap: SPACE.sm },
+  approveBtn:         { backgroundColor: BRAND, borderRadius: RADIUS.sm, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm },
+  approveBtnText:     { color: '#fff', fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
+  denyBtn:            { borderRadius: RADIUS.sm, borderWidth: 1, borderColor: STATUS.error, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm },
+  denyBtnText:        { color: STATUS.error, fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
+  signOutSection:     { marginHorizontal: SPACE.lg, marginTop: SPACE.sm, marginBottom: SPACE.sm, alignItems: 'center' },
+  signOutHint:        { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, textAlign: 'center', marginTop: SPACE.sm },
 });
