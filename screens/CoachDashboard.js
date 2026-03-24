@@ -464,26 +464,7 @@ export default function CoachDashboard({ userData }) {
     } catch (e) { console.warn('Share failed:', e); }
   };
 
-  // ── Sub-screen routing ────────────────────────────────────────────────────
-  if (groupManagerVisible) {
-    return <GroupManager
-      schoolId={userData.schoolId}
-      athletes={athletes}
-      activeSeason={activeSeasonData}
-      onClose={() => { setGroupManagerVisible(false); loadDashboard(); }}
-    />;
-  }
-  if (profileVisible) {
-    return <CoachProfile
-      userData={userData}
-      school={school}
-      pendingAthletes={pendingAthletes}
-      onApproveAthlete={handleApproveAthlete}
-      onDenyAthlete={handleDenyAthlete}
-      onClose={() => { setProfileVisible(false); loadDashboard(); }}
-      onUpdated={() => { setProfileVisible(false); loadDashboard(); }}
-    />;
-  }
+  // ── Deep drill-down (full replacement — not a tab) ──────────────────────
   if (selectedAthlete) {
     return <AthleteDetailScreen
       athlete={selectedAthlete}
@@ -491,32 +472,6 @@ export default function CoachDashboard({ userData }) {
       teamZoneSettings={teamZoneSettings}
       onBack={() => setSelectedAthlete(null)}
     />;
-  }
-  if (zonesVisible) {
-    return (
-      <ZoneSettings
-        school={school}
-        schoolId={userData.schoolId}
-        onClose={() => setZonesVisible(false)}
-        onSaved={(newBoundaries) => {
-          setTeamZoneSettings(prev => ({ ...prev, boundaries: newBoundaries }));
-          setZonesVisible(false);
-          // Reload so athlete cards immediately reflect the new boundaries
-          loadDashboard();
-        }}
-      />
-    );
-  }
-  if (calendarVisible || addFromDashboard) {
-    return (
-      <CalendarScreen
-        userData={userData} school={school}
-        groups={groups}
-        autoOpenAdd={addFromDashboard}
-        prefillWorkout={pendingWorkout}
-        onClose={() => { setCalendarVisible(false); setAddFromDashboard(false); setPendingWorkout(null); }}
-      />
-    );
   }
   if (plannerVisible) {
     return (
@@ -527,30 +482,6 @@ export default function CoachDashboard({ userData }) {
         onSaved={(data) => {
           setSchool(prev => ({ ...prev, seasons: data.seasons }));
           setPlannerVisible(false);
-        }}
-      />
-    );
-  }
-  if (feedVisible) {
-    return (
-      <TeamFeed
-        userData={userData}
-        school={school}
-        onClose={() => setFeedVisible(false)}
-      />
-    );
-  }
-  if (libraryVisible) {
-    return (
-      <WorkoutLibrary
-        school={school}
-        schoolId={userData.schoolId}
-        userData={userData}
-        onClose={() => setLibraryVisible(false)}
-        onAddToCalendar={(workout) => {
-          setPendingWorkout(workout);
-          setLibraryVisible(false);
-          setAddFromDashboard(true);
         }}
       />
     );
@@ -660,7 +591,7 @@ export default function CoachDashboard({ userData }) {
       >
         <View style={styles.athleteCardTop}>
           <Text style={styles.rankNum}>#{index + 1}</Text>
-          <View style={[styles.avatar, { backgroundColor: hasAlert ? '#ef4444' : primaryColor }]}>
+          <View style={[styles.avatar, { backgroundColor: hasAlert ? '#ef4444' : (athlete.avatarColor || BRAND) }]}>
             <Text style={styles.avatarText}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
           </View>
           <View style={styles.athleteInfo}>
@@ -859,34 +790,104 @@ export default function CoachDashboard({ userData }) {
 
       </ScrollView>
 
-      {/* ── Bottom navigation bar ── */}
+      {/* ── Sub-screens rendered over content but under nav ── */}
+      {(calendarVisible || addFromDashboard) && (
+        <View style={styles.subScreen}>
+          <CalendarScreen
+            userData={userData} school={school}
+            groups={groups}
+            autoOpenAdd={addFromDashboard}
+            prefillWorkout={pendingWorkout}
+            onClose={() => { setCalendarVisible(false); setAddFromDashboard(false); setPendingWorkout(null); loadDashboard(); }}
+          />
+        </View>
+      )}
+      {groupManagerVisible && (
+        <View style={styles.subScreen}>
+          <GroupManager
+            schoolId={userData.schoolId}
+            athletes={athletes}
+            activeSeason={activeSeasonData}
+            onClose={() => { setGroupManagerVisible(false); loadDashboard(); }}
+          />
+        </View>
+      )}
+      {feedVisible && (
+        <View style={styles.subScreen}>
+          <TeamFeed userData={userData} school={school} onClose={() => setFeedVisible(false)} />
+        </View>
+      )}
+      {zonesVisible && (
+        <View style={styles.subScreen}>
+          <ZoneSettings
+            school={school}
+            schoolId={userData.schoolId}
+            onClose={() => setZonesVisible(false)}
+            onSaved={(newBoundaries) => {
+              setTeamZoneSettings(prev => ({ ...prev, boundaries: newBoundaries }));
+              setZonesVisible(false);
+              loadDashboard();
+            }}
+          />
+        </View>
+      )}
+      {profileVisible && (
+        <View style={styles.subScreen}>
+          <CoachProfile
+            userData={userData}
+            school={school}
+            pendingAthletes={pendingAthletes}
+            onApproveAthlete={handleApproveAthlete}
+            onDenyAthlete={handleDenyAthlete}
+            onClose={() => { setProfileVisible(false); loadDashboard(); }}
+            onUpdated={() => { setProfileVisible(false); loadDashboard(); }}
+          />
+        </View>
+      )}
+      {libraryVisible && (
+        <View style={styles.subScreen}>
+          <WorkoutLibrary
+            school={school}
+            schoolId={userData.schoolId}
+            userData={userData}
+            onClose={() => setLibraryVisible(false)}
+            onAddToCalendar={(workout) => {
+              setPendingWorkout(workout);
+              setLibraryVisible(false);
+              setAddFromDashboard(true);
+            }}
+          />
+        </View>
+      )}
+
+      {/* ── Persistent bottom nav ── */}
       <View style={styles.bottomNav}>
-        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => setCalendarVisible(true)}>
-          <Ionicons name="calendar-outline" size={24} color={NEUTRAL.muted} />
-          <Text style={styles.bottomNavLabel}>Training</Text>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setGroupManagerVisible(false); setFeedVisible(false); setZonesVisible(false); setProfileVisible(false); setLibraryVisible(false); setAddFromDashboard(false); }}>
+          <Ionicons name="home-outline" size={24} color={!calendarVisible && !groupManagerVisible && !feedVisible && !zonesVisible && !profileVisible && !libraryVisible && !addFromDashboard ? BRAND : NEUTRAL.muted} />
+          <Text style={[styles.bottomNavLabel, !calendarVisible && !groupManagerVisible && !feedVisible && !zonesVisible && !profileVisible && !libraryVisible && !addFromDashboard && { color: BRAND }]}>Home</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => setGroupManagerVisible(true)}>
-          <Ionicons name="people-outline" size={24} color={NEUTRAL.muted} />
-          <Text style={styles.bottomNavLabel}>Groups</Text>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setGroupManagerVisible(false); setFeedVisible(false); setZonesVisible(false); setProfileVisible(false); setLibraryVisible(false); setAddFromDashboard(false); setCalendarVisible(true); }}>
+          <Ionicons name="calendar-outline" size={24} color={calendarVisible || addFromDashboard ? BRAND : NEUTRAL.muted} />
+          <Text style={[styles.bottomNavLabel, (calendarVisible || addFromDashboard) && { color: BRAND }]}>Training</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => setFeedVisible(true)}>
-          <Ionicons name="chatbubbles-outline" size={24} color={NEUTRAL.muted} />
-          <Text style={styles.bottomNavLabel}>Feed</Text>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setFeedVisible(false); setZonesVisible(false); setProfileVisible(false); setLibraryVisible(false); setAddFromDashboard(false); setGroupManagerVisible(true); }}>
+          <Ionicons name="people-outline" size={24} color={groupManagerVisible ? BRAND : NEUTRAL.muted} />
+          <Text style={[styles.bottomNavLabel, groupManagerVisible && { color: BRAND }]}>Groups</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => setZonesVisible(true)}>
-          <Ionicons name="heart-outline" size={24} color={NEUTRAL.muted} />
-          <Text style={styles.bottomNavLabel}>Zones</Text>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setGroupManagerVisible(false); setZonesVisible(false); setProfileVisible(false); setLibraryVisible(false); setAddFromDashboard(false); setFeedVisible(true); }}>
+          <Ionicons name="chatbubbles-outline" size={24} color={feedVisible ? BRAND : NEUTRAL.muted} />
+          <Text style={[styles.bottomNavLabel, feedVisible && { color: BRAND }]}>Feed</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => setProfileVisible(true)}>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setGroupManagerVisible(false); setFeedVisible(false); setZonesVisible(false); setLibraryVisible(false); setAddFromDashboard(false); setProfileVisible(true); }}>
           <View>
-            <Ionicons name="person-outline" size={24} color={NEUTRAL.muted} />
+            <Ionicons name="person-outline" size={24} color={profileVisible ? BRAND : NEUTRAL.muted} />
             {pendingAthletes.length > 0 && (
               <View style={styles.badge}>
                 <Text style={styles.badgeText}>{pendingAthletes.length}</Text>
               </View>
             )}
           </View>
-          <Text style={styles.bottomNavLabel}>Profile</Text>
+          <Text style={[styles.bottomNavLabel, profileVisible && { color: BRAND }]}>Profile</Text>
         </TouchableOpacity>
       </View>
 
@@ -1025,7 +1026,8 @@ const styles = StyleSheet.create({
   approveBtnText:       { color: '#fff', fontWeight: FONT_WEIGHT.bold },
   denyBtn:              { flex: 1, borderRadius: RADIUS.sm, padding: SPACE.md, alignItems: 'center', backgroundColor: STATUS.errorBg },
   denyBtnText:          { color: STATUS.error, fontWeight: FONT_WEIGHT.bold },
-  bottomNav:            { flexDirection: 'row', backgroundColor: NEUTRAL.card, borderTopWidth: 1, borderTopColor: NEUTRAL.border, paddingBottom: Platform.OS === 'ios' ? SPACE['2xl'] : SPACE.sm, paddingTop: SPACE.md, ...SHADOW.sm },
+  subScreen:            { position: 'absolute', top: 0, left: 0, right: 0, bottom: Platform.OS === 'ios' ? 82 : 56, backgroundColor: NEUTRAL.bg, zIndex: 10 },
+  bottomNav:            { flexDirection: 'row', backgroundColor: NEUTRAL.card, borderTopWidth: 1, borderTopColor: NEUTRAL.border, paddingBottom: Platform.OS === 'ios' ? SPACE['2xl'] : SPACE.sm, paddingTop: SPACE.md, ...SHADOW.sm, zIndex: 20 },
   bottomNavBtn:         { flex: 1, alignItems: 'center', gap: 2 },
   bottomNavLabel:       { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, fontWeight: FONT_WEIGHT.medium },
   badge:                { position: 'absolute', top: -4, right: -8, backgroundColor: STATUS.error, borderRadius: 9, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },

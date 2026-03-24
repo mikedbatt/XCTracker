@@ -3,6 +3,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { auth, db } from '../firebaseConfig';
+import { BRAND, NEUTRAL } from '../constants/design';
 
 import AthleteDashboard from '../screens/AthleteDashboard';
 import AthleteJoinScreen from '../screens/AthleteJoinScreen';
@@ -76,7 +77,7 @@ export default function AppNavigator() {
   if (loading) {
     return (
       <View style={styles.loading}>
-        <ActivityIndicator size="large" color="#2e7d32" />
+        <ActivityIndicator size="large" color={BRAND} />
       </View>
     );
   }
@@ -109,5 +110,5 @@ export default function AppNavigator() {
 }
 
 const styles = StyleSheet.create({
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f5f5f5' },
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: NEUTRAL.bg },
 });

@@ -1,14 +1,17 @@
+import { Ionicons } from '@expo/vector-icons';
 import { signOut } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator, Alert,
+    Platform,
     ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
 } from 'react-native';
+import { BRAND, BRAND_DARK } from '../constants/design';
 import { auth, db } from '../firebaseConfig';
 
 export default function ParentDashboard({ userData }) {
@@ -88,10 +91,10 @@ export default function ParentDashboard({ userData }) {
   };
 
   if (loading) {
-    return <View style={styles.loading}><ActivityIndicator size="large" color="#2e7d32" /></View>;
+    return <View style={styles.loading}><ActivityIndicator size="large" color={BRAND} /></View>;
   }
 
-  const primaryColor = school?.primaryColor || '#2e7d32';
+  const primaryColor = school?.primaryColor || '#213f96';
 
   // Weekly miles calculation
   const oneWeekAgo = new Date();
@@ -104,7 +107,7 @@ export default function ParentDashboard({ userData }) {
     <View style={styles.container}>
 
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: primaryColor }]}>
+      <View style={styles.header}>
         <View style={styles.headerTop}>
           <View>
             <Text style={styles.greeting}>Hi, {userData.firstName}!</Text>
@@ -188,7 +191,7 @@ export default function ParentDashboard({ userData }) {
             ) : (
               upcomingEvents.map((event) => (
                 <View key={event.id} style={styles.eventCard}>
-                  <View style={[styles.eventType, { backgroundColor: event.type === 'race' ? '#dc2626' : primaryColor }]}>
+                  <View style={[styles.eventType, { backgroundColor: event.type === 'race' ? '#dc2626' : BRAND }]}>
                     <Text style={styles.eventTypeText}>{event.type?.toUpperCase() || 'EVENT'}</Text>
                   </View>
                   <View style={styles.eventInfo}>
@@ -216,7 +219,7 @@ export default function ParentDashboard({ userData }) {
                 <View key={run.id} style={styles.runCard}>
                   <Text style={styles.runMiles}>{run.miles} mi</Text>
                   <Text style={styles.runDate}>{run.date?.toDate?.()?.toLocaleDateString() || 'Today'}</Text>
-                  <Text style={[styles.runEffort, { color: primaryColor }]}>Effort: {run.effort}/10</Text>
+                  <Text style={[styles.runEffort, { color: BRAND }]}>Effort: {run.effort}/10</Text>
                 </View>
               ))
             )}
@@ -229,46 +232,46 @@ export default function ParentDashboard({ userData }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  container: { flex: 1, backgroundColor: '#F5F6FA' },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header: { paddingTop: 60, paddingBottom: 16, paddingHorizontal: 20 },
+  header: { backgroundColor: '#fff', paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 16, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
   headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  greeting: { fontSize: 22, fontWeight: 'bold', color: '#fff' },
-  schoolName: { fontSize: 14, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
-  signOutBtn: { paddingVertical: 6, paddingHorizontal: 12, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 8 },
-  signOutText: { color: '#fff', fontSize: 13 },
+  greeting: { fontSize: 22, fontWeight: 'bold', color: '#111827' },
+  schoolName: { fontSize: 14, color: '#6B7280', marginTop: 2 },
+  signOutBtn: { paddingVertical: 6, paddingHorizontal: 12, backgroundColor: '#F5F6FA', borderRadius: 8 },
+  signOutText: { color: '#6B7280', fontSize: 13 },
   athleteSelector: { marginTop: 12 },
-  athleteChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.2)', marginRight: 8 },
-  athleteChipActive: { backgroundColor: '#fff' },
-  athleteChipText: { color: 'rgba(255,255,255,0.8)', fontWeight: '600' },
-  athleteChipTextActive: { color: '#2e7d32' },
+  athleteChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F5F6FA', marginRight: 8 },
+  athleteChipActive: { backgroundColor: '#213f96' },
+  athleteChipText: { color: '#6B7280', fontWeight: '600' },
+  athleteChipTextActive: { color: '#fff' },
   noAthletes: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
-  noAthletesTitle: { fontSize: 20, fontWeight: 'bold', color: '#333', marginBottom: 10 },
-  noAthletesText: { fontSize: 15, color: '#666', textAlign: 'center', lineHeight: 22 },
+  noAthletesTitle: { fontSize: 20, fontWeight: 'bold', color: '#111827', marginBottom: 10 },
+  noAthletesText: { fontSize: 15, color: '#6B7280', textAlign: 'center', lineHeight: 22 },
   scroll: { flex: 1 },
   athleteHeader: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16 },
   bigAvatar: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
   bigAvatarText: { color: '#fff', fontWeight: 'bold', fontSize: 20 },
   athleteDetails: { flex: 1 },
-  athleteFullName: { fontSize: 18, fontWeight: '700', color: '#333' },
-  athleteStatus: { fontSize: 13, color: '#666', marginTop: 4 },
+  athleteFullName: { fontSize: 18, fontWeight: '700', color: '#111827' },
+  athleteStatus: { fontSize: 13, color: '#6B7280', marginTop: 4 },
   statsRow: { flexDirection: 'row', paddingHorizontal: 16, gap: 10, marginBottom: 8 },
   statCard: { flex: 1, backgroundColor: '#fff', borderRadius: 12, padding: 14, alignItems: 'center' },
-  statNumber: { fontSize: 22, fontWeight: 'bold', color: '#333' },
-  statLabel: { fontSize: 11, color: '#999', marginTop: 4, textAlign: 'center' },
+  statNumber: { fontSize: 22, fontWeight: 'bold', color: '#111827' },
+  statLabel: { fontSize: 11, color: '#9CA3AF', marginTop: 4, textAlign: 'center' },
   section: { padding: 16 },
-  sectionTitle: { fontSize: 18, fontWeight: '700', color: '#333', marginBottom: 12 },
+  sectionTitle: { fontSize: 18, fontWeight: '700', color: '#111827', marginBottom: 12 },
   emptyCard: { backgroundColor: '#fff', borderRadius: 12, padding: 20, alignItems: 'center' },
-  emptyText: { color: '#999', fontSize: 14, textAlign: 'center' },
+  emptyText: { color: '#9CA3AF', fontSize: 14, textAlign: 'center' },
   eventCard: { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 10, flexDirection: 'row', gap: 12 },
   eventType: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, alignSelf: 'flex-start' },
   eventTypeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
   eventInfo: { flex: 1 },
-  eventTitle: { fontSize: 15, fontWeight: '700', color: '#333' },
-  eventDetail: { fontSize: 13, color: '#666', marginTop: 2 },
-  eventDate: { fontSize: 12, color: '#999', marginTop: 4 },
+  eventTitle: { fontSize: 15, fontWeight: '700', color: '#111827' },
+  eventDetail: { fontSize: 13, color: '#6B7280', marginTop: 2 },
+  eventDate: { fontSize: 12, color: '#9CA3AF', marginTop: 4 },
   runCard: { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  runMiles: { fontSize: 18, fontWeight: 'bold', color: '#333' },
-  runDate: { fontSize: 13, color: '#999' },
+  runMiles: { fontSize: 18, fontWeight: 'bold', color: '#111827' },
+  runDate: { fontSize: 13, color: '#9CA3AF' },
   runEffort: { fontSize: 14, fontWeight: '600' },
 });

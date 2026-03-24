@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import {
     addDoc,
     collection,
@@ -12,6 +13,7 @@ import {
     ActivityIndicator,
     Alert,
     Modal,
+    Platform,
     ScrollView,
     StyleSheet,
     Text,
@@ -19,6 +21,7 @@ import {
     View
 } from 'react-native';
 import { db } from '../firebaseConfig';
+import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS } from '../constants/design';
 
 // ── Built-in workout library organized by phase ───────────────────────────────
 export const BUILTIN_WORKOUTS = {
@@ -84,7 +87,7 @@ export default function WorkoutLibrary({ school, schoolId, userData, onClose, on
   const [selectedWorkout, setSelectedWorkout] = useState(null);
   const [detailVisible,   setDetailVisible]   = useState(false);
 
-  const primaryColor = school?.primaryColor || '#2e7d32';
+  const primaryColor = '#213f96';
   const isCoach = userData?.role === 'admin_coach' || userData?.role === 'assistant_coach';
 
   useEffect(() => { loadSavedWorkouts(); }, []);
@@ -188,9 +191,10 @@ export default function WorkoutLibrary({ school, schoolId, userData, onClose, on
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { backgroundColor: primaryColor }]}>
+      <View style={styles.header}>
         <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-          <Text style={styles.backText}>‹ Back</Text>
+          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+          <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Workout Library</Text>
         <View style={{ width: 60 }} />
@@ -306,28 +310,28 @@ export default function WorkoutLibrary({ school, schoolId, userData, onClose, on
 }
 
 const styles = StyleSheet.create({
-  container:        { flex: 1, backgroundColor: '#f5f5f5' },
-  header:           { paddingTop: 60, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  backBtn:          { paddingVertical: 6, paddingHorizontal: 10 },
-  backText:         { color: '#fff', fontSize: 17, fontWeight: '600' },
-  headerTitle:      { fontSize: 20, fontWeight: 'bold', color: '#fff' },
-  tabRow:           { flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  container:        { flex: 1, backgroundColor: '#F5F6FA' },
+  header:           { backgroundColor: '#fff', paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
+  backBtn:          { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6 },
+  backText:         { color: '#111827', fontSize: 15, fontWeight: '600' },
+  headerTitle:      { fontSize: 20, fontWeight: '700', color: '#111827' },
+  tabRow:           { flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
   tab:              { flex: 1, paddingVertical: 14, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  tabText:          { fontSize: 14, color: '#666' },
+  tabText:          { fontSize: 14, color: '#6B7280' },
   phaseScroll:      { backgroundColor: '#fff', maxHeight: 54 },
   phaseScrollContent:{ paddingHorizontal: 16, paddingVertical: 10, gap: 8, flexDirection: 'row' },
-  phaseChip:        { borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1.5, borderColor: '#ddd', backgroundColor: '#f5f5f5' },
-  phaseChipText:    { fontSize: 13, fontWeight: '600', color: '#555' },
+  phaseChip:        { borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1.5, borderColor: '#E5E7EB', backgroundColor: '#F5F6FA' },
+  phaseChipText:    { fontSize: 13, fontWeight: '600', color: '#6B7280' },
   scroll:           { flex: 1 },
   section:          { padding: 16 },
-  sectionSubtitle:  { fontSize: 13, color: '#999', marginBottom: 12 },
+  sectionSubtitle:  { fontSize: 13, color: '#9CA3AF', marginBottom: 12 },
   workoutCard:      { backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 12 },
   workoutCardTop:   { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
   typeBadge:        { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   typeBadgeText:    { color: '#fff', fontSize: 11, fontWeight: '700' },
-  workoutDuration:  { fontSize: 12, color: '#999' },
-  workoutName:      { fontSize: 16, fontWeight: '700', color: '#333', marginBottom: 4 },
-  workoutDesc:      { fontSize: 13, color: '#666', lineHeight: 18, marginBottom: 10 },
+  workoutDuration:  { fontSize: 12, color: '#9CA3AF' },
+  workoutName:      { fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 4 },
+  workoutDesc:      { fontSize: 13, color: '#6B7280', lineHeight: 18, marginBottom: 10 },
   workoutActions:   { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
   saveBtn:          { borderRadius: 8, borderWidth: 1.5, paddingHorizontal: 12, paddingVertical: 7 },
   saveBtnText:      { fontSize: 13, fontWeight: '600' },
@@ -337,18 +341,18 @@ const styles = StyleSheet.create({
   addCalBtn:        { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
   addCalBtnText:    { color: '#fff', fontSize: 13, fontWeight: '700' },
   emptyCard:        { margin: 16, backgroundColor: '#fff', borderRadius: 14, padding: 32, alignItems: 'center' },
-  emptyTitle:       { fontSize: 17, fontWeight: '700', color: '#333', marginBottom: 8 },
-  emptySubtitle:    { fontSize: 14, color: '#666', textAlign: 'center', lineHeight: 20 },
-  detailModal:      { flex: 1, backgroundColor: '#f5f5f5' },
+  emptyTitle:       { fontSize: 17, fontWeight: '700', color: '#111827', marginBottom: 8 },
+  emptySubtitle:    { fontSize: 14, color: '#6B7280', textAlign: 'center', lineHeight: 20 },
+  detailModal:      { flex: 1, backgroundColor: '#F5F6FA' },
   detailHeader:     { paddingTop: 60, paddingBottom: 20, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   detailClose:      { color: '#fff', fontSize: 20, fontWeight: '600', width: 32 },
   detailTitle:      { fontSize: 18, fontWeight: 'bold', color: '#fff', flex: 1, textAlign: 'center' },
   detailScroll:     { flex: 1 },
   detailBody:       { padding: 24 },
   detailMetaRow:    { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' },
-  detailDuration:   { fontSize: 14, color: '#666' },
-  detailPhase:      { fontSize: 13, color: '#999' },
-  detailDesc:       { fontSize: 16, color: '#333', lineHeight: 26, marginBottom: 24 },
+  detailDuration:   { fontSize: 14, color: '#6B7280' },
+  detailPhase:      { fontSize: 13, color: '#9CA3AF' },
+  detailDesc:       { fontSize: 16, color: '#111827', lineHeight: 26, marginBottom: 24 },
   detailActions:    { gap: 12 },
   detailSaveBtn:    { borderRadius: 12, borderWidth: 1.5, padding: 14, alignItems: 'center' },
   detailSaveBtnText:{ fontSize: 15, fontWeight: '600' },

@@ -1,4 +1,6 @@
+import { Ionicons } from '@expo/vector-icons';
 import {
+    Platform,
     Modal,
     ScrollView,
     StyleSheet,
@@ -6,9 +8,10 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { BRAND, BRAND_DARK } from '../constants/design';
 import { TYPE_COLORS } from './CalendarScreen';
 
-export default function WorkoutDetailModal({ item, visible, onClose, primaryColor = '#2e7d32', athleteMiles = null, groupName = null }) {
+export default function WorkoutDetailModal({ item, visible, onClose, primaryColor = '#213f96', athleteMiles = null, groupName = null }) {
   if (!item) return null;
 
   const color = TYPE_COLORS[item.type] || primaryColor;
@@ -19,12 +22,13 @@ export default function WorkoutDetailModal({ item, visible, onClose, primaryColo
       <View style={styles.container}>
 
         {/* Header */}
-        <View style={[styles.header, { backgroundColor: color }]}>
+        <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-            <Text style={styles.closeText}>✕ Close</Text>
+            <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+            <Text style={styles.closeText}>Close</Text>
           </TouchableOpacity>
           <View style={styles.badgeRow}>
-            <View style={styles.catBadge}>
+            <View style={[styles.catBadge, { backgroundColor: color }]}>
               <Text style={styles.catBadgeText}>
                 {item.category?.toUpperCase()} · {item.type?.toUpperCase()}
               </Text>
@@ -42,13 +46,13 @@ export default function WorkoutDetailModal({ item, visible, onClose, primaryColo
           {athleteMiles != null && (
             <View style={styles.section}>
               <Text style={styles.sectionLabel}>DISTANCE{groupName ? ` — ${groupName.toUpperCase()}` : ''}</Text>
-              <Text style={[styles.mileageValue, { color: primaryColor }]}>{athleteMiles} miles</Text>
+              <Text style={[styles.mileageValue, { color: BRAND }]}>{athleteMiles} miles</Text>
             </View>
           )}
           {item.location && (
             <View style={styles.section}>
               <Text style={styles.sectionLabel}>LOCATION</Text>
-              <Text style={styles.sectionValue}>📍 {item.location}</Text>
+              <Text style={styles.sectionValue}>{item.location}</Text>
             </View>
           )}
           {item.description && (
@@ -83,20 +87,20 @@ export default function WorkoutDetailModal({ item, visible, onClose, primaryColo
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  header: { paddingTop: 60, paddingBottom: 24, paddingHorizontal: 24 },
-  closeBtn: { marginBottom: 16 },
-  closeText: { color: 'rgba(255,255,255,0.85)', fontSize: 15 },
+  container: { flex: 1, backgroundColor: '#F5F6FA' },
+  header: { backgroundColor: '#fff', paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 24, paddingHorizontal: 24, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
+  closeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, marginBottom: 16 },
+  closeText: { color: '#111827', fontSize: 15, fontWeight: '600' },
   badgeRow: { marginBottom: 10 },
-  catBadge: { alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.25)', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4 },
+  catBadge: { alignSelf: 'flex-start', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4 },
   catBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  title: { fontSize: 28, fontWeight: 'bold', color: '#fff', marginBottom: 6 },
-  date: { fontSize: 15, color: 'rgba(255,255,255,0.85)' },
+  title: { fontSize: 28, fontWeight: 'bold', color: '#111827', marginBottom: 6 },
+  date: { fontSize: 15, color: '#6B7280' },
   scroll: { flex: 1, padding: 16 },
   section: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 12 },
-  sectionLabel: { fontSize: 11, fontWeight: '700', color: '#999', letterSpacing: 0.5, marginBottom: 8 },
-  sectionValue: { fontSize: 16, color: '#333', lineHeight: 22 },
+  sectionLabel: { fontSize: 11, fontWeight: '700', color: '#9CA3AF', letterSpacing: 0.5, marginBottom: 8 },
+  sectionValue: { fontSize: 16, color: '#111827', lineHeight: 22 },
   mileageValue: { fontSize: 24, fontWeight: 'bold' },
   emptyCard: { backgroundColor: '#fff', borderRadius: 12, padding: 20, margin: 4, alignItems: 'center' },
-  emptyText: { color: '#999', fontSize: 14 },
+  emptyText: { color: '#9CA3AF', fontSize: 14 },
 });

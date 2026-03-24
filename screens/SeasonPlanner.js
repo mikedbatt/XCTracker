@@ -1,7 +1,9 @@
+import { Ionicons } from '@expo/vector-icons';
 import { doc, updateDoc } from 'firebase/firestore';
 import React, { useState } from 'react';
 import {
   Alert,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -9,6 +11,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import { BRAND, BRAND_DARK } from '../constants/design';
 import { db } from '../firebaseConfig';
 import DatePickerField from './DatePickerField';
 
@@ -299,22 +302,21 @@ export default function SeasonPlanner({ school, schoolId, onClose, onSaved }) {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { backgroundColor: activePhase?.color || '#607d8b' }]}>
-        <View style={styles.headerRow}>
-          <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-            <Text style={styles.backText}>‹ Back</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Season Planner</Text>
-          <View style={{ width: 60 }} />
-        </View>
-        {activeSeason && !activePhase.isPreSeason && (
-          <View style={styles.activeBadge}>
-            <Text style={styles.activeBadgeText}>
-              {activePhase.icon} {activeSeason.name} · {activePhase.name} · Week {activePhase.weekNum}
-            </Text>
-          </View>
-        )}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={onClose} style={styles.backBtn}>
+          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+          <Text style={styles.backText}>Back</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Season Planner</Text>
+        <View style={{ width: 60 }} />
       </View>
+      {activeSeason && !activePhase.isPreSeason && (
+        <View style={[styles.activeBadge, { backgroundColor: `${activePhase.color}18` }]}>
+          <Text style={[styles.activeBadgeText, { color: activePhase.color }]}>
+            {activePhase.icon} {activeSeason.name} · {activePhase.name} · Week {activePhase.weekNum}
+          </Text>
+        </View>
+      )}
 
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
         {showForm ? (
@@ -343,7 +345,7 @@ export default function SeasonPlanner({ school, schoolId, onClose, onSaved }) {
               value={name}
               onChangeText={setName}
               placeholder={`e.g. ${SPORTS[sport].label} 2026`}
-              placeholderTextColor="#999"
+              placeholderTextColor="#9CA3AF"
             />
 
             <DatePickerField
@@ -386,7 +388,7 @@ export default function SeasonPlanner({ school, schoolId, onClose, onSaved }) {
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>Your seasons</Text>
-                <TouchableOpacity style={[styles.addBtn, { backgroundColor: activePhase?.color || '#2e7d32' }]} onPress={openAdd}>
+                <TouchableOpacity style={[styles.addBtn, { backgroundColor: activePhase?.color || BRAND }]} onPress={openAdd}>
                   <Text style={styles.addBtnText}>+ Add</Text>
                 </TouchableOpacity>
               </View>
@@ -395,7 +397,7 @@ export default function SeasonPlanner({ school, schoolId, onClose, onSaved }) {
                 <View style={styles.emptyCard}>
                   <Text style={styles.emptyTitle}>No seasons set up yet</Text>
                   <Text style={styles.emptySubtitle}>Start with Cross Country — set June as your start date to include summer base building.</Text>
-                  <TouchableOpacity style={[styles.addBtn, { backgroundColor: '#2e7d32', paddingHorizontal: 20 }]} onPress={openAdd}>
+                  <TouchableOpacity style={[styles.addBtn, { backgroundColor: BRAND, paddingHorizontal: 20 }]} onPress={openAdd}>
                     <Text style={styles.addBtnText}>+ Add first season</Text>
                   </TouchableOpacity>
                 </View>
@@ -486,49 +488,48 @@ export default function SeasonPlanner({ school, schoolId, onClose, onSaved }) {
 }
 
 const styles = StyleSheet.create({
-  container:         { flex: 1, backgroundColor: '#f5f5f5' },
-  header:            { paddingTop: 60, paddingBottom: 12, paddingHorizontal: 20 },
-  headerRow:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  backBtn:           { paddingVertical: 6, paddingHorizontal: 10 },
-  backText:          { color: '#fff', fontSize: 17, fontWeight: '600' },
-  headerTitle:       { fontSize: 20, fontWeight: 'bold', color: '#fff' },
-  activeBadge:       { marginTop: 10, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 10, padding: 8, alignItems: 'center' },
-  activeBadgeText:   { color: '#fff', fontSize: 13, fontWeight: '700' },
+  container:         { flex: 1, backgroundColor: '#F5F6FA' },
+  header:            { backgroundColor: '#fff', paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
+  backBtn:           { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6 },
+  backText:          { color: '#111827', fontSize: 15, fontWeight: '600' },
+  headerTitle:       { fontSize: 20, fontWeight: '700', color: '#111827' },
+  activeBadge:       { marginHorizontal: 16, marginTop: 10, borderRadius: 10, padding: 8, alignItems: 'center' },
+  activeBadgeText:   { fontSize: 13, fontWeight: '700' },
   scroll:            { flex: 1 },
   section:           { padding: 16 },
   sectionHeader:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sectionTitle:      { fontSize: 18, fontWeight: '700', color: '#333' },
+  sectionTitle:      { fontSize: 18, fontWeight: '700', color: '#111827' },
   addBtn:            { borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
   addBtnText:        { color: '#fff', fontSize: 14, fontWeight: '700' },
   emptyCard:         { backgroundColor: '#fff', borderRadius: 14, padding: 24, alignItems: 'center', gap: 12 },
-  emptyTitle:        { fontSize: 17, fontWeight: '700', color: '#333' },
-  emptySubtitle:     { fontSize: 14, color: '#666', textAlign: 'center', lineHeight: 20 },
-  seasonCard:        { backgroundColor: '#fff', borderRadius: 14, marginBottom: 12, overflow: 'hidden', flexDirection: 'row', borderWidth: 1, borderColor: '#eee' },
+  emptyTitle:        { fontSize: 17, fontWeight: '700', color: '#111827' },
+  emptySubtitle:     { fontSize: 14, color: '#6B7280', textAlign: 'center', lineHeight: 20 },
+  seasonCard:        { backgroundColor: '#fff', borderRadius: 14, marginBottom: 12, overflow: 'hidden', flexDirection: 'row', borderWidth: 1, borderColor: '#E5E7EB' },
   seasonStripe:      { width: 6 },
   seasonBody:        { flex: 1, padding: 14 },
   seasonTop:         { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
   seasonIcon:        { fontSize: 24 },
   seasonInfo:        { flex: 1 },
-  seasonName:        { fontSize: 15, fontWeight: '700', color: '#333' },
-  seasonDates:       { fontSize: 12, color: '#999', marginTop: 2 },
+  seasonName:        { fontSize: 15, fontWeight: '700', color: '#111827' },
+  seasonDates:       { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
   activePill:        { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
   activePillText:    { color: '#fff', fontSize: 12, fontWeight: '700' },
   phaseTag:          { fontSize: 12, fontWeight: '600', marginBottom: 8 },
   seasonActions:     { flexDirection: 'row', gap: 8, marginTop: 8 },
-  editBtn:           { borderRadius: 8, paddingHorizontal: 16, paddingVertical: 7, backgroundColor: '#f0f0f0' },
-  editBtnText:       { fontSize: 13, fontWeight: '600', color: '#333' },
+  editBtn:           { borderRadius: 8, paddingHorizontal: 16, paddingVertical: 7, backgroundColor: '#F5F6FA' },
+  editBtnText:       { fontSize: 13, fontWeight: '600', color: '#111827' },
   deleteBtn:         { borderRadius: 8, paddingHorizontal: 16, paddingVertical: 7, backgroundColor: '#fee2e2' },
   deleteBtnText:     { fontSize: 13, fontWeight: '600', color: '#dc2626' },
   formCard:          { margin: 16, backgroundColor: '#fff', borderRadius: 14, padding: 16 },
-  formTitle:         { fontSize: 18, fontWeight: '700', color: '#333', marginBottom: 16 },
-  formLabel:         { fontSize: 14, fontWeight: '600', color: '#444', marginBottom: 8, marginTop: 4 },
+  formTitle:         { fontSize: 18, fontWeight: '700', color: '#111827', marginBottom: 16 },
+  formLabel:         { fontSize: 14, fontWeight: '600', color: '#6B7280', marginBottom: 8, marginTop: 4 },
   sportGrid:         { gap: 8, marginBottom: 16 },
-  sportBtn:          { borderRadius: 12, padding: 14, backgroundColor: '#f5f5f5', borderWidth: 1.5, borderColor: '#ddd' },
+  sportBtn:          { borderRadius: 12, padding: 14, backgroundColor: '#F5F6FA', borderWidth: 1.5, borderColor: '#E5E7EB' },
   sportIcon:         { fontSize: 22, marginBottom: 4 },
-  sportLabel:        { fontSize: 14, fontWeight: '700', color: '#333' },
-  sportMonths:       { fontSize: 12, color: '#999', marginTop: 1 },
-  sportDesc:         { fontSize: 12, color: '#aaa', marginTop: 1 },
-  nameInput:         { backgroundColor: '#f5f5f5', borderRadius: 10, padding: 14, fontSize: 15, marginBottom: 4, borderWidth: 1, borderColor: '#ddd', color: '#333' },
+  sportLabel:        { fontSize: 14, fontWeight: '700', color: '#111827' },
+  sportMonths:       { fontSize: 12, color: '#9CA3AF', marginTop: 1 },
+  sportDesc:         { fontSize: 12, color: '#9CA3AF', marginTop: 1 },
+  nameInput:         { backgroundColor: '#F5F6FA', borderRadius: 10, padding: 14, fontSize: 15, marginBottom: 4, borderWidth: 1, borderColor: '#E5E7EB', color: '#111827' },
   weeksBadge:        { borderRadius: 10, borderWidth: 1.5, padding: 10, alignItems: 'center', marginVertical: 12 },
   weeksText:         { fontSize: 14, fontWeight: '600' },
   formBtns:          { flexDirection: 'row', gap: 10, marginTop: 8 },
@@ -543,10 +544,10 @@ const styles = StyleSheet.create({
   phaseName:         { fontSize: 15, fontWeight: '700', color: '#fff' },
   phaseWeeks:        { fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
   phaseBody:         { padding: 14 },
-  phaseFocus:        { fontSize: 14, fontWeight: '600', color: '#333', marginBottom: 10 },
+  phaseFocus:        { fontSize: 14, fontWeight: '600', color: '#111827', marginBottom: 10 },
   tipRow:            { flexDirection: 'row', gap: 8, marginBottom: 6 },
   tipDot:            { fontSize: 16, lineHeight: 20, fontWeight: 'bold' },
-  tipText:           { flex: 1, fontSize: 13, color: '#555', lineHeight: 20 },
+  tipText:           { flex: 1, fontSize: 13, color: '#6B7280', lineHeight: 20 },
   wisdomCard:        { marginHorizontal: 16, marginBottom: 16, backgroundColor: '#1a237e', borderRadius: 14, padding: 20 },
   wisdomTitle:       { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.6)', marginBottom: 10, letterSpacing: 1, textTransform: 'uppercase' },
   wisdomQuote:       { fontSize: 14, color: '#fff', lineHeight: 22, fontStyle: 'italic' },
@@ -562,7 +563,7 @@ const styles = StyleSheet.create({
   pillChevron:       { fontSize: 10, fontWeight: '700' },
   pillExpanded:      { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' },
   pillFocus:         { fontSize: 13, fontWeight: '700', marginBottom: 6 },
-  pillTip:           { fontSize: 12, color: '#555', lineHeight: 18, marginBottom: 3 },
+  pillTip:           { fontSize: 12, color: '#6B7280', lineHeight: 18, marginBottom: 3 },
   pillPlannerBtn:    { marginTop: 8, borderRadius: 8, borderWidth: 1.5, padding: 8, alignItems: 'center' },
   pillPlannerBtnText:{ fontSize: 13, fontWeight: '700' },
 });

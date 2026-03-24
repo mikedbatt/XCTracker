@@ -1,8 +1,10 @@
+import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    Platform,
     ScrollView,
     StyleSheet,
     Text,
@@ -11,6 +13,7 @@ import {
     View,
 } from 'react-native';
 import { db } from '../firebaseConfig';
+import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS } from '../constants/design';
 import {
     DEFAULT_ZONE_BOUNDARIES, ZONE_META,
 } from '../zoneConfig';
@@ -52,7 +55,7 @@ export default function ZoneSettings({ school, schoolId, onClose, onSaved }) {
   const [saving,     setSaving]     = useState(false);
   const [boundaries, setBoundaries] = useState({ ...DEFAULT_ZONE_BOUNDARIES });
 
-  const primaryColor = school?.primaryColor || '#2e7d32';
+  const primaryColor = '#213f96';
 
   // Zone ranges at preview max HR (200 bpm typical high school)
   const previewMaxHR = 200;
@@ -113,9 +116,10 @@ export default function ZoneSettings({ school, schoolId, onClose, onSaved }) {
   if (loading) {
     return (
       <View style={styles.container}>
-        <View style={[styles.header, { backgroundColor: primaryColor }]}>
+        <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-            <Text style={styles.backText}>‹ Back</Text>
+            <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+            <Text style={styles.backText}>Back</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Team Zone Settings</Text>
           <View style={{ width: 60 }} />
@@ -127,9 +131,10 @@ export default function ZoneSettings({ school, schoolId, onClose, onSaved }) {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { backgroundColor: primaryColor }]}>
+      <View style={styles.header}>
         <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-          <Text style={styles.backText}>‹ Back</Text>
+          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+          <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Team Zone Settings</Text>
         <TouchableOpacity onPress={handleReset} style={styles.resetBtn}>
@@ -141,7 +146,7 @@ export default function ZoneSettings({ school, schoolId, onClose, onSaved }) {
 
         {/* Team info */}
         <View style={styles.teamCard}>
-          <View style={[styles.teamDot, { backgroundColor: primaryColor }]} />
+          <View style={[styles.teamDot, { backgroundColor: '#213f96' }]} />
           <View>
             <Text style={styles.teamName}>{school?.name}</Text>
             <Text style={styles.teamSub}>
@@ -236,33 +241,33 @@ export default function ZoneSettings({ school, schoolId, onClose, onSaved }) {
 }
 
 const styles = StyleSheet.create({
-  container:         { flex: 1, backgroundColor: '#f5f5f5' },
+  container:         { flex: 1, backgroundColor: '#F5F6FA' },
   center:            { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header:            { paddingTop: 60, paddingBottom: 14, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  backBtn:           { paddingVertical: 6, paddingHorizontal: 10 },
-  backText:          { color: '#fff', fontSize: 17, fontWeight: '600' },
-  headerTitle:       { fontSize: 18, fontWeight: 'bold', color: '#fff' },
+  header:            { backgroundColor: '#fff', paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
+  backBtn:           { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6 },
+  backText:          { color: '#111827', fontSize: 15, fontWeight: '600' },
+  headerTitle:       { fontSize: 20, fontWeight: '700', color: '#111827' },
   resetBtn:          { paddingVertical: 6, paddingHorizontal: 10 },
-  resetText:         { color: 'rgba(255,255,255,0.8)', fontSize: 14 },
+  resetText:         { color: '#6B7280', fontSize: 14 },
   scroll:            { flex: 1 },
   teamCard:          { flexDirection: 'row', alignItems: 'flex-start', gap: 12, backgroundColor: '#fff', margin: 16, marginBottom: 8, borderRadius: 14, padding: 14 },
   teamDot:           { width: 12, height: 12, borderRadius: 6, marginTop: 4 },
-  teamName:          { fontSize: 16, fontWeight: '700', color: '#333', marginBottom: 4 },
-  teamSub:           { fontSize: 13, color: '#666', lineHeight: 18, flex: 1 },
+  teamName:          { fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 4 },
+  teamSub:           { fontSize: 13, color: '#6B7280', lineHeight: 18, flex: 1 },
   card:              { backgroundColor: '#fff', marginHorizontal: 16, marginBottom: 12, borderRadius: 14, padding: 16 },
-  cardTitle:         { fontSize: 16, fontWeight: '700', color: '#333', marginBottom: 6 },
-  cardDesc:          { fontSize: 13, color: '#666', lineHeight: 19, marginBottom: 14 },
+  cardTitle:         { fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 6 },
+  cardDesc:          { fontSize: 13, color: '#6B7280', lineHeight: 19, marginBottom: 14 },
   boundaryRow:       { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   boundaryDot:       { width: 12, height: 12, borderRadius: 6 },
   boundaryLabel:     { flex: 1, fontSize: 14, color: '#444' },
-  boundaryInput:     { backgroundColor: '#f5f5f5', borderRadius: 8, borderWidth: 1, borderColor: '#ddd', paddingHorizontal: 10, paddingVertical: 8, fontSize: 16, fontWeight: '700', color: '#333', width: 56, textAlign: 'center' },
-  boundaryPct:       { fontSize: 13, color: '#666', width: 16 },
+  boundaryInput:     { backgroundColor: '#F5F6FA', borderRadius: 8, borderWidth: 1, borderColor: '#E5E7EB', paddingHorizontal: 10, paddingVertical: 8, fontSize: 16, fontWeight: '700', color: '#111827', width: 56, textAlign: 'center' },
+  boundaryPct:       { fontSize: 13, color: '#6B7280', width: 16 },
   zoneRangeBar:      { flexDirection: 'row', height: 12, borderRadius: 6, overflow: 'hidden', marginBottom: 12 },
   zoneRangeSegment:  { height: '100%' },
   zoneRangeRow:      { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
   zoneRangeDot:      { width: 10, height: 10, borderRadius: 5 },
-  zoneRangeName:     { flex: 1, fontSize: 13, color: '#444' },
-  zoneRangeHR:       { fontSize: 13, fontWeight: '600', color: '#333' },
+  zoneRangeName:     { flex: 1, fontSize: 13, color: '#6B7280' },
+  zoneRangeHR:       { fontSize: 13, fontWeight: '600', color: '#111827' },
   wisdomCard:        { marginHorizontal: 16, marginBottom: 12, backgroundColor: '#1a237e', borderRadius: 14, padding: 16 },
   wisdomTitle:       { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.6)', marginBottom: 8, letterSpacing: 1, textTransform: 'uppercase' },
   wisdomText:        { fontSize: 13, color: '#fff', lineHeight: 20 },

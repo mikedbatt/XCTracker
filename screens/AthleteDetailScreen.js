@@ -1,13 +1,16 @@
+import { Ionicons } from '@expo/vector-icons';
 import { collection, getDocs, orderBy, query, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { BRAND, BRAND_DARK } from '../constants/design';
 import { db } from '../firebaseConfig';
 import {
   DEFAULT_ZONE_BOUNDARIES, ZONE_META, calcMaxHR,
@@ -22,7 +25,7 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
   const [selectedRun,      setSelectedRun]      = useState(null);
   const [runDetailVisible, setRunDetailVisible] = useState(false);
 
-  const primaryColor = school?.primaryColor || '#2e7d32';
+  const primaryColor = school?.primaryColor || '#213f96';
 
   // Athlete age for zone calc
   const athleteAge = athlete.birthdate
@@ -136,12 +139,13 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
     <View style={styles.container}>
 
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: primaryColor }]}>
+      <View style={styles.header}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn}>
-          <Text style={styles.backText}>← Back to team</Text>
+          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+          <Text style={styles.backText}>Back to team</Text>
         </TouchableOpacity>
         <View style={styles.athleteRow}>
-          <View style={styles.avatar}>
+          <View style={[styles.avatar, { backgroundColor: primaryColor }]}>
             <Text style={styles.avatarText}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
           </View>
           <View style={styles.athleteMeta}>
@@ -181,7 +185,7 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
       </View>
 
       {loading ? (
-        <View style={styles.center}><ActivityIndicator size="large" color={primaryColor} /></View>
+        <View style={styles.center}><ActivityIndicator size="large" color={BRAND} /></View>
       ) : (
         <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
 
@@ -219,7 +223,7 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
                     backgroundColor: easyPct >= 75 ? '#e8f5e9' : easyPct >= 65 ? '#fff8e1' : '#fce4ec'
                   }]}>
                     <Text style={[styles.easyPctText, {
-                      color: easyPct >= 75 ? '#2e7d32' : easyPct >= 65 ? '#f57f17' : '#c62828'
+                      color: easyPct >= 75 ? '#213f96' : easyPct >= 65 ? '#f57f17' : '#c62828'
                     }]}>
                       {easyPct}% easy (Z1+Z2) · {easyPct >= 75 ? '✅ On target' : easyPct >= 65 ? '⚠️ Slightly high intensity' : '🔴 Too much intensity'}
                     </Text>
@@ -248,21 +252,21 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
               return (
                 <TouchableOpacity
                   key={run.id}
-                  style={[styles.runCard, isThisWeek && { borderLeftColor: primaryColor, borderLeftWidth: 3 }]}
+                  style={[styles.runCard, isThisWeek && { borderLeftColor: BRAND, borderLeftWidth: 3 }]}
                   onPress={() => { setSelectedRun(run); setRunDetailVisible(true); }}
                 >
                   <View style={styles.runTop}>
                     <Text style={styles.runMiles}>{run.miles} mi</Text>
                     <View style={styles.runTopRight}>
-                      {isThisWeek && <View style={[styles.weekTag, { backgroundColor: primaryColor }]}><Text style={styles.weekTagText}>This week</Text></View>}
+                      {isThisWeek && <View style={[styles.weekTag, { backgroundColor: BRAND }]}><Text style={styles.weekTagText}>This week</Text></View>}
                       <Text style={styles.runDate}>{runDate}</Text>
                     </View>
                   </View>
                   <View style={styles.runChips}>
                     {run.duration && <Text style={styles.chip}>{run.duration}</Text>}
                     {run.heartRate && <Text style={styles.chip}>{run.heartRate} bpm avg</Text>}
-                    {run.effort && <Text style={[styles.chip, { color: primaryColor, borderColor: `${primaryColor}60` }]}>Effort {run.effort}/10</Text>}
-                    {run.hasStreamData && <Text style={[styles.chip, { color: '#2e7d32', borderColor: '#a5d6a7' }]}>HR zones ✓</Text>}
+                    {run.effort && <Text style={[styles.chip, { color: BRAND, borderColor: `${BRAND}60` }]}>Effort {run.effort}/10</Text>}
+                    {run.hasStreamData && <Text style={[styles.chip, { color: '#213f96', borderColor: '#a5b4d6' }]}>HR zones ✓</Text>}
                   </View>
                   {run.notes && <Text style={styles.runNote} numberOfLines={1}>"{run.notes}"</Text>}
                 </TouchableOpacity>
@@ -287,28 +291,28 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
 }
 
 const styles = StyleSheet.create({
-  container:        { flex: 1, backgroundColor: '#f5f5f5' },
+  container:        { flex: 1, backgroundColor: '#F5F6FA' },
   center:           { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header:           { paddingTop: 60, paddingBottom: 16, paddingHorizontal: 20 },
-  backBtn:          { marginBottom: 12 },
-  backText:         { color: 'rgba(255,255,255,0.9)', fontSize: 15, fontWeight: '600' },
+  header:           { backgroundColor: '#fff', paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 16, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
+  backBtn:          { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, marginBottom: 12 },
+  backText:         { color: '#111827', fontSize: 15, fontWeight: '600' },
   athleteRow:       { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
-  avatar:           { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' },
+  avatar:           { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   avatarText:       { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   athleteMeta:      { flex: 1 },
-  athleteName:      { fontSize: 18, fontWeight: 'bold', color: '#fff' },
-  athleteEmail:     { fontSize: 13, color: 'rgba(255,255,255,0.75)', marginTop: 2 },
-  headerStats:      { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.15)', borderRadius: 12, padding: 12, gap: 4 },
+  athleteName:      { fontSize: 18, fontWeight: 'bold', color: '#111827' },
+  athleteEmail:     { fontSize: 13, color: '#9CA3AF', marginTop: 2 },
+  headerStats:      { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F5F6FA', borderRadius: 12, padding: 12, gap: 4 },
   headerStat:       { flex: 1, alignItems: 'center' },
-  headerStatNum:    { fontSize: 20, fontWeight: 'bold', color: '#fff' },
-  headerStatLabel:  { fontSize: 10, color: 'rgba(255,255,255,0.75)', marginTop: 2, textAlign: 'center' },
-  headerStatDivider:{ width: 1, height: 28, backgroundColor: 'rgba(255,255,255,0.2)' },
+  headerStatNum:    { fontSize: 20, fontWeight: 'bold', color: '#111827' },
+  headerStatLabel:  { fontSize: 10, color: '#9CA3AF', marginTop: 2, textAlign: 'center' },
+  headerStatDivider:{ width: 1, height: 28, backgroundColor: '#E5E7EB' },
   scroll:           { flex: 1 },
   zoneSection:      { margin: 16, marginBottom: 8 },
   zoneTitleRow:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   zoneSectionTitle: { fontSize: 14, fontWeight: '700', color: '#555' },
-  preciseBadge:     { backgroundColor: '#e8f5e9', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-  preciseBadgeText: { fontSize: 11, color: '#2e7d32', fontWeight: '700' },
+  preciseBadge:     { backgroundColor: '#e8edf8', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  preciseBadgeText: { fontSize: 11, color: '#213f96', fontWeight: '700' },
   estimatedText:    { fontSize: 11, color: '#bbb' },
   zoneCard:         { backgroundColor: '#fff', borderRadius: 14, padding: 14 },
   stackedBar:       { flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginBottom: 12 },
@@ -323,17 +327,17 @@ const styles = StyleSheet.create({
   easyPctText:      { fontSize: 13, fontWeight: '600', textAlign: 'center' },
   zoneTotalTime:    { fontSize: 11, color: '#bbb', textAlign: 'right', marginTop: 4 },
   section:          { paddingHorizontal: 16 },
-  sectionTitle:     { fontSize: 15, fontWeight: '700', color: '#333', marginBottom: 12 },
+  sectionTitle:     { fontSize: 15, fontWeight: '700', color: '#111827', marginBottom: 12 },
   emptyCard:        { backgroundColor: '#fff', borderRadius: 12, padding: 24, alignItems: 'center' },
-  emptyText:        { color: '#999', fontSize: 14 },
+  emptyText:        { color: '#9CA3AF', fontSize: 14 },
   runCard:          { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 10 },
   runTop:           { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
-  runMiles:         { fontSize: 18, fontWeight: 'bold', color: '#333' },
+  runMiles:         { fontSize: 18, fontWeight: 'bold', color: '#111827' },
   runTopRight:      { alignItems: 'flex-end', gap: 4 },
   weekTag:          { borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
   weekTagText:      { color: '#fff', fontSize: 10, fontWeight: '700' },
-  runDate:          { fontSize: 12, color: '#999' },
+  runDate:          { fontSize: 12, color: '#9CA3AF' },
   runChips:         { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 4 },
-  chip:             { fontSize: 12, fontWeight: '600', color: '#666', borderWidth: 1, borderColor: '#ddd', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  chip:             { fontSize: 12, fontWeight: '600', color: '#6B7280', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   runNote:          { fontSize: 12, color: '#888', fontStyle: 'italic', marginTop: 4 },
 });

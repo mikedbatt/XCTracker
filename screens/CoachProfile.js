@@ -16,7 +16,7 @@ import {
 import { auth, db } from '../firebaseConfig';
 import Button from '../components/Button';
 import {
-  BRAND, BRAND_DARK, BRAND_LIGHT,
+  AVATAR_COLORS, BRAND, BRAND_DARK, BRAND_LIGHT,
   FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
 } from '../constants/design';
 
@@ -36,6 +36,7 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
   const [lastName,  setLastName]  = useState(userData.lastName  || '');
   const [email,     setEmail]     = useState(userData.email     || '');
   const [saving,    setSaving]    = useState(false);
+  const [avatarColor, setAvatarColor] = useState(userData.avatarColor || BRAND);
 
   // School editing state
   const [schoolName, setSchoolName]       = useState(school?.name || '');
@@ -62,6 +63,7 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
       const updates = {
         firstName: firstName.trim(),
         lastName:  lastName.trim(),
+        avatarColor,
       };
 
       if (email.trim() !== userData.email) {
@@ -138,7 +140,7 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
       </View>
 
       <View style={styles.avatarSection}>
-        <View style={styles.avatar}>
+        <View style={[styles.avatar, { backgroundColor: avatarColor }]}>
           <Text style={styles.avatarText}>
             {(firstName[0] || '?')}{(lastName[0] || '')}
           </Text>
@@ -184,6 +186,19 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
               autoCorrect={false}
             />
             <Text style={styles.fieldHint}>Changing email requires a recent sign-in</Text>
+
+            <Text style={styles.fieldLabel}>Avatar color</Text>
+            <View style={styles.avatarColorRow}>
+              {AVATAR_COLORS.map(color => (
+                <TouchableOpacity
+                  key={color}
+                  style={[styles.avatarColorBtn, { backgroundColor: color }, avatarColor === color && styles.avatarColorBtnActive]}
+                  onPress={() => setAvatarColor(color)}
+                >
+                  {avatarColor === color && <Ionicons name="checkmark" size={16} color="#fff" />}
+                </TouchableOpacity>
+              ))}
+            </View>
 
             <Button
               label="Save changes"
@@ -358,15 +373,15 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
 
 const styles = StyleSheet.create({
   container:          { flex: 1, backgroundColor: NEUTRAL.bg },
-  header:             { backgroundColor: BRAND, paddingTop: Platform.OS === 'ios' ? SPACE['5xl'] : SPACE['3xl'], paddingBottom: SPACE.md, paddingHorizontal: SPACE.xl, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  header:             { backgroundColor: NEUTRAL.card, paddingTop: Platform.OS === 'ios' ? SPACE['5xl'] : SPACE['3xl'], paddingBottom: SPACE.md, paddingHorizontal: SPACE.xl, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
   backBtn:            { flexDirection: 'row', alignItems: 'center', gap: SPACE.xs, paddingVertical: SPACE.sm },
-  backText:           { color: '#fff', fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.semibold },
-  headerTitle:        { fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold, color: '#fff' },
-  avatarSection:      { backgroundColor: BRAND, alignItems: 'center', paddingBottom: SPACE.xl, paddingTop: SPACE.xs },
-  avatar:             { width: 68, height: 68, borderRadius: RADIUS.full, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center', marginBottom: SPACE.sm },
+  backText:           { color: BRAND_DARK, fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.semibold },
+  headerTitle:        { fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  avatarSection:      { backgroundColor: NEUTRAL.card, alignItems: 'center', paddingBottom: SPACE.xl, paddingTop: SPACE.sm },
+  avatar:             { width: 68, height: 68, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center', marginBottom: SPACE.sm },
   avatarText:         { color: '#fff', fontSize: 26, fontWeight: FONT_WEIGHT.bold },
-  avatarName:         { color: '#fff', fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold },
-  avatarSub:          { color: 'rgba(255,255,255,0.75)', fontSize: FONT_SIZE.sm, marginTop: 3 },
+  avatarName:         { color: BRAND_DARK, fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold },
+  avatarSub:          { color: NEUTRAL.body, fontSize: FONT_SIZE.sm, marginTop: 3 },
   scroll:             { flex: 1 },
   section:            { padding: SPACE.lg },
   card:               { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, marginBottom: SPACE.lg, ...SHADOW.sm },
@@ -404,4 +419,7 @@ const styles = StyleSheet.create({
   denyBtnText:        { color: STATUS.error, fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
   signOutSection:     { marginHorizontal: SPACE.lg, marginTop: SPACE.sm, marginBottom: SPACE.sm, alignItems: 'center' },
   signOutHint:        { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, textAlign: 'center', marginTop: SPACE.sm },
+  avatarColorRow:     { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.md, marginBottom: SPACE.lg },
+  avatarColorBtn:     { width: 36, height: 36, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center' },
+  avatarColorBtnActive: { borderWidth: 3, borderColor: NEUTRAL.card, ...SHADOW.md },
 });

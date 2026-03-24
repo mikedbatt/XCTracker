@@ -14,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
+import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS } from '../constants/design';
 import {
   DEFAULT_ZONE_BOUNDARIES, ZONE_META, calcMaxHR,
   calcZoneBreakdownFromRuns,
@@ -128,24 +129,24 @@ function RunZoneBreakdown({ run, athleteAge, zoneSettings, primaryColor }) {
 const zoneStyles = StyleSheet.create({
   section:         { backgroundColor: '#fff', borderRadius: 14, margin: 16, marginBottom: 0, padding: 16 },
   titleRow:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  sectionTitle:    { fontSize: 13, fontWeight: '700', color: '#999', textTransform: 'uppercase', letterSpacing: 0.5 },
+  sectionTitle:    { fontSize: 13, fontWeight: '700', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5 },
   preciseBadge:    { backgroundColor: '#e8f5e9', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-  preciseBadgeText:{ fontSize: 11, color: '#2e7d32', fontWeight: '700' },
+  preciseBadgeText:{ fontSize: 11, color: '#213f96', fontWeight: '700' },
   estimatedText:   { fontSize: 11, color: '#bbb' },
   stackedBar:      { flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginBottom: 14 },
   stackedSegment:  { height: '100%' },
   zoneRow:         { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   zoneDot:         { width: 10, height: 10, borderRadius: 5 },
-  zoneName:        { fontSize: 13, color: '#555', width: 116 },
+  zoneName:        { fontSize: 13, color: '#6B7280', width: 116 },
   zoneBarBg:       { flex: 1, height: 6, backgroundColor: '#f0f0f0', borderRadius: 3, overflow: 'hidden' },
   zoneBarFill:     { height: '100%', borderRadius: 3 },
-  zoneTime:        { fontSize: 12, fontWeight: '600', color: '#555', width: 52, textAlign: 'right' },
+  zoneTime:        { fontSize: 12, fontWeight: '600', color: '#6B7280', width: 52, textAlign: 'right' },
   totalTime:       { fontSize: 11, color: '#bbb', textAlign: 'right', marginTop: 4 },
 });
 
 export default function RunDetailModal({
   run, visible, onClose, onDeleted, onUpdated,
-  primaryColor = '#2e7d32', athleteAge = 16, zoneSettings = null, showHRZones = true,
+  primaryColor = '#213f96', athleteAge = 16, zoneSettings = null, showHRZones = true,
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [saving,    setSaving]    = useState(false);
@@ -283,11 +284,11 @@ export default function RunDetailModal({
             <ScrollView style={styles.editScroll} keyboardShouldPersistTaps="handled">
               <DatePickerField label="Run date" value={editDate} onChange={setEditDate} primaryColor={primaryColor} maximumDate={new Date()} />
               <Text style={styles.editLabel}>Miles *</Text>
-              <TextInput style={styles.editInput} value={editMiles} onChangeText={setEditMiles} keyboardType="decimal-pad" placeholder="e.g. 5.2" placeholderTextColor="#999" />
+              <TextInput style={styles.editInput} value={editMiles} onChangeText={setEditMiles} keyboardType="decimal-pad" placeholder="e.g. 5.2" placeholderTextColor="#9CA3AF" />
               <Text style={styles.editLabel}>Duration (optional)</Text>
-              <TextInput style={styles.editInput} value={editDuration} onChangeText={setEditDuration} placeholder="e.g. 42:30" placeholderTextColor="#999" />
+              <TextInput style={styles.editInput} value={editDuration} onChangeText={setEditDuration} placeholder="e.g. 42:30" placeholderTextColor="#9CA3AF" />
               <Text style={styles.editLabel}>Avg heart rate (optional)</Text>
-              <TextInput style={styles.editInput} value={editHR} onChangeText={setEditHR} keyboardType="numeric" placeholder="e.g. 155" placeholderTextColor="#999" />
+              <TextInput style={styles.editInput} value={editHR} onChangeText={setEditHR} keyboardType="numeric" placeholder="e.g. 155" placeholderTextColor="#9CA3AF" />
               <Text style={styles.editLabel}>How did it feel? {editEffort}/10 — {EFFORT_LABELS[editEffort]}</Text>
               <View style={styles.effortRow}>
                 {[1,2,3,4,5,6,7,8,9,10].map(n => (
@@ -301,7 +302,7 @@ export default function RunDetailModal({
               <Text style={styles.editLabel}>Notes (optional)</Text>
               <TextInput style={[styles.editInput, { height: 90, textAlignVertical: 'top' }]}
                 value={editNotes} onChangeText={setEditNotes}
-                placeholder="How did the run go?" placeholderTextColor="#999" multiline />
+                placeholder="How did the run go?" placeholderTextColor="#9CA3AF" multiline />
               <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete} disabled={deleting}>
                 {deleting
                   ? <ActivityIndicator color="#dc2626" />
@@ -434,7 +435,7 @@ export default function RunDetailModal({
 }
 
 const styles = StyleSheet.create({
-  container:        { flex: 1, backgroundColor: '#f5f5f5' },
+  container:        { flex: 1, backgroundColor: '#F5F6FA' },
   header:           { paddingTop: 60, paddingBottom: 24, paddingHorizontal: 24 },
   headerTop:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   closeText:        { color: 'rgba(255,255,255,0.85)', fontSize: 15 },
@@ -445,37 +446,37 @@ const styles = StyleSheet.create({
   headerDuration:   { fontSize: 22, color: 'rgba(255,255,255,0.9)', marginTop: 6, fontWeight: '600' },
   scroll:           { flex: 1 },
   section:          { backgroundColor: '#fff', borderRadius: 14, margin: 16, marginBottom: 0, padding: 16 },
-  sectionTitle:     { fontSize: 13, fontWeight: '700', color: '#999', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 14 },
+  sectionTitle:     { fontSize: 13, fontWeight: '700', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 14 },
   effortContainer:  { flexDirection: 'row', alignItems: 'center', gap: 16 },
   effortCircle:     { flexDirection: 'row', alignItems: 'baseline' },
   effortNumber:     { fontSize: 52, fontWeight: 'bold' },
   effortDivider:    { fontSize: 20, color: '#ccc', marginLeft: 2 },
   effortInfo:       { flex: 1 },
   effortLabel:      { fontSize: 18, fontWeight: '700', marginBottom: 10 },
-  effortBar:        { height: 8, backgroundColor: '#eee', borderRadius: 4, overflow: 'hidden' },
+  effortBar:        { height: 8, backgroundColor: '#E5E7EB', borderRadius: 4, overflow: 'hidden' },
   effortFill:       { height: '100%', borderRadius: 4 },
   statsGrid:        { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   statBox:          { backgroundColor: '#f8f8f8', borderRadius: 10, padding: 14, minWidth: '45%', flex: 1 },
-  statValue:        { fontSize: 22, fontWeight: 'bold', color: '#333' },
-  statLabel:        { fontSize: 12, color: '#999', marginTop: 4 },
+  statValue:        { fontSize: 22, fontWeight: 'bold', color: '#111827' },
+  statLabel:        { fontSize: 12, color: '#9CA3AF', marginTop: 4 },
   sourceBox:        { backgroundColor: '#f8f8f8', borderRadius: 10, padding: 14 },
-  sourceText:       { fontSize: 15, color: '#555' },
+  sourceText:       { fontSize: 15, color: '#6B7280' },
   notesBox:         { backgroundColor: '#f8f8f8', borderRadius: 10, padding: 14 },
   notesText:        { fontSize: 15, color: '#444', lineHeight: 22 },
   footer:           { padding: 24, alignItems: 'center', gap: 12 },
   footerText:       { fontSize: 13, color: '#bbb' },
   footerDeleteBtn:  { padding: 8 },
   footerDeleteText: { fontSize: 14, color: '#dc2626', fontWeight: '600' },
-  editHeader:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 60, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
-  editHeaderTitle:  { fontSize: 18, fontWeight: 'bold', color: '#333' },
+  editHeader:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 60, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
+  editHeaderTitle:  { fontSize: 18, fontWeight: 'bold', color: '#111827' },
   cancelBtn:        { color: '#dc2626', fontSize: 16, fontWeight: '600', width: 60 },
   saveBtn:          { fontSize: 16, fontWeight: '700', width: 60, textAlign: 'right' },
   editScroll:       { padding: 20 },
   editLabel:        { fontSize: 14, fontWeight: '600', color: '#444', marginBottom: 8, marginTop: 4 },
-  editInput:        { backgroundColor: '#fff', borderRadius: 10, padding: 14, fontSize: 16, marginBottom: 16, borderWidth: 1, borderColor: '#ddd', color: '#333' },
+  editInput:        { backgroundColor: '#fff', borderRadius: 10, padding: 14, fontSize: 16, marginBottom: 16, borderWidth: 1, borderColor: '#E5E7EB', color: '#111827' },
   effortRow:        { flexDirection: 'row', gap: 6, marginBottom: 16, flexWrap: 'wrap' },
-  effortBtn:        { width: 44, height: 44, borderRadius: 22, backgroundColor: '#eee', alignItems: 'center', justifyContent: 'center' },
-  effortBtnText:    { fontSize: 15, fontWeight: '600', color: '#666' },
+  effortBtn:        { width: 44, height: 44, borderRadius: 22, backgroundColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' },
+  effortBtnText:    { fontSize: 15, fontWeight: '600', color: '#6B7280' },
   deleteBtn:        { borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 16, backgroundColor: '#fee2e2', borderWidth: 1, borderColor: '#fca5a5' },
   deleteBtnText:    { color: '#dc2626', fontSize: 16, fontWeight: '700' },
 });

@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import {
   addDoc, collection, deleteDoc, doc, getDocs, orderBy,
   query, serverTimestamp, updateDoc, where,
@@ -8,6 +9,7 @@ import {
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
+import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS } from '../constants/design';
 
 export default function GroupManager({ schoolId, athletes, activeSeason, onClose }) {
   const [groups,       setGroups]       = useState([]);
@@ -16,7 +18,7 @@ export default function GroupManager({ schoolId, athletes, activeSeason, onClose
   const [athleteStats, setAthleteStats] = useState({});
   const [activeTab,    setActiveTab]    = useState('groups');
 
-  const primaryColor = '#2e7d32';
+  const primaryColor = '#213f96';
 
   useEffect(() => {
     loadGroups();
@@ -189,9 +191,10 @@ export default function GroupManager({ schoolId, athletes, activeSeason, onClose
   if (loading) {
     return (
       <View style={styles.container}>
-        <View style={[styles.header, { backgroundColor: primaryColor }]}>
+        <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-            <Text style={styles.backText}>‹ Back</Text>
+            <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+            <Text style={styles.backText}>Back</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Training Groups</Text>
           <View style={{ width: 60 }} />
@@ -203,9 +206,10 @@ export default function GroupManager({ schoolId, athletes, activeSeason, onClose
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { backgroundColor: primaryColor }]}>
+      <View style={styles.header}>
         <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-          <Text style={styles.backText}>‹ Back</Text>
+          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+          <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Training Groups</Text>
         <View style={{ width: 60 }} />
@@ -236,7 +240,7 @@ export default function GroupManager({ schoolId, athletes, activeSeason, onClose
               value={newGroupName}
               onChangeText={setNewGroupName}
               placeholder="New group name..."
-              placeholderTextColor="#999"
+              placeholderTextColor="#9CA3AF"
             />
             <TouchableOpacity style={[styles.addBtn, { backgroundColor: primaryColor }]} onPress={handleAddGroup}>
               <Text style={styles.addBtnText}>+ Add</Text>
@@ -443,34 +447,34 @@ export default function GroupManager({ schoolId, athletes, activeSeason, onClose
 
 const styles = StyleSheet.create({
   // Tabs
-  tabRow:          { flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  tabRow:          { flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
   tab:             { flex: 1, paddingVertical: 12, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  tabText:         { fontSize: 13, color: '#666' },
+  tabText:         { fontSize: 13, color: '#6B7280' },
   // Empty state cards
   emptyCard:       { backgroundColor: '#fff', borderRadius: 14, padding: 24, alignItems: 'center' },
-  emptyCardTitle:  { fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 6 },
-  emptyCardText:   { fontSize: 14, color: '#999', textAlign: 'center' },
+  emptyCardTitle:  { fontSize: 16, fontWeight: '600', color: '#111827', marginBottom: 6 },
+  emptyCardText:   { fontSize: 14, color: '#9CA3AF', textAlign: 'center' },
   // Volume plan
   volumeWeek:      { backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 8 },
-  volumeWeekLabel: { fontSize: 13, fontWeight: '600', color: '#555', marginBottom: 8 },
+  volumeWeekLabel: { fontSize: 13, fontWeight: '600', color: '#6B7280', marginBottom: 8 },
   volumeGroupRow:  { flexDirection: 'row', gap: 10 },
   volumeCell:      { flex: 1, alignItems: 'center' },
-  volumeCellLabel: { fontSize: 11, color: '#999', marginBottom: 4 },
-  volumeCellInput: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 6, width: '100%', textAlign: 'center', fontSize: 15, fontWeight: '600', backgroundColor: '#f9f9f9', color: '#333' },
-  container:       { flex: 1, backgroundColor: '#f5f5f5' },
-  header:          { paddingTop: 60, paddingBottom: 12, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  backBtn:         { paddingVertical: 6, paddingHorizontal: 10 },
-  backText:        { color: '#fff', fontSize: 17, fontWeight: '600' },
-  headerTitle:     { fontSize: 20, fontWeight: 'bold', color: '#fff' },
+  volumeCellLabel: { fontSize: 11, color: '#9CA3AF', marginBottom: 4 },
+  volumeCellInput: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 8, padding: 6, width: '100%', textAlign: 'center', fontSize: 15, fontWeight: '600', backgroundColor: '#f9f9f9', color: '#111827' },
+  container:       { flex: 1, backgroundColor: '#F5F6FA' },
+  header:          { backgroundColor: '#fff', paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
+  backBtn:         { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6 },
+  backText:        { color: '#111827', fontSize: 15, fontWeight: '600' },
+  headerTitle:     { fontSize: 20, fontWeight: '700', color: '#111827' },
   scroll:          { flex: 1 },
   section:         { padding: 16 },
-  sectionTitle:    { fontSize: 17, fontWeight: '700', color: '#333', marginBottom: 10 },
-  sectionHint:     { fontSize: 12, color: '#999', marginBottom: 12 },
-  emptyText:       { fontSize: 14, color: '#999', textAlign: 'center', paddingVertical: 20 },
+  sectionTitle:    { fontSize: 17, fontWeight: '700', color: '#111827', marginBottom: 10 },
+  sectionHint:     { fontSize: 12, color: '#9CA3AF', marginBottom: 12 },
+  emptyText:       { fontSize: 14, color: '#9CA3AF', textAlign: 'center', paddingVertical: 20 },
 
   // Add group
   addRow:          { flexDirection: 'row', gap: 10, marginBottom: 14 },
-  addInput:        { flex: 1, backgroundColor: '#fff', borderRadius: 10, padding: 12, fontSize: 15, borderWidth: 1, borderColor: '#e0e0e0', color: '#333' },
+  addInput:        { flex: 1, backgroundColor: '#fff', borderRadius: 10, padding: 12, fontSize: 15, borderWidth: 1, borderColor: '#E5E7EB', color: '#111827' },
   addBtn:          { borderRadius: 10, paddingHorizontal: 16, justifyContent: 'center' },
   addBtnText:      { color: '#fff', fontWeight: '700', fontSize: 14 },
 
@@ -478,19 +482,19 @@ const styles = StyleSheet.create({
   groupCard:       { backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 8 },
   groupCardTop:    { flexDirection: 'row', alignItems: 'center', gap: 10 },
   groupInfo:       { flex: 1 },
-  groupNameInput:  { fontSize: 15, fontWeight: '700', color: '#333', padding: 0 },
-  groupCount:      { fontSize: 12, color: '#999', marginTop: 2 },
+  groupNameInput:  { fontSize: 15, fontWeight: '700', color: '#111827', padding: 0 },
+  groupCount:      { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
   targetBox:       { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  targetInput:     { fontSize: 15, fontWeight: '600', color: '#333', textAlign: 'right', width: 45, borderBottomWidth: 1, borderBottomColor: '#ddd', padding: 2 },
-  targetLabel:     { fontSize: 12, color: '#999' },
+  targetInput:     { fontSize: 15, fontWeight: '600', color: '#111827', textAlign: 'right', width: 45, borderBottomWidth: 1, borderBottomColor: '#E5E7EB', padding: 2 },
+  targetLabel:     { fontSize: 12, color: '#9CA3AF' },
   deleteBtn:       { padding: 8 },
   deleteBtnText:   { fontSize: 16, color: '#dc2626', fontWeight: '600' },
 
   // Athlete rows
   athleteRow:      { backgroundColor: '#fff', borderRadius: 10, padding: 12, marginBottom: 6, flexDirection: 'row', alignItems: 'center', gap: 10 },
   athleteInfo:     { flex: 1 },
-  athleteName:     { fontSize: 14, fontWeight: '600', color: '#333' },
-  athleteStats:    { fontSize: 12, color: '#999', marginTop: 2 },
-  groupBadge:      { borderRadius: 8, borderWidth: 1, borderColor: '#ddd', paddingHorizontal: 10, paddingVertical: 5, backgroundColor: '#f9f9f9' },
-  groupBadgeText:  { fontSize: 12, fontWeight: '600', color: '#999' },
+  athleteName:     { fontSize: 14, fontWeight: '600', color: '#111827' },
+  athleteStats:    { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
+  groupBadge:      { borderRadius: 8, borderWidth: 1, borderColor: '#E5E7EB', paddingHorizontal: 10, paddingVertical: 5, backgroundColor: '#f9f9f9' },
+  groupBadgeText:  { fontSize: 12, fontWeight: '600', color: '#9CA3AF' },
 });
