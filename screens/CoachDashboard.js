@@ -32,6 +32,7 @@ import {
   FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS, STRAVA_ORANGE,
 } from '../constants/design';
 import AthleteDetailScreen from '../screens/AthleteDetailScreen';
+import CoachAnalytics from '../screens/CoachAnalytics';
 import CoachProfile from '../screens/CoachProfile';
 import GroupManager from '../screens/GroupManager';
 import CalendarScreen, { TYPE_COLORS } from '../screens/CalendarScreen';
@@ -212,6 +213,7 @@ export default function CoachDashboard({ userData }) {
   const [athleteMiles,        setAthleteMiles]        = useState({});
   const [athleteWeeklyMiles,  setAthleteWeeklyMiles]  = useState({});
   const [athlete3WeekAvg,     setAthlete3WeekAvg]     = useState({});
+  const [athleteWeeklyBreakdown, setAthleteWeeklyBreakdown] = useState({});
   const [athleteZonePct,      setAthleteZonePct]      = useState({});
   const [pendingAthletes,     setPendingAthletes]     = useState([]);
   const [trainingItems,       setTrainingItems]       = useState([]);
@@ -236,6 +238,7 @@ export default function CoachDashboard({ userData }) {
   const [libraryVisible,      setLibraryVisible]      = useState(false);
   const [feedVisible,         setFeedVisible]         = useState(false);
   const [zonesVisible,        setZonesVisible]        = useState(false);
+  const [analyticsVisible,    setAnalyticsVisible]    = useState(false);
   const [teamZoneSettings,    setTeamZoneSettings]    = useState(null);
 
   const loadDashboard = useCallback(async () => {
@@ -290,6 +293,7 @@ export default function CoachDashboard({ userData }) {
       const milesMap        = {};
       const weeklyMilesMap  = {};
       const threeWeekAvgMap = {};
+      const weekBreakdownMap = {};
       const zonePctMap      = {};
 
       for (const athlete of approvedAthletes) {
@@ -321,9 +325,10 @@ export default function CoachDashboard({ userData }) {
           ) / 10;
 
           // 3-week average weekly miles
-          const week1Start = new Date(weekStart);
+          const week1Start = new Date(weekStart); // current week (incomplete)
           const week2Start = new Date(weekStart); week2Start.setDate(week2Start.getDate() - 7);
           const week3Start = new Date(weekStart); week3Start.setDate(week3Start.getDate() - 14);
+          const week4Start = new Date(weekStart); week4Start.setDate(week4Start.getDate() - 21);
 
           const w1 = allRuns.filter(r => { const d = r.date?.toDate?.(); return d && d >= week1Start; })
             .reduce((s, r) => s + (r.miles || 0), 0);
@@ -331,8 +336,16 @@ export default function CoachDashboard({ userData }) {
             .reduce((s, r) => s + (r.miles || 0), 0);
           const w3 = allRuns.filter(r => { const d = r.date?.toDate?.(); return d && d >= week3Start && d < week2Start; })
             .reduce((s, r) => s + (r.miles || 0), 0);
+          const w4 = allRuns.filter(r => { const d = r.date?.toDate?.(); return d && d >= week4Start && d < week3Start; })
+            .reduce((s, r) => s + (r.miles || 0), 0);
 
           threeWeekAvgMap[athlete.id] = Math.round(((w1 + w2 + w3) / 3) * 10) / 10;
+          // Store last 3 COMPLETED weeks (skip current incomplete week)
+          weekBreakdownMap[athlete.id] = {
+            w1: Math.round(w2 * 10) / 10, // last week
+            w2: Math.round(w3 * 10) / 10, // 2 weeks ago
+            w3: Math.round(w4 * 10) / 10, // 3 weeks ago
+          };
 
           // ── Zone 1+2 % — FIX: now uses 3-tier stream recalculation ──────────
           // Previously only used calcZoneBreakdownFromRuns (avg HR estimate).
@@ -364,6 +377,7 @@ export default function CoachDashboard({ userData }) {
       setAthleteMiles(milesMap);
       setAthleteWeeklyMiles(weeklyMilesMap);
       setAthlete3WeekAvg(threeWeekAvgMap);
+      setAthleteWeeklyBreakdown(weekBreakdownMap);
       setAthleteZonePct(zonePctMap);
 
       const alertsMap = {};
@@ -859,26 +873,43 @@ export default function CoachDashboard({ userData }) {
           />
         </View>
       )}
+      {analyticsVisible && (
+        <View style={styles.subScreen}>
+          <CoachAnalytics
+            athletes={athletes}
+            athleteWeeklyMiles={athleteWeeklyMiles}
+            athlete3WeekAvg={athlete3WeekAvg}
+            athleteWeeklyBreakdown={athleteWeeklyBreakdown}
+            athleteZonePct={athleteZonePct}
+            overtTrainingAlerts={overtTrainingAlerts}
+            athleteMiles={athleteMiles}
+            groups={groups}
+            school={school}
+            schoolId={userData.schoolId}
+            onClose={() => setAnalyticsVisible(false)}
+          />
+        </View>
+      )}
 
       {/* ── Persistent bottom nav ── */}
       <View style={styles.bottomNav}>
-        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setGroupManagerVisible(false); setFeedVisible(false); setZonesVisible(false); setProfileVisible(false); setLibraryVisible(false); setAddFromDashboard(false); }}>
-          <Ionicons name="home-outline" size={24} color={!calendarVisible && !groupManagerVisible && !feedVisible && !zonesVisible && !profileVisible && !libraryVisible && !addFromDashboard ? BRAND : NEUTRAL.muted} />
-          <Text style={[styles.bottomNavLabel, !calendarVisible && !groupManagerVisible && !feedVisible && !zonesVisible && !profileVisible && !libraryVisible && !addFromDashboard && { color: BRAND }]}>Home</Text>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setGroupManagerVisible(false); setFeedVisible(false); setZonesVisible(false); setProfileVisible(false); setLibraryVisible(false); setAnalyticsVisible(false); setAddFromDashboard(false); }}>
+          <Ionicons name="home-outline" size={24} color={!calendarVisible && !groupManagerVisible && !feedVisible && !zonesVisible && !profileVisible && !libraryVisible && !analyticsVisible && !addFromDashboard ? BRAND : NEUTRAL.muted} />
+          <Text style={[styles.bottomNavLabel, !calendarVisible && !groupManagerVisible && !feedVisible && !zonesVisible && !profileVisible && !libraryVisible && !analyticsVisible && !addFromDashboard && { color: BRAND }]}>Home</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setGroupManagerVisible(false); setFeedVisible(false); setZonesVisible(false); setProfileVisible(false); setLibraryVisible(false); setAddFromDashboard(false); setCalendarVisible(true); }}>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setGroupManagerVisible(false); setFeedVisible(false); setZonesVisible(false); setProfileVisible(false); setLibraryVisible(false); setAnalyticsVisible(false); setAddFromDashboard(false); setCalendarVisible(true); }}>
           <Ionicons name="calendar-outline" size={24} color={calendarVisible || addFromDashboard ? BRAND : NEUTRAL.muted} />
           <Text style={[styles.bottomNavLabel, (calendarVisible || addFromDashboard) && { color: BRAND }]}>Training</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setFeedVisible(false); setZonesVisible(false); setProfileVisible(false); setLibraryVisible(false); setAddFromDashboard(false); setGroupManagerVisible(true); }}>
-          <Ionicons name="people-outline" size={24} color={groupManagerVisible ? BRAND : NEUTRAL.muted} />
-          <Text style={[styles.bottomNavLabel, groupManagerVisible && { color: BRAND }]}>Groups</Text>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setGroupManagerVisible(false); setFeedVisible(false); setZonesVisible(false); setProfileVisible(false); setLibraryVisible(false); setAddFromDashboard(false); setAnalyticsVisible(true); }}>
+          <Ionicons name="analytics-outline" size={24} color={analyticsVisible ? BRAND : NEUTRAL.muted} />
+          <Text style={[styles.bottomNavLabel, analyticsVisible && { color: BRAND }]}>Analytics</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setGroupManagerVisible(false); setZonesVisible(false); setProfileVisible(false); setLibraryVisible(false); setAddFromDashboard(false); setFeedVisible(true); }}>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setGroupManagerVisible(false); setZonesVisible(false); setProfileVisible(false); setLibraryVisible(false); setAnalyticsVisible(false); setAddFromDashboard(false); setFeedVisible(true); }}>
           <Ionicons name="chatbubbles-outline" size={24} color={feedVisible ? BRAND : NEUTRAL.muted} />
           <Text style={[styles.bottomNavLabel, feedVisible && { color: BRAND }]}>Feed</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setGroupManagerVisible(false); setFeedVisible(false); setZonesVisible(false); setLibraryVisible(false); setAddFromDashboard(false); setProfileVisible(true); }}>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setGroupManagerVisible(false); setFeedVisible(false); setZonesVisible(false); setLibraryVisible(false); setAnalyticsVisible(false); setAddFromDashboard(false); setProfileVisible(true); }}>
           <View>
             <Ionicons name="person-outline" size={24} color={profileVisible ? BRAND : NEUTRAL.muted} />
             {pendingAthletes.length > 0 && (

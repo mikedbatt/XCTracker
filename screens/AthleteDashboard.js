@@ -153,6 +153,9 @@ export default function AthleteDashboard({ userData }) {
   const [localAvatarColor,     setLocalAvatarColor]     = useState(userData.avatarColor || BRAND);
   const [stravaLinked,         setStravaLinked]         = useState(true); // default true to avoid flash
   const [stravaDismissed,      setStravaDismissed]      = useState(false);
+  const [todayCheckinDone,     setTodayCheckinDone]     = useState(true); // default true to avoid flash
+  const [wellnessCardDismissed, setWellnessCardDismissed] = useState(false);
+  const [dailyWellnessVisible, setDailyWellnessVisible] = useState(false);
   const progressAnim = useRef(new Animated.Value(0)).current;
   const [athleteAge,           setAthleteAge]           = useState(16);
   const [teamZoneSettings,     setTeamZoneSettings]     = useState(null);
@@ -308,6 +311,22 @@ export default function AthleteDashboard({ userData }) {
         }
       }
 
+      // Check if daily wellness check-in has been done
+      try {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const checkinSnap = await getDocs(query(
+          collection(db, 'checkins'),
+          where('userId', '==', user.uid),
+          where('date', '>=', todayStart)
+        ));
+        setTodayCheckinDone(!checkinSnap.empty);
+      } catch (e) {
+        // If query fails (e.g., missing index), show the card anyway
+        console.warn('Check-in query failed, showing card:', e);
+        setTodayCheckinDone(false);
+      }
+
       if (userData.schoolId) {
         try {
           const today = new Date().toISOString().split('T')[0];
@@ -371,9 +390,7 @@ export default function AthleteDashboard({ userData }) {
     }
   };
 
-  const handleLogRunTap = () => setWellnessVisible(true);
-  const handleWellnessComplete = (data) => { setPendingWellness(data); setWellnessVisible(false); setLogModalVisible(true); };
-  const handleWellnessSkip = () => { setPendingWellness(null); setWellnessVisible(false); setLogModalVisible(true); };
+  const handleLogRunTap = () => setLogModalVisible(true);
 
   const handleLogRun = async () => {
     if (!miles || isNaN(parseFloat(miles))) { Alert.alert('Missing info', 'Please enter the miles for this run.'); return; }
@@ -390,7 +407,7 @@ export default function AthleteDashboard({ userData }) {
         Alert.alert('Updated! ✅', 'Your run has been updated.');
         setEditingRunId(null);
       } else {
-        if (pendingWellness) await addDoc(collection(db, 'checkins'), { userId: user.uid, schoolId: userData.schoolId || null, date: runDate, sleepQuality: pendingWellness.sleep, legFatigue: pendingWellness.legs, mood: pendingWellness.mood });
+        // Wellness check-ins are now handled via the daily card, not per-run
         await addDoc(collection(db, 'runs'), { userId: user.uid, schoolId: userData.schoolId || null, miles: milesFloat, duration: duration || null, heartRate: heartRate ? parseInt(heartRate) : null, effort, notes: notes || null, source: 'manual', date: runDate });
         await updateDoc(doc(db, 'users', user.uid), { totalMiles: Math.round(((totalMiles || 0) + milesFloat) * 10) / 10 });
         Alert.alert('Run logged! 🏃', miles + ' miles saved. Great work!');
@@ -542,6 +559,27 @@ export default function AthleteDashboard({ userData }) {
             <Text style={styles.heroProgressHint}>{Math.round((weeklyTarget - weeklyMiles) * 10) / 10} mi to go</Text>
           )}
         </View>
+
+        {/* ── Daily wellness check-in prompt ── */}
+        {!todayCheckinDone && !wellnessCardDismissed && (
+          <View style={styles.wellnessCard}>
+            <View style={styles.wellnessCardTop}>
+              <View style={styles.wellnessCardLeft}>
+                <View style={styles.wellnessIcon}><Ionicons name="heart-circle-outline" size={24} color={BRAND} /></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.wellnessCardTitle}>How are you feeling today?</Text>
+                  <Text style={styles.wellnessCardDesc}>Quick daily check-in helps your coach keep you healthy.</Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={() => setWellnessCardDismissed(true)} style={styles.wellnessCloseBtn}>
+                <Ionicons name="close" size={18} color={NEUTRAL.muted} />
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity style={styles.wellnessCheckInBtn} onPress={() => setDailyWellnessVisible(true)}>
+              <Text style={styles.wellnessCheckInText}>Check in</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* ── Strava connect prompt ── */}
         {!stravaLinked && !stravaDismissed && (
@@ -740,7 +778,20 @@ export default function AthleteDashboard({ userData }) {
         </TouchableOpacity>
       </Modal>
 
-      <WellnessCheckIn visible={wellnessVisible} onComplete={handleWellnessComplete} onSkip={handleWellnessSkip} onClose={() => setWellnessVisible(false)} />
+      <WellnessCheckIn visible={dailyWellnessVisible} onComplete={async (data) => {
+        setDailyWellnessVisible(false);
+        try {
+          await addDoc(collection(db, 'checkins'), {
+            userId: auth.currentUser.uid,
+            schoolId: userData.schoolId || null,
+            date: new Date(),
+            sleepQuality: data.sleep,
+            legFatigue: data.legs,
+            mood: data.mood,
+          });
+          setTodayCheckinDone(true);
+        } catch (e) { console.warn('Failed to save daily check-in:', e); }
+      }} onSkip={() => { setDailyWellnessVisible(false); setTodayCheckinDone(true); }} onClose={() => setDailyWellnessVisible(false)} />
       <WorkoutDetailModal
         item={selectedWorkout}
         visible={workoutDetailVisible}
@@ -868,6 +919,15 @@ const styles = StyleSheet.create({
   heroProgressHint:    { fontSize: FONT_SIZE.xs, color: NEUTRAL.body },
   heroOverRow:         { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
   heroOverText:        { fontSize: FONT_SIZE.xs, color: STATUS.error, fontWeight: FONT_WEIGHT.semibold },
+  wellnessCard:        { marginHorizontal: SPACE.lg, marginTop: SPACE.md, backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, ...SHADOW.sm },
+  wellnessCardTop:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  wellnessCardLeft:    { flexDirection: 'row', alignItems: 'flex-start', gap: SPACE.md, flex: 1 },
+  wellnessIcon:        { width: 36, height: 36, borderRadius: RADIUS.full, backgroundColor: BRAND_LIGHT, alignItems: 'center', justifyContent: 'center' },
+  wellnessCardTitle:   { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  wellnessCardDesc:    { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginTop: 2, lineHeight: 18 },
+  wellnessCloseBtn:    { padding: SPACE.xs },
+  wellnessCheckInBtn:  { backgroundColor: BRAND, borderRadius: RADIUS.md, paddingVertical: SPACE.md, alignItems: 'center', marginTop: SPACE.md },
+  wellnessCheckInText: { color: '#fff', fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold },
   stravaCard:          { marginHorizontal: SPACE.lg, marginTop: SPACE.md, backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, ...SHADOW.sm },
   stravaCardTop:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   stravaCardLeft:      { flexDirection: 'row', alignItems: 'flex-start', gap: SPACE.md, flex: 1 },

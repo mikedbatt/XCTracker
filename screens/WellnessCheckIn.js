@@ -62,7 +62,7 @@ function OptionRow({ options, selected, onSelect }) {
   );
 }
 
-export default function WellnessCheckIn({ visible, onComplete, onSkip, onClose, primaryColor }) {
+export default function WellnessCheckIn({ visible, onComplete, onSkip, onClose, doneLabel, primaryColor }) {
   const [sleep, setSleep] = useState(null);
   const [legs, setLegs] = useState(null);
   const [mood, setMood] = useState(null);
@@ -110,7 +110,7 @@ export default function WellnessCheckIn({ visible, onComplete, onSkip, onClose, 
             onPress={handleDone}
             disabled={!canContinue}
           >
-            <Text style={styles.doneBtnText}>Log my run</Text>
+            <Text style={styles.doneBtnText}>{doneLabel || 'Submit'}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.skipBtn} onPress={onSkip}>
             <Text style={styles.skipBtnText}>Skip check-in</Text>
