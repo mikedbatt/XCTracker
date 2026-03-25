@@ -24,7 +24,7 @@ import {
 } from '../constants/design';
 import StravaConnect from './StravaConnect';
 
-export default function AthleteProfile({ userData, school, onClose, onUpdated }) {
+export default function AthleteProfile({ userData, school, coachDisabledHR = false, onClose, onUpdated }) {
   const [firstName,     setFirstName]     = useState(userData.firstName || '');
   const [lastName,      setLastName]      = useState(userData.lastName  || '');
   const [email,         setEmail]         = useState(userData.email     || '');
@@ -279,19 +279,26 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated })
 
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Training preferences</Text>
-              <View style={styles.toggleRow}>
-                <View style={styles.toggleInfo}>
-                  <Text style={styles.toggleLabel}>Show heart rate zones</Text>
-                  <Text style={styles.toggleHint}>Turn off if you don't use a HR monitor or prefer to train by feel</Text>
+              {coachDisabledHR ? (
+                <View style={styles.coachDisabledRow}>
+                  <Ionicons name="information-circle-outline" size={18} color={NEUTRAL.muted} />
+                  <Text style={styles.coachDisabledText}>Heart rate zones are turned off by your coach</Text>
                 </View>
-                <Switch
-                  value={showHRZones}
-                  onValueChange={handleToggleHRZones}
-                  disabled={!hrZoneLoaded}
-                  trackColor={{ false: '#ddd', true: BRAND }}
-                  thumbColor="#fff"
-                />
-              </View>
+              ) : (
+                <View style={styles.toggleRow}>
+                  <View style={styles.toggleInfo}>
+                    <Text style={styles.toggleLabel}>Show heart rate zones</Text>
+                    <Text style={styles.toggleHint}>Turn off if you don't use a HR monitor or prefer to train by feel</Text>
+                  </View>
+                  <Switch
+                    value={showHRZones}
+                    onValueChange={handleToggleHRZones}
+                    disabled={!hrZoneLoaded}
+                    trackColor={{ false: NEUTRAL.border, true: BRAND }}
+                    thumbColor="#fff"
+                  />
+                </View>
+              )}
             </View>
 
             <View style={styles.infoCard}>
@@ -434,6 +441,8 @@ const styles = StyleSheet.create({
   avatarColorRow:     { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.md, marginBottom: SPACE.lg },
   avatarColorBtn:     { width: 36, height: 36, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center' },
   avatarColorBtnActive: { borderWidth: 3, borderColor: NEUTRAL.card, ...SHADOW.md },
+  coachDisabledRow:   { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, backgroundColor: NEUTRAL.bg, borderRadius: RADIUS.md, padding: SPACE.md },
+  coachDisabledText:  { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted, flex: 1 },
   toggleRow:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.md },
   toggleInfo:         { flex: 1 },
   toggleLabel:        { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.semibold, color: BRAND_DARK, marginBottom: 3 },

@@ -41,7 +41,7 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
   const [loading,       setLoading]       = useState(true);
   const [lastSyncDate,  setLastSyncDate]  = useState(null);
 
-  const primaryColor = school?.primaryColor || '#2e7d32';
+  const primaryColor = school?.primaryColor || BRAND;
 
   useEffect(() => { loadStravaStatus(); }, []);
 

@@ -36,7 +36,7 @@ export default function TeamFeed({ userData, school, onClose }) {
   const [posting,     setPosting]     = useState(false);
   const inputRef = useRef(null);
 
-  const primaryColor = school?.primaryColor || '#2e7d32';
+  const primaryColor = school?.primaryColor || BRAND;
   const isCoach = userData.role === 'admin_coach' || userData.role === 'assistant_coach';
   const myUid   = auth.currentUser?.uid;
 

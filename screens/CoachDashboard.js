@@ -547,7 +547,7 @@ export default function CoachDashboard({ userData }) {
 
   if (loading) return <View style={styles.loading}><ActivityIndicator size="large" color={BRAND} /></View>;
 
-  const primaryColor  = school?.primaryColor || '#2e7d32';
+  const primaryColor  = school?.primaryColor || BRAND;
   const isAdmin       = userData.coachRole === 'admin';
   const today         = new Date().toISOString().split('T')[0];
   const todayItems    = trainingItems.filter(item => item.date?.toDate?.()?.toISOString().split('T')[0] === today);
@@ -823,8 +823,8 @@ export default function CoachDashboard({ userData }) {
             school={school}
             schoolId={userData.schoolId}
             onClose={() => setZonesVisible(false)}
-            onSaved={(newBoundaries) => {
-              setTeamZoneSettings(prev => ({ ...prev, boundaries: newBoundaries }));
+            onSaved={(newBoundaries, newHrZonesDisabled) => {
+              setTeamZoneSettings(prev => ({ ...prev, boundaries: newBoundaries, hrZonesDisabled: newHrZonesDisabled }));
               setZonesVisible(false);
               loadDashboard();
             }}

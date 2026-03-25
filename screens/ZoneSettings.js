@@ -7,6 +7,7 @@ import {
     Platform,
     ScrollView,
     StyleSheet,
+    Switch,
     Text,
     TextInput,
     TouchableOpacity,
@@ -54,6 +55,7 @@ export default function ZoneSettings({ school, schoolId, onClose, onSaved }) {
   const [loading,    setLoading]    = useState(true);
   const [saving,     setSaving]     = useState(false);
   const [boundaries, setBoundaries] = useState({ ...DEFAULT_ZONE_BOUNDARIES });
+  const [hrZonesDisabled, setHrZonesDisabled] = useState(false);
 
   const primaryColor = '#213f96';
 
@@ -66,8 +68,9 @@ export default function ZoneSettings({ school, schoolId, onClose, onSaved }) {
     setLoading(true);
     try {
       const snap = await getDoc(doc(db, 'teamZoneSettings', schoolId));
-      if (snap.exists() && snap.data().boundaries) {
-        setBoundaries(snap.data().boundaries);
+      if (snap.exists()) {
+        if (snap.data().boundaries) setBoundaries(snap.data().boundaries);
+        if (snap.data().hrZonesDisabled) setHrZonesDisabled(true);
       }
     } catch (e) { console.log('Load team zone settings:', e); }
     setLoading(false);
@@ -84,10 +87,11 @@ export default function ZoneSettings({ school, schoolId, onClose, onSaved }) {
       await setDoc(doc(db, 'teamZoneSettings', schoolId), {
         schoolId,
         boundaries,
+        hrZonesDisabled,
         updatedAt: new Date().toISOString(),
       });
       Alert.alert('Saved! ✅', 'Zone boundaries updated for your entire team.');
-      onSaved && onSaved(boundaries);
+      onSaved && onSaved(boundaries, hrZonesDisabled);
     } catch {
       Alert.alert('Error', 'Could not save. Please try again.');
     }
@@ -144,9 +148,30 @@ export default function ZoneSettings({ school, schoolId, onClose, onSaved }) {
 
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
 
+        {/* HR Zones toggle */}
+        <View style={styles.toggleCard}>
+          <View style={styles.toggleRow}>
+            <View style={styles.toggleInfo}>
+              <Text style={styles.toggleLabel}>Enable heart rate zones</Text>
+              <Text style={styles.toggleHint}>
+                {hrZonesDisabled
+                  ? 'HR zones are hidden for all athletes. Turn on to show zone breakdowns across the app.'
+                  : 'Athletes can see zone breakdowns on their dashboard and run details. Individual athletes can also toggle this off.'}
+              </Text>
+            </View>
+            <Switch
+              value={!hrZonesDisabled}
+              onValueChange={(val) => setHrZonesDisabled(!val)}
+              trackColor={{ false: '#E5E7EB', true: BRAND }}
+              thumbColor="#fff"
+            />
+          </View>
+        </View>
+
         {/* Team info */}
+        {!hrZonesDisabled && (
         <View style={styles.teamCard}>
-          <View style={[styles.teamDot, { backgroundColor: '#213f96' }]} />
+          <View style={[styles.teamDot, { backgroundColor: BRAND }]} />
           <View>
             <Text style={styles.teamName}>{school?.name}</Text>
             <Text style={styles.teamSub}>
@@ -154,9 +179,10 @@ export default function ZoneSettings({ school, schoolId, onClose, onSaved }) {
             </Text>
           </View>
         </View>
+        )}
 
-        {/* Zone boundaries */}
-        <View style={styles.card}>
+        {/* Zone boundaries — hidden when HR zones disabled */}
+        {!hrZonesDisabled && <View style={styles.card}>
           <Text style={styles.cardTitle}>Zone boundaries</Text>
           <Text style={styles.cardDesc}>
             Each value is the lower boundary of that zone as a % of max HR. Standard values are 60/70/80/90%.
@@ -189,9 +215,10 @@ export default function ZoneSettings({ school, schoolId, onClose, onSaved }) {
             onChange={v => setBoundary('z5', v)}
             color={ZONE_META[5].color}
           />
-        </View>
+        </View>}
 
         {/* Live zone preview at 200 bpm max HR */}
+        {!hrZonesDisabled &&
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Zone ranges</Text>
           <Text style={styles.cardDesc}>
@@ -211,15 +238,16 @@ export default function ZoneSettings({ school, schoolId, onClose, onSaved }) {
               </Text>
             </View>
           ))}
-        </View>
+        </View>}
 
         {/* 80/20 reminder */}
+        {!hrZonesDisabled &&
         <View style={styles.wisdomCard}>
           <Text style={styles.wisdomTitle}>The 80/20 principle</Text>
           <Text style={styles.wisdomText}>
             Elite endurance programs target roughly 80% of training time in Zone 1–2 and 20% in Zones 3–5. Athlete cards on your dashboard flag anyone spending less than 70% in the easy zones so you can intervene quickly.
           </Text>
-        </View>
+        </View>}
 
         <View style={styles.saveRow}>
           <TouchableOpacity
@@ -250,6 +278,11 @@ const styles = StyleSheet.create({
   resetBtn:          { paddingVertical: 6, paddingHorizontal: 10 },
   resetText:         { color: '#6B7280', fontSize: 14 },
   scroll:            { flex: 1 },
+  toggleCard:        { backgroundColor: '#fff', margin: 16, marginBottom: 8, borderRadius: 14, padding: 16 },
+  toggleRow:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  toggleInfo:        { flex: 1 },
+  toggleLabel:       { fontSize: 15, fontWeight: '600', color: '#111827', marginBottom: 3 },
+  toggleHint:        { fontSize: 12, color: '#9CA3AF', lineHeight: 17 },
   teamCard:          { flexDirection: 'row', alignItems: 'flex-start', gap: 12, backgroundColor: '#fff', margin: 16, marginBottom: 8, borderRadius: 14, padding: 14 },
   teamDot:           { width: 12, height: 12, borderRadius: 6, marginTop: 4 },
   teamName:          { fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 4 },

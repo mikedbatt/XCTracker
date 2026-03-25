@@ -23,7 +23,7 @@ const generateJoinCode = () => {
 const SCHOOL_COLORS = [
   { name: 'Navy & Gold', primary: '#1a237e', secondary: '#ffd600' },
   { name: 'Red & White', primary: '#c62828', secondary: '#ffffff' },
-  { name: 'Green & White', primary: '#2e7d32', secondary: '#ffffff' },
+  { name: 'Green & White', primary: '#1e6f5c', secondary: '#ffffff' },
   { name: 'Purple & Gold', primary: '#6a1b9a', secondary: '#ffd600' },
   { name: 'Black & Orange', primary: '#212121', secondary: '#f57c00' },
   { name: 'Blue & White', primary: '#1565c0', secondary: '#ffffff' },

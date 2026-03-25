@@ -151,6 +151,8 @@ export default function AthleteDashboard({ userData }) {
   const [effortPickerRun,      setEffortPickerRun]      = useState(null);
   const [activeTab,            setActiveTab]            = useState('home');
   const [localAvatarColor,     setLocalAvatarColor]     = useState(userData.avatarColor || BRAND);
+  const [stravaLinked,         setStravaLinked]         = useState(true); // default true to avoid flash
+  const [stravaDismissed,      setStravaDismissed]      = useState(false);
   const progressAnim = useRef(new Animated.Value(0)).current;
   const [athleteAge,           setAthleteAge]           = useState(16);
   const [teamZoneSettings,     setTeamZoneSettings]     = useState(null);
@@ -295,6 +297,7 @@ export default function AthleteDashboard({ userData }) {
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       if (userDoc.exists()) {
         const freshData = userDoc.data();
+        setStravaLinked(!!freshData.stravaAccessToken);
         if (freshData.pendingParentIds?.length > 0) {
           const parentData = [];
           for (const pid of freshData.pendingParentIds) {
@@ -438,7 +441,7 @@ export default function AthleteDashboard({ userData }) {
 
   if (loading) return <View style={styles.loading}><ActivityIndicator size="large" color="#2e7d32" /></View>;
 
-  const primaryColor = school?.primaryColor || '#2e7d32';
+  const primaryColor = school?.primaryColor || BRAND;
   const isApproved = userData.status === 'approved';
   const targetPct = weeklyTarget > 0 ? Math.min(weeklyMiles / weeklyTarget, 1) : 0;
   const rawPct = weeklyTarget > 0 ? weeklyMiles / weeklyTarget : 0;
@@ -458,7 +461,8 @@ export default function AthleteDashboard({ userData }) {
   const totalZoneMins = breakdown ? breakdown.reduce((s, z) => s + z.minutes, 0) : 0;
 
   // Show HR zones if explicitly enabled, or auto-show when preference not yet set and HR data exists
-  const showHRZones = hrZonePref === true || (hrZonePref !== false && breakdown !== null);
+  const coachDisabledHR = teamZoneSettings?.hrZonesDisabled === true;
+  const showHRZones = !coachDisabledHR && (hrZonePref === true || (hrZonePref !== false && breakdown !== null));
 
   const avatarColor = localAvatarColor;
   // No interpolation needed — just multiply by 100 for percentage display
@@ -539,6 +543,28 @@ export default function AthleteDashboard({ userData }) {
           )}
         </View>
 
+        {/* ── Strava connect prompt ── */}
+        {!stravaLinked && !stravaDismissed && (
+          <View style={styles.stravaCard}>
+            <View style={styles.stravaCardTop}>
+              <View style={styles.stravaCardLeft}>
+                <View style={styles.stravaLogo}><Text style={styles.stravaLogoText}>S</Text></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.stravaCardTitle}>Connect Strava</Text>
+                  <Text style={styles.stravaCardDesc}>Auto-sync your runs so you never have to log manually.</Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={() => setStravaDismissed(true)} style={styles.stravaCloseBtn}>
+                <Ionicons name="close" size={18} color={NEUTRAL.muted} />
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity style={styles.stravaConnectBtn} onPress={() => setStravaVisible(true)}>
+              <Text style={styles.stravaConnectText}>Connect now</Text>
+              <Ionicons name="arrow-forward" size={16} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        )}
+
         {pendingParents.length > 0 && pendingParents.map(parent => (
           <View key={parent.id} style={styles.parentCard}>
             <Text style={styles.parentTitle}>Parent follow request</Text>
@@ -585,7 +611,7 @@ export default function AthleteDashboard({ userData }) {
               ))}
               {analysis && (
                 <View style={[styles.analysis8020, { backgroundColor: analysis.status === 'great' ? '#e8f5e9' : analysis.status === 'good' ? '#fff8e1' : '#fce4ec' }]}>
-                  <Text style={[styles.analysis8020Text, { color: analysis.status === 'great' ? '#2e7d32' : analysis.status === 'good' ? '#f57f17' : '#c62828' }]}>{analysis.message}</Text>
+                  <Text style={[styles.analysis8020Text, { color: analysis.status === 'great' ? BRAND : analysis.status === 'good' ? '#f57f17' : '#c62828' }]}>{analysis.message}</Text>
                 </View>
               )}
               <Text style={styles.zoneTotalTime}>{formatMinutes(totalZoneMins)} total · {hasStreamData ? 'second-by-second HR data' : 'estimated from avg HR'}</Text>
@@ -768,7 +794,7 @@ export default function AthleteDashboard({ userData }) {
       )}
       {stravaVisible && (
         <View style={styles.subScreen}>
-          <StravaConnect userData={userData} school={school} onClose={() => setStravaVisible(false)} onSynced={() => { setStravaVisible(false); loadDashboard(); }} />
+          <StravaConnect userData={userData} school={school} onClose={() => { setStravaVisible(false); loadDashboard(); }} onSynced={() => { setStravaVisible(false); setStravaLinked(true); loadDashboard(); }} />
         </View>
       )}
       {feedVisible && (
@@ -778,7 +804,7 @@ export default function AthleteDashboard({ userData }) {
       )}
       {profileVisible && (
         <View style={styles.subScreen}>
-          <AthleteProfile userData={userData} school={school} onClose={async () => {
+          <AthleteProfile userData={userData} school={school} coachDisabledHR={coachDisabledHR} onClose={async () => {
             try {
               const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
               if (userDoc.exists()) {
@@ -842,6 +868,16 @@ const styles = StyleSheet.create({
   heroProgressHint:    { fontSize: FONT_SIZE.xs, color: NEUTRAL.body },
   heroOverRow:         { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
   heroOverText:        { fontSize: FONT_SIZE.xs, color: STATUS.error, fontWeight: FONT_WEIGHT.semibold },
+  stravaCard:          { marginHorizontal: SPACE.lg, marginTop: SPACE.md, backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, ...SHADOW.sm },
+  stravaCardTop:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  stravaCardLeft:      { flexDirection: 'row', alignItems: 'flex-start', gap: SPACE.md, flex: 1 },
+  stravaLogo:          { width: 36, height: 36, borderRadius: RADIUS.sm, backgroundColor: STRAVA_ORANGE, alignItems: 'center', justifyContent: 'center' },
+  stravaLogoText:      { color: '#fff', fontSize: FONT_SIZE.md, fontWeight: '900' },
+  stravaCardTitle:     { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  stravaCardDesc:      { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginTop: 2, lineHeight: 18 },
+  stravaCloseBtn:      { padding: SPACE.xs },
+  stravaConnectBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm, backgroundColor: STRAVA_ORANGE, borderRadius: RADIUS.md, paddingVertical: SPACE.md, marginTop: SPACE.md },
+  stravaConnectText:   { color: '#fff', fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold },
   subScreen:           { position: 'absolute', top: 0, left: 0, right: 0, bottom: Platform.OS === 'ios' ? 82 : 56, backgroundColor: NEUTRAL.bg, zIndex: 10 },
   bottomNav:           { flexDirection: 'row', backgroundColor: NEUTRAL.card, borderTopWidth: 1, borderTopColor: NEUTRAL.border, paddingBottom: Platform.OS === 'ios' ? SPACE['2xl'] : SPACE.sm, paddingTop: SPACE.md, ...SHADOW.sm, zIndex: 20 },
   bottomNavBtn:        { flex: 1, alignItems: 'center', gap: 2 },

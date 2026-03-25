@@ -24,7 +24,7 @@ import RunDetailModal from './RunDetailModal';
 export const CATEGORIES = {
   Training: {
     label: 'Training',
-    color: '#2e7d32',
+    color: BRAND,
     types: ['Easy', 'Tempo', 'Long Run', 'Intervals', 'Speed', 'Cross Train', 'Weights', 'Recovery', 'Time Trial'],
   },
   Event: {
@@ -81,7 +81,7 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
     return mon;
   });
 
-  const primaryColor = school?.primaryColor || '#2e7d32';
+  const primaryColor = school?.primaryColor || BRAND;
   const isCoach = userData.role === 'admin_coach' || userData.role === 'assistant_coach';
 
   useEffect(() => { loadItems(); }, []);
@@ -421,7 +421,7 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
                     return (
                       <View key={g.id} style={styles.weekTotalRow}>
                         <Text style={styles.weekTotalName}>{g.name}</Text>
-                        <Text style={[styles.weekTotalMiles, onTrack && { color: '#2e7d32' }]}>
+                        <Text style={[styles.weekTotalMiles, onTrack && { color: BRAND }]}>
                           {total} mi{target ? ` / ${target}` : ''}{diff != null ? ` (${diff >= 0 ? '+' : ''}${diff})` : ''}
                         </Text>
                       </View>
