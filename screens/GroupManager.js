@@ -10,6 +10,67 @@ import {
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS } from '../constants/design';
+import { SPORT_PHASES } from './SeasonPlanner';
+
+// Generate a weekly volume plan from season dates + peak mileage
+export function generateVolumeCurve(season, peakMiles) {
+  const sport = season.sport || 'cross_country';
+  const phases = SPORT_PHASES[sport] || SPORT_PHASES.cross_country;
+  const start = new Date(season.seasonStart);
+  const champ = new Date(season.championshipDate);
+  const totalDays = (champ - start) / 86400000;
+  if (totalDays <= 0) return {};
+
+  // Find first Monday on or before season start
+  const startDay = start.getDay();
+  const firstMonday = new Date(start);
+  firstMonday.setDate(start.getDate() - (startDay === 0 ? 6 : startDay - 1));
+  firstMonday.setHours(0, 0, 0, 0);
+
+  const plan = {};
+  const mon = new Date(firstMonday);
+
+  while (mon <= champ) {
+    const midWeek = new Date(mon);
+    midWeek.setDate(mon.getDate() + 3);
+    const elapsed = (midWeek - start) / 86400000;
+    const pct = Math.max(0, Math.min(elapsed / totalDays, 1));
+
+    const phase = phases.find(p => pct >= p.pct[0] && pct < p.pct[1]) || phases[phases.length - 1];
+    const phaseProgress = phase.pct[1] > phase.pct[0] ? (pct - phase.pct[0]) / (phase.pct[1] - phase.pct[0]) : 0;
+
+    let targetPct;
+    if (phase.name.includes('Base') || phase.name === 'Summer Base') {
+      targetPct = 0.60 + phaseProgress * 0.25;
+    } else if (phase.name === 'Build') {
+      targetPct = 0.85 + phaseProgress * 0.15;
+    } else if (phase.name === 'Competition') {
+      targetPct = 0.92 - phaseProgress * 0.02;
+    } else if (phase.name === 'Peak') {
+      targetPct = 0.90 - phaseProgress * 0.05;
+    } else if (phase.name === 'Taper') {
+      targetPct = 0.70 - phaseProgress * 0.10;
+    } else {
+      targetPct = 0.75;
+    }
+
+    const mondayISO = mon.toISOString().split('T')[0];
+    let target = Math.round(peakMiles * targetPct); // whole miles
+
+    // 10% rule: no week increases more than 10% over previous
+    const prevMon = new Date(mon);
+    prevMon.setDate(prevMon.getDate() - 7);
+    const prevISO = prevMon.toISOString().split('T')[0];
+    if (plan[prevISO] && target > Math.round(plan[prevISO] * 1.10)) {
+      target = Math.round(plan[prevISO] * 1.10);
+    }
+
+    plan[mondayISO] = target;
+    mon.setDate(mon.getDate() + 7);
+  }
+
+  return plan;
+}
 
 export default function GroupManager({ schoolId, athletes, activeSeason, onClose }) {
   const [groups,       setGroups]       = useState([]);
@@ -268,21 +329,41 @@ export default function GroupManager({ schoolId, athletes, activeSeason, onClose
                     />
                     <Text style={styles.groupCount}>{count} athlete{count !== 1 ? 's' : ''}  ·  avg {groupAvg} mi/wk</Text>
                   </View>
-                  <View style={styles.targetBox}>
-                    <TextInput
-                      style={styles.targetInput}
-                      value={group.weeklyMilesTarget != null ? String(group.weeklyMilesTarget) : ''}
-                      onChangeText={(text) => {
-                        const num = text === '' ? null : parseFloat(text);
-                        setGroups(prev => prev.map(g => g.id === group.id ? { ...g, weeklyMilesTarget: num } : g));
-                      }}
-                      onBlur={() => handleUpdateGroup(group.id, { weeklyMilesTarget: group.weeklyMilesTarget })}
-                      placeholder="—"
-                      placeholderTextColor="#ccc"
-                      keyboardType="decimal-pad"
-                      maxLength={5}
-                    />
-                    <Text style={styles.targetLabel}>mi/wk</Text>
+                  <View style={styles.targetRow}>
+                    <View style={styles.targetBox}>
+                      <Text style={styles.targetHint}>Weekly</Text>
+                      <TextInput
+                        style={styles.targetInput}
+                        value={group.weeklyMilesTarget != null ? String(group.weeklyMilesTarget) : ''}
+                        onChangeText={(text) => {
+                          const num = text === '' ? null : parseFloat(text);
+                          setGroups(prev => prev.map(g => g.id === group.id ? { ...g, weeklyMilesTarget: num } : g));
+                        }}
+                        onBlur={() => handleUpdateGroup(group.id, { weeklyMilesTarget: group.weeklyMilesTarget })}
+                        placeholder="—"
+                        placeholderTextColor="#ccc"
+                        keyboardType="decimal-pad"
+                        maxLength={5}
+                      />
+                      <Text style={styles.targetLabel}>mi/wk</Text>
+                    </View>
+                    <View style={styles.targetBox}>
+                      <Text style={styles.targetHint}>Peak</Text>
+                      <TextInput
+                        style={styles.targetInput}
+                        value={group.peakWeeklyMiles != null ? String(group.peakWeeklyMiles) : ''}
+                        onChangeText={(text) => {
+                          const num = text === '' ? null : parseInt(text);
+                          setGroups(prev => prev.map(g => g.id === group.id ? { ...g, peakWeeklyMiles: num } : g));
+                        }}
+                        onBlur={() => handleUpdateGroup(group.id, { peakWeeklyMiles: group.peakWeeklyMiles })}
+                        placeholder="—"
+                        placeholderTextColor="#ccc"
+                        keyboardType="number-pad"
+                        maxLength={3}
+                      />
+                      <Text style={styles.targetLabel}>champ wk</Text>
+                    </View>
                   </View>
                   <TouchableOpacity onPress={() => handleDeleteGroup(group)} style={styles.deleteBtn}>
                     <Text style={styles.deleteBtnText}>✕</Text>
@@ -350,6 +431,25 @@ export default function GroupManager({ schoolId, athletes, activeSeason, onClose
             );
           }
 
+          const groupsWithPeak = groups.filter(g => g.peakWeeklyMiles > 0);
+          const handleGenerateCurve = async () => {
+            if (groupsWithPeak.length === 0) {
+              Alert.alert('Set peak mileage', 'Set a championship week peak for at least one group on the Groups tab first.');
+              return;
+            }
+            Alert.alert('Generate Volume Plan?', `Auto-fill weekly targets for ${groupsWithPeak.length} group${groupsWithPeak.length > 1 ? 's' : ''} based on peak mileage and training phases.`, [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Generate', onPress: async () => {
+                for (const g of groupsWithPeak) {
+                  const curve = generateVolumeCurve(activeSeason, g.peakWeeklyMiles);
+                  await updateDoc(doc(db, 'groups', g.id), { weeklyPlan: curve });
+                  setGroups(prev => prev.map(gr => gr.id === g.id ? { ...gr, weeklyPlan: curve } : gr));
+                }
+                Alert.alert('Done', `Volume plan generated for ${groupsWithPeak.length} group${groupsWithPeak.length > 1 ? 's' : ''}.`);
+              }},
+            ]);
+          };
+
           // Generate weeks from season start through championship
           const seasonStart = new Date(activeSeason.seasonStart);
           const champDate = new Date(activeSeason.championshipDate);
@@ -392,6 +492,13 @@ export default function GroupManager({ schoolId, athletes, activeSeason, onClose
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Weekly Volume Targets</Text>
               <Text style={styles.sectionHint}>Set target miles per week for each group across the season.</Text>
+
+              {groupsWithPeak.length > 0 && (
+                <TouchableOpacity style={styles.generateBtn} onPress={handleGenerateCurve}>
+                  <Ionicons name="sparkles-outline" size={18} color={BRAND} />
+                  <Text style={styles.generateBtnText}>Generate volume plan from peak mileage</Text>
+                </TouchableOpacity>
+              )}
 
               {weeks.map((weekMon, wi) => {
                 const weekISO = getMondayISO(weekMon);
@@ -470,6 +577,8 @@ const styles = StyleSheet.create({
   section:         { padding: 16 },
   sectionTitle:    { fontSize: 17, fontWeight: '700', color: '#111827', marginBottom: 10 },
   sectionHint:     { fontSize: 12, color: '#9CA3AF', marginBottom: 12 },
+  generateBtn:     { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#e8edf8', borderRadius: 10, padding: 12, marginBottom: 16 },
+  generateBtnText: { fontSize: 14, fontWeight: '600', color: BRAND },
   emptyText:       { fontSize: 14, color: '#9CA3AF', textAlign: 'center', paddingVertical: 20 },
 
   // Add group
@@ -484,7 +593,9 @@ const styles = StyleSheet.create({
   groupInfo:       { flex: 1 },
   groupNameInput:  { fontSize: 15, fontWeight: '700', color: '#111827', padding: 0 },
   groupCount:      { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
-  targetBox:       { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  targetRow:       { flexDirection: 'row', gap: 8 },
+  targetBox:       { alignItems: 'center', gap: 2 },
+  targetHint:      { fontSize: 9, color: '#9CA3AF', fontWeight: '600', textTransform: 'uppercase' },
   targetInput:     { fontSize: 15, fontWeight: '600', color: '#111827', textAlign: 'right', width: 45, borderBottomWidth: 1, borderBottomColor: '#E5E7EB', padding: 2 },
   targetLabel:     { fontSize: 12, color: '#9CA3AF' },
   deleteBtn:       { padding: 8 },

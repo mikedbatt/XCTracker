@@ -42,7 +42,11 @@ export const TYPE_COLORS = {
   Race: '#dc2626', 'Team Meeting': '#0284c7', 'Team Party': '#f59e0b',
 };
 
-export default function CalendarScreen({ userData, school, onClose, autoOpenAdd, prefillWorkout, groups = [] }) {
+import WeeklyPlanner from './WeeklyPlanner';
+import { getActiveSeason } from './SeasonPlanner';
+
+export default function CalendarScreen({ userData, school, onClose, autoOpenAdd, prefillWorkout, groups = [], defaultPlannerMode }) {
+  const [plannerMode, setPlannerMode] = useState(defaultPlannerMode || 'calendar');
   const [markedDates, setMarkedDates] = useState({});
   const [allItems, setAllItems] = useState([]);
   const [athleteRuns, setAthleteRuns] = useState([]);
@@ -323,6 +327,36 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
           </TouchableOpacity>
         ) : <View style={{ width: 60 }} />}
       </View>
+
+      {/* Calendar / Weekly Plan toggle (coach only) */}
+      {isCoach && (
+        <View style={styles.plannerToggle}>
+          {['calendar', 'planner'].map(m => (
+            <TouchableOpacity
+              key={m}
+              style={[styles.plannerToggleBtn, plannerMode === m && styles.plannerToggleBtnActive]}
+              onPress={() => setPlannerMode(m)}
+            >
+              <Text style={[styles.plannerToggleText, plannerMode === m && styles.plannerToggleTextActive]}>
+                {m === 'calendar' ? 'Calendar' : 'Weekly Plan'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {/* Show WeeklyPlanner or Calendar content */}
+      {plannerMode === 'planner' && isCoach ? (
+        <WeeklyPlanner
+          schoolId={userData.schoolId}
+          userData={userData}
+          school={school}
+          groups={groups}
+          activeSeason={getActiveSeason(school)}
+          onClose={() => setPlannerMode('calendar')}
+        />
+      ) : (
+      <>
 
       {/* View mode toggle */}
       {isCoach && (
@@ -799,11 +833,18 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
           </View>
         </KeyboardAvoidingView>
       </Modal>
+    </>
+    )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  plannerToggle:       { flexDirection: 'row', backgroundColor: NEUTRAL.border, borderRadius: RADIUS.md, padding: 4, marginHorizontal: SPACE.lg, marginTop: SPACE.sm, marginBottom: SPACE.xs },
+  plannerToggleBtn:    { flex: 1, paddingVertical: SPACE.sm, alignItems: 'center', borderRadius: RADIUS.sm },
+  plannerToggleBtnActive: { backgroundColor: NEUTRAL.card },
+  plannerToggleText:   { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, fontWeight: FONT_WEIGHT.medium },
+  plannerToggleTextActive: { color: BRAND, fontWeight: FONT_WEIGHT.bold },
   // View toggle
   viewToggle:         { flexDirection: 'row', gap: 6, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
   viewToggleBtn:      { borderRadius: 8, borderWidth: 1.5, borderColor: '#ddd', paddingHorizontal: 14, paddingVertical: 6, backgroundColor: '#fff' },

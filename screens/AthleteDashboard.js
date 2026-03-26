@@ -317,13 +317,16 @@ export default function AthleteDashboard({ userData }) {
         todayStart.setHours(0, 0, 0, 0);
         const checkinSnap = await getDocs(query(
           collection(db, 'checkins'),
-          where('userId', '==', user.uid),
-          where('date', '>=', todayStart)
+          where('userId', '==', user.uid)
         ));
-        setTodayCheckinDone(!checkinSnap.empty);
+        const doneToday = checkinSnap.docs.some(d => {
+          const ts = d.data().date;
+          const dt = ts && ts.toDate ? ts.toDate() : new Date(ts);
+          return dt >= todayStart;
+        });
+        setTodayCheckinDone(doneToday);
       } catch (e) {
-        // If query fails (e.g., missing index), show the card anyway
-        console.warn('Check-in query failed, showing card:', e);
+        console.warn('Check-in query failed:', e);
         setTodayCheckinDone(false);
       }
 
