@@ -14,10 +14,10 @@ import {
 } from '../constants/design';
 import DatePickerField from './DatePickerField';
 import {
+  generateVolumeCurve,
   getActiveSeason, getPhaseForSeason,
   SPORTS, SPORT_PHASES,
 } from './SeasonPlanner';
-import { generateVolumeCurve } from './GroupManager';
 
 // Build a stable key for a season: "sport_YYYY-MM-DD"
 function seasonKey(season) {

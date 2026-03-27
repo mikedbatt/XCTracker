@@ -1,6 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { signOut, updateEmail } from 'firebase/auth';
-import { doc, updateDoc } from 'firebase/firestore';
+import {
+  arrayRemove, arrayUnion, collection, doc, getDoc, getDocs, query, updateDoc, where,
+} from 'firebase/firestore';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -8,6 +10,7 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -52,6 +55,91 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
   const [editingSchool, setEditingSchool]   = useState(false);
 
   const isAdmin = userData.coachRole === 'admin';
+
+  // Assistant coach management state
+  const [pendingCoaches, setPendingCoaches] = useState([]);
+  const [assistantCoaches, setAssistantCoaches] = useState([]);
+  const [loadingCoaches, setLoadingCoaches] = useState(false);
+
+  // Load pending + approved assistant coaches
+  const loadAssistantCoaches = async () => {
+    if (!isAdmin || !userData.schoolId) return;
+    setLoadingCoaches(true);
+    try {
+      const schoolDoc = await getDoc(doc(db, 'schools', userData.schoolId));
+      const schoolData = schoolDoc.data();
+      const pendingIds = schoolData?.pendingCoachIds || [];
+      const coachIds = (schoolData?.coachIds || []).filter(id => id !== schoolData?.adminCoachId);
+
+      // Load pending coaches
+      const pending = [];
+      for (const uid of pendingIds) {
+        const userDoc = await getDoc(doc(db, 'users', uid));
+        if (userDoc.exists()) pending.push({ id: uid, ...userDoc.data() });
+      }
+      setPendingCoaches(pending);
+
+      // Load approved assistants
+      const approved = [];
+      for (const uid of coachIds) {
+        const userDoc = await getDoc(doc(db, 'users', uid));
+        if (userDoc.exists()) approved.push({ id: uid, ...userDoc.data() });
+      }
+      setAssistantCoaches(approved);
+    } catch (e) { console.warn('Failed to load coaches:', e); }
+    setLoadingCoaches(false);
+  };
+
+  useState(() => { loadAssistantCoaches(); });
+
+  const handleApproveCoach = async (coach) => {
+    try {
+      await updateDoc(doc(db, 'users', coach.id), { status: 'approved', coachRole: 'assistant' });
+      await updateDoc(doc(db, 'schools', userData.schoolId), {
+        pendingCoachIds: arrayRemove(coach.id),
+        coachIds: arrayUnion(coach.id),
+      });
+      Alert.alert('Approved!', `${coach.firstName} ${coach.lastName} is now an assistant coach.`);
+      loadAssistantCoaches();
+    } catch { Alert.alert('Error', 'Could not approve coach.'); }
+  };
+
+  const handleDenyCoach = (coach) => {
+    Alert.alert('Deny request?', `Remove ${coach.firstName} ${coach.lastName}'s request to join?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Deny', style: 'destructive', onPress: async () => {
+        try {
+          await updateDoc(doc(db, 'schools', userData.schoolId), {
+            pendingCoachIds: arrayRemove(coach.id),
+          });
+          await updateDoc(doc(db, 'users', coach.id), { schoolId: null, status: 'pending' });
+          loadAssistantCoaches();
+        } catch { Alert.alert('Error', 'Could not deny coach.'); }
+      }},
+    ]);
+  };
+
+  const handleToggleTraining = async (coach, value) => {
+    try {
+      await updateDoc(doc(db, 'users', coach.id), { trainingAccess: value });
+      setAssistantCoaches(prev => prev.map(c => c.id === coach.id ? { ...c, trainingAccess: value } : c));
+    } catch { Alert.alert('Error', 'Could not update training access.'); }
+  };
+
+  const handleRemoveCoach = (coach) => {
+    Alert.alert('Remove assistant?', `Remove ${coach.firstName} ${coach.lastName} from your coaching staff?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: async () => {
+        try {
+          await updateDoc(doc(db, 'schools', userData.schoolId), {
+            coachIds: arrayRemove(coach.id),
+          });
+          await updateDoc(doc(db, 'users', coach.id), { schoolId: null, coachRole: null, trainingAccess: null, status: 'pending' });
+          loadAssistantCoaches();
+        } catch { Alert.alert('Error', 'Could not remove coach.'); }
+      }},
+    ]);
+  };
 
   const handleSave = async () => {
     if (!firstName.trim() || !lastName.trim()) {
@@ -353,6 +441,58 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
           </View>
         )}
 
+        {/* Pending coach approvals (admin only) */}
+        {isAdmin && pendingCoaches.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.pendingTitle}>Pending Coach Requests ({pendingCoaches.length})</Text>
+            {pendingCoaches.map(coach => (
+              <View key={coach.id} style={styles.pendingCard}>
+                <View style={styles.pendingInfo}>
+                  <Text style={styles.pendingName}>{coach.firstName} {coach.lastName}</Text>
+                  <Text style={styles.pendingEmail}>{coach.email} · Assistant Coach</Text>
+                </View>
+                <View style={styles.pendingBtns}>
+                  <TouchableOpacity style={styles.approveBtn} onPress={() => handleApproveCoach(coach)}>
+                    <Text style={styles.approveBtnText}>Approve</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.denyBtn} onPress={() => handleDenyCoach(coach)}>
+                    <Text style={styles.denyBtnText}>Deny</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Assistant coach management (admin only) */}
+        {isAdmin && assistantCoaches.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.pendingTitle}>Assistant Coaches</Text>
+            {assistantCoaches.map(coach => (
+              <View key={coach.id} style={styles.assistantCard}>
+                <View style={styles.assistantInfo}>
+                  <Text style={styles.pendingName}>{coach.firstName} {coach.lastName}</Text>
+                  <Text style={styles.pendingEmail}>{coach.email}</Text>
+                </View>
+                <View style={styles.assistantControls}>
+                  <View style={styles.trainingToggle}>
+                    <Text style={styles.toggleLabel}>Training</Text>
+                    <Switch
+                      value={coach.trainingAccess === true}
+                      onValueChange={(val) => handleToggleTraining(coach, val)}
+                      trackColor={{ false: NEUTRAL.border, true: BRAND_LIGHT }}
+                      thumbColor={coach.trainingAccess ? BRAND : NEUTRAL.muted}
+                    />
+                  </View>
+                  <TouchableOpacity onPress={() => handleRemoveCoach(coach)} style={styles.removeBtn}>
+                    <Text style={styles.removeBtnText}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
         <View style={styles.signOutSection}>
           <Button
             label="Sign out"
@@ -417,6 +557,14 @@ const styles = StyleSheet.create({
   approveBtnText:     { color: '#fff', fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
   denyBtn:            { borderRadius: RADIUS.sm, borderWidth: 1, borderColor: STATUS.error, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm },
   denyBtnText:        { color: STATUS.error, fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
+  // Assistant coach management
+  assistantCard:      { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.md, marginBottom: SPACE.sm, ...SHADOW.sm },
+  assistantInfo:      { marginBottom: SPACE.sm },
+  assistantControls:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  trainingToggle:     { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
+  toggleLabel:        { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, fontWeight: FONT_WEIGHT.semibold },
+  removeBtn:          { paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm },
+  removeBtnText:      { fontSize: FONT_SIZE.xs, color: STATUS.error, fontWeight: FONT_WEIGHT.semibold },
   signOutSection:     { marginHorizontal: SPACE.lg, marginTop: SPACE.sm, marginBottom: SPACE.sm, alignItems: 'center' },
   signOutHint:        { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, textAlign: 'center', marginTop: SPACE.sm },
   avatarColorRow:     { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.md, marginBottom: SPACE.lg },

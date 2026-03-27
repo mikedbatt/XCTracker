@@ -76,6 +76,64 @@ export const SPORT_PHASES = {
   ],
 };
 
+// ── Generate a weekly volume plan from season dates + peak mileage ────────────
+export function generateVolumeCurve(season, peakMiles) {
+  const sport = season.sport || 'cross_country';
+  const phases = SPORT_PHASES[sport] || SPORT_PHASES.cross_country;
+  const start = new Date(season.seasonStart);
+  const champ = new Date(season.championshipDate);
+  const totalDays = (champ - start) / 86400000;
+  if (totalDays <= 0) return {};
+
+  const startDay = start.getDay();
+  const firstMonday = new Date(start);
+  firstMonday.setDate(start.getDate() - (startDay === 0 ? 6 : startDay - 1));
+  firstMonday.setHours(0, 0, 0, 0);
+
+  const plan = {};
+  const mon = new Date(firstMonday);
+
+  while (mon <= champ) {
+    const midWeek = new Date(mon);
+    midWeek.setDate(mon.getDate() + 3);
+    const elapsed = (midWeek - start) / 86400000;
+    const pct = Math.max(0, Math.min(elapsed / totalDays, 1));
+
+    const phase = phases.find(p => pct >= p.pct[0] && pct < p.pct[1]) || phases[phases.length - 1];
+    const phaseProgress = phase.pct[1] > phase.pct[0] ? (pct - phase.pct[0]) / (phase.pct[1] - phase.pct[0]) : 0;
+
+    let targetPct;
+    if (phase.name.includes('Base') || phase.name === 'Summer Base') {
+      targetPct = 0.60 + phaseProgress * 0.25;
+    } else if (phase.name === 'Build') {
+      targetPct = 0.85 + phaseProgress * 0.15;
+    } else if (phase.name === 'Competition') {
+      targetPct = 0.92 - phaseProgress * 0.02;
+    } else if (phase.name === 'Peak') {
+      targetPct = 0.90 - phaseProgress * 0.05;
+    } else if (phase.name === 'Taper') {
+      targetPct = 0.70 - phaseProgress * 0.10;
+    } else {
+      targetPct = 0.75;
+    }
+
+    const mondayISO = mon.toISOString().split('T')[0];
+    let target = Math.round(peakMiles * targetPct);
+
+    const prevMon = new Date(mon);
+    prevMon.setDate(prevMon.getDate() - 7);
+    const prevISO = prevMon.toISOString().split('T')[0];
+    if (plan[prevISO] && target > Math.round(plan[prevISO] * 1.10)) {
+      target = Math.round(plan[prevISO] * 1.10);
+    }
+
+    plan[mondayISO] = target;
+    mon.setDate(mon.getDate() + 7);
+  }
+
+  return plan;
+}
+
 // ── Shared phase functions (used by dashboards) ───────────────────────────────
 export function getActiveSeason(school) {
   if (!school) return null;
@@ -199,7 +257,9 @@ export function PhasePill({ school, onPress }) {
   );
 }
 
-// ── Main SeasonPlanner screen ─────────────────────────────────────────────────
+// ── SeasonPlanner screen (deprecated — use ManageSeasons instead) ─────────────
+// Kept only for PhasePill component and styles. Default export preserved to
+// avoid breaking any dynamic imports, but this screen is no longer rendered.
 export default function SeasonPlanner({ school, schoolId, onClose, onSaved }) {
 
   // Helper to convert any date format to ISO string

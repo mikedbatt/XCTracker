@@ -155,6 +155,7 @@ export default function AthleteDashboard({ userData }) {
   const [stravaDismissed,      setStravaDismissed]      = useState(false);
   const [todayCheckinDone,     setTodayCheckinDone]     = useState(true); // default true to avoid flash
   const [wellnessCardDismissed, setWellnessCardDismissed] = useState(false);
+  const [zoneExpanded, setZoneExpanded] = useState(false);
   const [dailyWellnessVisible, setDailyWellnessVisible] = useState(false);
   const progressAnim = useRef(new Animated.Value(0)).current;
   const [athleteAge,           setAthleteAge]           = useState(16);
@@ -172,6 +173,7 @@ export default function AthleteDashboard({ userData }) {
   const [leaderboardFilter, setLeaderboardFilter] = useState('all');
 
   useEffect(() => {
+    setZoneExpanded(false);
     loadDashboard();
   }, [selectedTimeframe]);
 
@@ -536,30 +538,67 @@ export default function AthleteDashboard({ userData }) {
           </View>
         )}
 
-        {/* ── Hero weekly miles card ── */}
+        {/* ── Weekly miles card (compact) ── */}
         <View style={[styles.heroCard, isOverWarning && styles.heroCardOver]}>
-          <Text style={styles.heroLabel}>This week</Text>
+          <View style={styles.heroTopRow}>
+            <Text style={styles.heroLabel}>This week</Text>
+            {isOverWarning ? (
+              <View style={styles.heroOverRow}>
+                <Ionicons name="warning-outline" size={12} color={STATUS.error} />
+                <Text style={styles.heroOverText}>{overPct}% over</Text>
+              </View>
+            ) : isOverBuffer ? (
+              <Text style={[styles.heroProgressHint, { color: STATUS.warning }]}>{overPct}% over</Text>
+            ) : targetPct >= 1 ? (
+              <Text style={[styles.heroProgressHint, { color: BRAND }]}>Target hit!</Text>
+            ) : (
+              <Text style={styles.heroProgressHint}>{Math.round((weeklyTarget - weeklyMiles) * 10) / 10} mi to go</Text>
+            )}
+          </View>
           <View style={styles.heroMilesRow}>
             <Text style={[styles.heroMilesNum, isOverWarning && { color: STATUS.error }]}>{weeklyMiles}</Text>
             <Text style={styles.heroMilesOf}> / {weeklyTarget} mi</Text>
-          </View>
-          <View style={[styles.heroProgressBg, isOverWarning && { backgroundColor: STATUS.errorBg }]}>
-            <Animated.View style={[styles.heroProgressFill, {
-              width: progressAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'], extrapolate: 'clamp' }),
-              backgroundColor: isOverWarning ? STATUS.error : isOverBuffer ? STATUS.warning : BRAND,
-            }]} />
-          </View>
-          {isOverWarning ? (
-            <View style={styles.heroOverRow}>
-              <Ionicons name="warning-outline" size={14} color={STATUS.error} />
-              <Text style={styles.heroOverText}>{overPct}% over target — consider a recovery day</Text>
+            <View style={{ flex: 1 }} />
+            <View style={[styles.heroProgressBg, isOverWarning && { backgroundColor: STATUS.errorBg }]}>
+              <Animated.View style={[styles.heroProgressFill, {
+                width: progressAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'], extrapolate: 'clamp' }),
+                backgroundColor: isOverWarning ? STATUS.error : isOverBuffer ? STATUS.warning : BRAND,
+              }]} />
             </View>
-          ) : isOverBuffer ? (
-            <Text style={[styles.heroProgressHint, { color: STATUS.warning }]}>Target reached — {overPct}% over</Text>
-          ) : targetPct >= 1 ? (
-            <Text style={[styles.heroProgressHint, { color: BRAND }]}>Target hit!</Text>
-          ) : (
-            <Text style={styles.heroProgressHint}>{Math.round((weeklyTarget - weeklyMiles) * 10) / 10} mi to go</Text>
+          </View>
+
+          {/* HR zone dropdown inside hero card */}
+          {showHRZones && selectedTimeframe.key === 'week' && breakdown && (
+            <>
+              <TouchableOpacity style={styles.zoneToggle} onPress={() => setZoneExpanded(e => !e)} activeOpacity={0.7}>
+                <View style={styles.zoneToggleLeft}>
+                  <View style={styles.zoneStackedBarSmall}>
+                    {breakdown.map(z => <View key={z.zone} style={[styles.zoneStackedSegment, { flex: z.minutes, backgroundColor: ZONE_META[z.zone].color }]} />)}
+                  </View>
+                  <Text style={styles.zoneToggleText}>Training zones</Text>
+                  {hasStreamData && <View style={styles.streamBadge}><Text style={styles.streamBadgeText}>Precise</Text></View>}
+                </View>
+                <Ionicons name={zoneExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={NEUTRAL.muted} />
+              </TouchableOpacity>
+              {zoneExpanded && (
+                <View style={styles.zoneDropdown}>
+                  {breakdown.map(z => (
+                    <View key={z.zone} style={styles.zoneRow}>
+                      <View style={[styles.zoneDot, { backgroundColor: ZONE_META[z.zone].color }]} />
+                      <Text style={styles.zoneName}>Z{z.zone} {ZONE_META[z.zone].name}</Text>
+                      <View style={styles.zoneBarBg}><View style={[styles.zoneBarFill, { width: z.pct + '%', backgroundColor: ZONE_META[z.zone].color }]} /></View>
+                      <Text style={styles.zoneTime}>{formatMinutes(z.minutes)}</Text>
+                    </View>
+                  ))}
+                  {analysis && (
+                    <View style={[styles.analysis8020, { backgroundColor: analysis.status === 'great' ? '#e8f5e9' : analysis.status === 'good' ? '#fff8e1' : '#fce4ec' }]}>
+                      <Text style={[styles.analysis8020Text, { color: analysis.status === 'great' ? BRAND : analysis.status === 'good' ? '#f57f17' : '#c62828' }]}>{analysis.message}</Text>
+                    </View>
+                  )}
+                  <Text style={styles.zoneTotalTime}>{formatMinutes(totalZoneMins)} total · {hasStreamData ? 'second-by-second HR data' : 'estimated from avg HR'}</Text>
+                </View>
+              )}
+            </>
           )}
         </View>
 
@@ -627,36 +666,44 @@ export default function AthleteDashboard({ userData }) {
 
         {selectedTimeframe.key !== 'week' && (
           <View style={styles.periodMilesCard}>
-            <Text style={styles.periodMilesNum}>{Number(totalMiles).toFixed(2)}</Text>
-            <Text style={styles.periodMilesLabel}>miles — {selectedTimeframe.label?.toLowerCase() || 'selected period'}</Text>
-          </View>
-        )}
+            <View style={styles.periodMilesRow}>
+              <Text style={styles.periodMilesNum}>{Number(totalMiles).toFixed(2)}</Text>
+              <Text style={styles.periodMilesLabel}>miles — {selectedTimeframe.label?.toLowerCase() || 'selected period'}</Text>
+            </View>
 
-        {showHRZones && breakdown && (
-          <View style={styles.zoneSection}>
-            <View style={styles.zoneSectionHeader}>
-              <Text style={styles.zoneSectionTitle}>Training zones — {selectedTimeframe.label?.toLowerCase()}</Text>
-              {hasStreamData && <View style={styles.streamBadge}><Text style={styles.streamBadgeText}>Precise ✓</Text></View>}
-            </View>
-            <View style={styles.zoneCard}>
-              <View style={styles.zoneStackedBar}>
-                {breakdown.map(z => <View key={z.zone} style={[styles.zoneStackedSegment, { flex: z.minutes, backgroundColor: ZONE_META[z.zone].color }]} />)}
-              </View>
-              {breakdown.map(z => (
-                <View key={z.zone} style={styles.zoneRow}>
-                  <View style={[styles.zoneDot, { backgroundColor: ZONE_META[z.zone].color }]} />
-                  <Text style={styles.zoneName}>Z{z.zone} {ZONE_META[z.zone].name}</Text>
-                  <View style={styles.zoneBarBg}><View style={[styles.zoneBarFill, { width: z.pct + '%', backgroundColor: ZONE_META[z.zone].color }]} /></View>
-                  <Text style={styles.zoneTime}>{formatMinutes(z.minutes)}</Text>
-                </View>
-              ))}
-              {analysis && (
-                <View style={[styles.analysis8020, { backgroundColor: analysis.status === 'great' ? '#e8f5e9' : analysis.status === 'good' ? '#fff8e1' : '#fce4ec' }]}>
-                  <Text style={[styles.analysis8020Text, { color: analysis.status === 'great' ? BRAND : analysis.status === 'good' ? '#f57f17' : '#c62828' }]}>{analysis.message}</Text>
-                </View>
-              )}
-              <Text style={styles.zoneTotalTime}>{formatMinutes(totalZoneMins)} total · {hasStreamData ? 'second-by-second HR data' : 'estimated from avg HR'}</Text>
-            </View>
+            {/* HR zone dropdown inside period card */}
+            {showHRZones && breakdown && (
+              <>
+                <TouchableOpacity style={styles.zoneToggle} onPress={() => setZoneExpanded(e => !e)} activeOpacity={0.7}>
+                  <View style={styles.zoneToggleLeft}>
+                    <View style={styles.zoneStackedBarSmall}>
+                      {breakdown.map(z => <View key={z.zone} style={[styles.zoneStackedSegment, { flex: z.minutes, backgroundColor: ZONE_META[z.zone].color }]} />)}
+                    </View>
+                    <Text style={styles.zoneToggleText}>Training zones</Text>
+                    {hasStreamData && <View style={styles.streamBadge}><Text style={styles.streamBadgeText}>Precise</Text></View>}
+                  </View>
+                  <Ionicons name={zoneExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={NEUTRAL.muted} />
+                </TouchableOpacity>
+                {zoneExpanded && (
+                  <View style={styles.zoneDropdown}>
+                    {breakdown.map(z => (
+                      <View key={z.zone} style={styles.zoneRow}>
+                        <View style={[styles.zoneDot, { backgroundColor: ZONE_META[z.zone].color }]} />
+                        <Text style={styles.zoneName}>Z{z.zone} {ZONE_META[z.zone].name}</Text>
+                        <View style={styles.zoneBarBg}><View style={[styles.zoneBarFill, { width: z.pct + '%', backgroundColor: ZONE_META[z.zone].color }]} /></View>
+                        <Text style={styles.zoneTime}>{formatMinutes(z.minutes)}</Text>
+                      </View>
+                    ))}
+                    {analysis && (
+                      <View style={[styles.analysis8020, { backgroundColor: analysis.status === 'great' ? '#e8f5e9' : analysis.status === 'good' ? '#fff8e1' : '#fce4ec' }]}>
+                        <Text style={[styles.analysis8020Text, { color: analysis.status === 'great' ? BRAND : analysis.status === 'good' ? '#f57f17' : '#c62828' }]}>{analysis.message}</Text>
+                      </View>
+                    )}
+                    <Text style={styles.zoneTotalTime}>{formatMinutes(totalZoneMins)} total · {hasStreamData ? 'second-by-second HR data' : 'estimated from avg HR'}</Text>
+                  </View>
+                )}
+              </>
+            )}
           </View>
         )}
 
@@ -911,16 +958,17 @@ const styles = StyleSheet.create({
   syncingText:         { color: NEUTRAL.body, fontSize: FONT_SIZE.xs },
   pendingBanner:       { backgroundColor: STATUS.warningBg, borderRadius: RADIUS.md, padding: SPACE.md, marginHorizontal: SPACE.lg, marginTop: SPACE.md, alignItems: 'center', borderLeftWidth: 3, borderLeftColor: STATUS.warning },
   pendingText:         { color: '#92400e', fontSize: FONT_SIZE.sm, textAlign: 'center' },
-  heroCard:            { marginHorizontal: SPACE.lg, marginTop: SPACE.lg, backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.xl, ...SHADOW.md },
-  heroLabel:           { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: SPACE.xs },
-  heroMilesRow:        { flexDirection: 'row', alignItems: 'baseline', gap: 2, marginBottom: SPACE.md },
-  heroMilesNum:        { fontSize: FONT_SIZE['3xl'], fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, fontVariant: ['tabular-nums'] },
-  heroMilesOf:         { fontSize: FONT_SIZE.base, color: NEUTRAL.body },
+  heroCard:            { marginHorizontal: SPACE.lg, marginTop: SPACE.md, backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, ...SHADOW.sm },
+  heroTopRow:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACE.xs },
+  heroLabel:           { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  heroMilesRow:        { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
+  heroMilesNum:        { fontSize: FONT_SIZE['2xl'], fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, fontVariant: ['tabular-nums'] },
+  heroMilesOf:         { fontSize: FONT_SIZE.sm, color: NEUTRAL.body },
   heroCardOver:        { borderWidth: 1.5, borderColor: STATUS.error },
-  heroProgressBg:      { height: 12, backgroundColor: NEUTRAL.bg, borderRadius: 6, overflow: 'hidden', marginBottom: SPACE.sm },
-  heroProgressFill:    { height: '100%', borderRadius: 6 },
+  heroProgressBg:      { flex: 1, height: 8, backgroundColor: NEUTRAL.bg, borderRadius: 4, overflow: 'hidden' },
+  heroProgressFill:    { height: '100%', borderRadius: 4 },
   heroProgressHint:    { fontSize: FONT_SIZE.xs, color: NEUTRAL.body },
-  heroOverRow:         { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
+  heroOverRow:         { flexDirection: 'row', alignItems: 'center', gap: 4 },
   heroOverText:        { fontSize: FONT_SIZE.xs, color: STATUS.error, fontWeight: FONT_WEIGHT.semibold },
   wellnessCard:        { marginHorizontal: SPACE.lg, marginTop: SPACE.md, backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, ...SHADOW.sm },
   wellnessCardTop:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
@@ -958,9 +1006,10 @@ const styles = StyleSheet.create({
   msgModalBtnText:     { color: '#fff', fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
   scroll:              { flex: 1 },
   timeframeRow:        { marginHorizontal: SPACE.lg, marginBottom: SPACE.xs, marginTop: SPACE.lg - 2 },
-  periodMilesCard:     { flexDirection: 'row', alignItems: 'center', marginHorizontal: SPACE.lg, marginBottom: SPACE.sm, backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg - 2, borderWidth: 1, borderColor: NEUTRAL.border, gap: SPACE.md, ...SHADOW.sm },
+  periodMilesCard:     { marginHorizontal: SPACE.lg, marginBottom: SPACE.sm, backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, borderWidth: 1, borderColor: NEUTRAL.border, ...SHADOW.sm },
+  periodMilesRow:      { flexDirection: 'row', alignItems: 'baseline', gap: SPACE.md },
   periodMilesNum:      { fontSize: FONT_SIZE['2xl'], fontWeight: FONT_WEIGHT.bold, color: BRAND },
-  periodMilesLabel:    { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, flex: 1 },
+  periodMilesLabel:    { fontSize: FONT_SIZE.sm, color: NEUTRAL.body },
   section:             { padding: SPACE.lg },
   sectionTitle:        { fontSize: 17, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.md },
   workoutCard:         { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg - 2, marginBottom: SPACE.md, flexDirection: 'row', alignItems: 'center', gap: SPACE.md, ...SHADOW.sm },
@@ -982,15 +1031,17 @@ const styles = StyleSheet.create({
   emptyCard:           { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.xl, alignItems: 'center', ...SHADOW.sm },
   emptyText:           { color: NEUTRAL.muted, fontSize: FONT_SIZE.sm, textAlign: 'center', lineHeight: 20 },
   runCard:             { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg - 2, marginBottom: SPACE.md, flexDirection: 'row', alignItems: 'center', ...SHADOW.sm },
-  zoneSection:         { marginHorizontal: SPACE.lg, marginBottom: SPACE.sm },
-  zoneSectionHeader:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACE.sm },
-  zoneSectionTitle:    { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: NEUTRAL.label },
-  streamBadge:         { backgroundColor: BRAND_LIGHT, borderRadius: RADIUS.sm, paddingHorizontal: SPACE.sm, paddingVertical: 3 },
-  streamBadgeText:     { fontSize: FONT_SIZE.xs, color: BRAND, fontWeight: FONT_WEIGHT.bold },
+  // Zone toggle (inside mileage cards)
+  zoneToggle:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACE.md, paddingTop: SPACE.md, borderTopWidth: 1, borderTopColor: NEUTRAL.border },
+  zoneToggleLeft:      { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, flex: 1 },
+  zoneToggleText:      { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.label },
+  zoneStackedBarSmall: { flexDirection: 'row', height: 6, borderRadius: 3, overflow: 'hidden', width: 60 },
+  zoneDropdown:        { marginTop: SPACE.md },
+  // Zone shared styles
+  streamBadge:         { backgroundColor: BRAND_LIGHT, borderRadius: RADIUS.sm, paddingHorizontal: SPACE.sm, paddingVertical: 2 },
+  streamBadgeText:     { fontSize: 10, color: BRAND, fontWeight: FONT_WEIGHT.bold },
   analysis8020:        { borderRadius: RADIUS.sm, padding: SPACE.md, marginTop: SPACE.sm, marginBottom: SPACE.xs },
   analysis8020Text:    { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, textAlign: 'center' },
-  zoneCard:            { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg - 2, ...SHADOW.sm },
-  zoneStackedBar:      { flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginBottom: SPACE.md },
   zoneStackedSegment:  { height: '100%' },
   zoneRow:             { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginBottom: SPACE.sm },
   zoneDot:             { width: 10, height: 10, borderRadius: 5 },

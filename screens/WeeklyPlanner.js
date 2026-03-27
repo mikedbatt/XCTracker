@@ -14,8 +14,7 @@ import {
   FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
 } from '../constants/design';
 import { CATEGORIES, TYPE_COLORS } from './CalendarScreen';
-import { generateVolumeCurve } from './GroupManager';
-import { getPhaseForSeason } from './SeasonPlanner';
+import { generateVolumeCurve, getPhaseForSeason } from './SeasonPlanner';
 import WorkoutLibrary from './WorkoutLibrary';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];

@@ -50,49 +50,49 @@ import {
   parseBirthdate,
 } from '../zoneConfig';
 
-// ── Daily tip library by phase ────────────────────────────────────────────────
+// ── Daily message templates by phase (written as coach → athletes) ────────────
 const PHASE_TIPS = {
   'Pre-Season': [
-    "Season hasn't started yet — use this time to connect with your team. Set expectations, build excitement, and make sure every athlete has their summer plan.",
-    "Pre-season is the best time to establish your program culture. What habits do you want your athletes to build before the first practice?",
-    "Use the off-season to study your returning athletes' data. Who needs more base miles? Who's ready to step up in training group?",
-    "Great programs are built in the off-season. Reach out to your athletes today — a simple check-in message goes a long way.",
-    "Set your season dates in the Season Planner so your team can see the phase timeline and championship countdown when the season begins.",
+    "Hey team — season is right around the corner. Use this time to get your miles in, build good habits, and come ready to compete. The work you put in now sets the tone for everything ahead.",
+    "Quick reminder: log every run, even the easy ones. Consistency is what separates good teams from great ones. Let's build that foundation together.",
+    "Off-season miles are championship miles. Stay disciplined, stay consistent, and trust the process. We're building something special this year.",
+    "Check in with your training group this week. Run together when you can — the team that trains together races together.",
+    "If you haven't set up your account yet, get that done today. I want to see everyone logging miles before our first official practice.",
   ],
   Base: [
-    "Today is about building your aerobic pyramid. Run easy, stay conversational, and log every mile. Consistency this week pays dividends in November.",
+    "Today is about building your aerobic engine. Run easy, stay conversational, and log every mile. Consistency this week pays dividends in November.",
     "Base phase is where championships are quietly built. No heroics today — easy effort, good form, and another check in the box.",
-    "Remind your athletes: the goal today is to finish feeling like they could have run more. That's the right effort for base phase.",
-    "Easy miles aren't junk miles. Every Zone 2 run this week is expanding the engine your athletes will race on at state.",
+    "The goal today is to finish feeling like you could have run more. That's the right effort for base phase. Trust it.",
+    "Easy miles aren't junk miles. Every Zone 2 run this week is expanding the engine you'll race on at state. Keep stacking them.",
     "When in doubt, do less. Base phase is about accumulation, not intensity. A slightly easy day now beats an injury in Week 8.",
   ],
   Build: [
-    "Build phase begins. Time to introduce quality — one tempo effort this week. Keep the easy days easy so the hard days can be hard.",
-    "Your athletes have the base. Now it's time to teach their bodies to run fast for longer. Today's tempo is a conversation with their limits.",
-    "Remind the team: build phase means the hard days get harder AND the easy days must stay easy. No middle-ground running.",
-    "This week's quality session is about process, not pace. Consistent splits at threshold effort matter more than hitting a number.",
-    "The gap between base and build is where most teams get hurt. Keep easy days truly easy — check those heart rates.",
+    "Build phase is here. Time to introduce quality — keep the easy days easy so the hard days can be hard. No in-between.",
+    "You've built the base. Now it's time to teach your body to run fast for longer. Today's tempo is a conversation with your limits — embrace it.",
+    "Build phase means the hard days get harder AND the easy days stay easy. No middle-ground running. Discipline on both ends.",
+    "Today's quality session is about process, not pace. Consistent splits at threshold effort matter more than hitting a number.",
+    "This is the phase where most runners get hurt by doing too much. Keep your easy days truly easy — check your heart rate.",
   ],
   Competition: [
-    "We're in competition phase. Pack work is the priority now. Five runners finishing together beats one runner finishing fast.",
-    "Remind your team today: every workout from here is race preparation. Run with intent, run together, run for each other.",
-    "Championship teams are made right now. The athletes who buy in during competition phase run their best when it counts.",
-    "Focus on your 1-5 compression this week. A tight pack at practice becomes a tight pack at the state meet.",
-    "Competition phase tip: use this week's race as a training effort. Save the full send for the meets that matter.",
+    "Competition phase. Pack work is the priority now. Five of us finishing together beats one of us finishing fast. Run for each other.",
+    "Every workout from here is race preparation. Run with intent, run together. This is what we've been building toward.",
+    "Championship teams are made right now. The athletes who buy in during competition phase run their best when it counts. That's us.",
+    "Focus on running as a pack this week. A tight group at practice becomes a tight group at the state meet. Close the gaps.",
+    "Use this week's race as a training effort, not an all-out send. Save your best for the meets that matter most.",
   ],
   Peak: [
-    "Peak phase. Short, sharp, and confident. Every workout this week has one job: make your athletes believe they are ready.",
-    "Less is more this week. Trust the training that's already been done. Your athletes are fit — now sharpen the edge.",
-    "Remind the team: the fitness is there. Peak phase is about converting months of work into race-day confidence.",
-    "Two or three quality sessions this week, then rest. The hay is nearly in the barn. Protect your athletes' legs.",
-    "Peak phase mindset: aggressive patience. The athletes who hold back just enough this week will have the most left on race day.",
+    "Peak phase. Short, sharp, and confident. Every workout this week has one job: prove to yourself that you are ready.",
+    "Less is more this week. Trust the training you've already done. You're fit — now we sharpen the edge.",
+    "The fitness is there. Peak phase is about converting months of work into race-day confidence. Believe in what you've built.",
+    "A couple quality sessions this week, then rest. The hay is nearly in the barn. Protect your legs — you'll need them.",
+    "Aggressive patience. Hold back just enough this week and you'll have the most left on race day. Trust the plan.",
   ],
   Taper: [
-    "Taper week. Easy runs only. The most important thing your athletes can do today is sleep, eat well, and believe in the work they've done.",
-    "The hay is in the barn. Your job this week is to keep their legs fresh and their minds confident. Trust the process.",
-    "Championship week reminder: anxiety is excitement without direction. Channel the nervous energy into confidence. They've earned this.",
-    "Taper week tip: the urge to do more will be strong — resist it. Rest is the final workout. Protect every athlete's legs.",
-    "Tell your team today: you didn't get here by accident. Every early morning, every easy mile, every hard workout — this is what it was for.",
+    "Taper week. Easy runs only. The most important things you can do today: sleep well, eat well, and believe in the work you've done.",
+    "The hay is in the barn. Your job this week is to keep your legs fresh and your mind confident. Trust the process.",
+    "Championship week. If you're feeling nervous, that's good — anxiety is just excitement without direction. Channel it into confidence. You've earned this.",
+    "The urge to do more will be strong this week — resist it. Rest is the final workout. Protect your legs.",
+    "You didn't get here by accident. Every early morning, every easy mile, every hard workout — this is what it was all for. Go get it.",
   ],
 };
 
@@ -103,37 +103,69 @@ function getDailyTip(phaseName) {
 }
 
 // ── Overtraining detection ────────────────────────────────────────────────────
+// Uses Monday-aligned weeks and compares this week vs 3-week rolling average
+// to avoid false positives from rolling 7-day window misalignment.
 async function checkOvertraining(athleteId) {
   try {
-    const sevenDaysAgo    = new Date(Date.now() - 7  * 86400000);
-    const fourteenDaysAgo = new Date(Date.now() - 14 * 86400000);
+    const now = new Date();
+    const day = now.getDay();
+    // Current Monday at 00:00
+    const thisMonday = new Date(now);
+    thisMonday.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+    thisMonday.setHours(0, 0, 0, 0);
+    // 4 weeks back to get this week + 3 prior weeks
+    const fourWeeksAgo = new Date(thisMonday);
+    fourWeeksAgo.setDate(thisMonday.getDate() - 28);
 
-    const [recentSnap, prevSnap, checkinSnap] = await Promise.all([
+    const [runsSnap, checkinSnap] = await Promise.all([
       getDocs(query(collection(db, 'runs'), where('userId', '==', athleteId),
-        where('date', '>=', sevenDaysAgo), orderBy('date', 'desc'))),
-      getDocs(query(collection(db, 'runs'), where('userId', '==', athleteId),
-        where('date', '>=', fourteenDaysAgo), where('date', '<', sevenDaysAgo), orderBy('date', 'desc'))),
+        where('date', '>=', fourWeeksAgo), orderBy('date', 'desc'))),
       getDocs(query(collection(db, 'checkins'), where('userId', '==', athleteId),
-        where('date', '>=', sevenDaysAgo), orderBy('date', 'desc'))).catch(() => ({ docs: [] })),
+        where('date', '>=', thisMonday), orderBy('date', 'desc'))).catch(() => ({ docs: [] })),
     ]);
 
-    const recentRuns = recentSnap.docs.map(d => d.data());
-    const prevRuns   = prevSnap.docs.map(d => d.data());
-    const checkins   = checkinSnap.docs.map(d => d.data());
+    const allRuns = runsSnap.docs.map(d => d.data());
+    const checkins = checkinSnap.docs.map(d => d.data());
 
-    const recentMiles = recentRuns.reduce((s, r) => s + (r.miles || 0), 0);
-    const prevMiles   = prevRuns.reduce((s, r) => s + (r.miles || 0), 0);
+    // Bucket runs into Monday-aligned weeks
+    const getRunDate = (r) => r.date?.toDate ? r.date.toDate() : new Date(r.date);
+    const thisWeekRuns = allRuns.filter(r => getRunDate(r) >= thisMonday);
+    const thisWeekMiles = thisWeekRuns.reduce((s, r) => s + (r.miles || 0), 0);
+
+    // Prior 3 weeks
+    const priorWeekMiles = [];
+    for (let w = 1; w <= 3; w++) {
+      const wStart = new Date(thisMonday);
+      wStart.setDate(thisMonday.getDate() - w * 7);
+      const wEnd = new Date(wStart);
+      wEnd.setDate(wStart.getDate() + 7);
+      const miles = allRuns
+        .filter(r => { const d = getRunDate(r); return d >= wStart && d < wEnd; })
+        .reduce((s, r) => s + (r.miles || 0), 0);
+      priorWeekMiles.push(miles);
+    }
+
+    const avg3wk = priorWeekMiles.length > 0
+      ? priorWeekMiles.reduce((s, m) => s + m, 0) / priorWeekMiles.length
+      : 0;
 
     const signals = [];
 
-    if (prevMiles > 0 && recentMiles > prevMiles * 1.15) {
-      signals.push({ text: `Miles up ${Math.round(((recentMiles - prevMiles) / prevMiles) * 100)}% this week`, solo: true });
+    // Flag if this week is >15% above the 3-week average
+    if (avg3wk > 0 && thisWeekMiles > avg3wk * 1.15) {
+      const pctOver = Math.round(((thisWeekMiles - avg3wk) / avg3wk) * 100);
+      signals.push({ text: `Miles up ${pctOver}% vs 3-week avg (${Math.round(avg3wk)} mi/wk)`, solo: true });
     }
-    const highEffortDays = recentRuns.filter(r => (r.effort || 0) >= 8).length;
+
+    const highEffortDays = thisWeekRuns.filter(r => (r.effort || 0) >= 8).length;
     if (highEffortDays >= 4) signals.push({ text: `Effort 8+ on ${highEffortDays} of last 7 days` });
 
-    const hrRuns     = recentRuns.filter(r => r.heartRate && r.miles);
-    const prevHRRuns = prevRuns.filter(r => r.heartRate && r.miles);
+    // HR trend: this week vs last week
+    const lastMonday = new Date(thisMonday);
+    lastMonday.setDate(thisMonday.getDate() - 7);
+    const lastWeekRuns = allRuns.filter(r => { const d = getRunDate(r); return d >= lastMonday && d < thisMonday; });
+    const hrRuns     = thisWeekRuns.filter(r => r.heartRate && r.miles);
+    const prevHRRuns = lastWeekRuns.filter(r => r.heartRate && r.miles);
     if (hrRuns.length >= 2 && prevHRRuns.length >= 2) {
       const avgHR     = hrRuns.reduce((s, r) => s + r.heartRate, 0) / hrRuns.length;
       const prevAvgHR = prevHRRuns.reduce((s, r) => s + r.heartRate, 0) / prevHRRuns.length;
@@ -548,6 +580,7 @@ export default function CoachDashboard({ userData }) {
 
   const primaryColor  = school?.primaryColor || BRAND;
   const isAdmin       = userData.coachRole === 'admin';
+  const hasTrainingAccess = isAdmin || userData.trainingAccess === true;
   const today         = new Date().toISOString().split('T')[0];
   const todayItems    = trainingItems.filter(item => item.date?.toDate?.()?.toISOString().split('T')[0] === today);
   const upcomingItems = trainingItems.filter(item => item.date?.toDate?.()?.toISOString().split('T')[0] > today).slice(0, 7);
@@ -638,8 +671,8 @@ export default function CoachDashboard({ userData }) {
         contentContainerStyle={{ paddingBottom: 90 }}
       >
 
-        {/* Daily message button — only show when not yet sent */}
-        {!todayTipSent && (
+        {/* Daily message button — head coach only, only show when not yet sent */}
+        {isAdmin && !todayTipSent && (
           <View style={styles.msgRow}>
             <TouchableOpacity
               style={styles.msgBtn}
@@ -903,10 +936,12 @@ export default function CoachDashboard({ userData }) {
           <Ionicons name="home-outline" size={24} color={!trainingSection && !feedVisible && !zonesVisible && !profileVisible && !analyticsVisible && !addFromDashboard ? BRAND : NEUTRAL.muted} />
           <Text style={[styles.bottomNavLabel, !trainingSection && !feedVisible && !zonesVisible && !profileVisible && !analyticsVisible && !addFromDashboard && { color: BRAND }]}>Home</Text>
         </TouchableOpacity>
+        {hasTrainingAccess && (
         <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setFeedVisible(false); setZonesVisible(false); setProfileVisible(false); setAnalyticsVisible(false); setAddFromDashboard(false); setTrainingSection('hub'); }}>
           <Ionicons name="calendar-outline" size={24} color={trainingSection || addFromDashboard ? BRAND : NEUTRAL.muted} />
           <Text style={[styles.bottomNavLabel, (trainingSection || addFromDashboard) && { color: BRAND }]}>Training</Text>
         </TouchableOpacity>
+        )}
         <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setTrainingSection(null); setFeedVisible(false); setZonesVisible(false); setProfileVisible(false); setAddFromDashboard(false); setAnalyticsVisible(true); }}>
           <Ionicons name="analytics-outline" size={24} color={analyticsVisible ? BRAND : NEUTRAL.muted} />
           <Text style={[styles.bottomNavLabel, analyticsVisible && { color: BRAND }]}>Analytics</Text>

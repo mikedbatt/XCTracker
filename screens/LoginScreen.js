@@ -118,6 +118,7 @@ export default function LoginScreen({ onAuthSuccess }) {
           totalMiles: 0,
           schoolId: null,
           status: role === 'admin_coach' ? 'approved' : 'pending',
+          ...(role === 'assistant_coach' && { coachRole: 'assistant' }),
         };
 
         if (role === 'athlete') {
