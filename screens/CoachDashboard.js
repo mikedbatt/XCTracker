@@ -37,6 +37,7 @@ import CoachProfile from '../screens/CoachProfile';
 import CalendarScreen, { TYPE_COLORS } from '../screens/CalendarScreen';
 import ManageGroups from '../screens/ManageGroups';
 import ManageSeasons from '../screens/ManageSeasons';
+import RaceManager from '../screens/RaceManager';
 import { getActiveSeason, getPhaseForSeason } from '../screens/SeasonPlanner';
 import ChannelList from '../screens/ChannelList';
 import TimeframePicker, { TIMEFRAMES, getDateRange } from '../screens/TimeframePicker';
@@ -257,7 +258,8 @@ export default function CoachDashboard({ userData }) {
   const [profileVisible,      setProfileVisible]      = useState(false);
   const [groups,              setGroups]              = useState([]);
   const [groupFilter,         setGroupFilter]         = useState('all');
-  const [trainingSection,     setTrainingSection]     = useState(null); // null | 'groups' | 'seasons' | 'weekly'
+  const [trainingSection,     setTrainingSection]     = useState(null); // null | 'groups' | 'seasons' | 'weekly' | 'races'
+  const [nextMeet,            setNextMeet]            = useState(null);
   const [addFromDashboard,    setAddFromDashboard]    = useState(false);
   const [pendingWorkout,      setPendingWorkout]      = useState(null);
   const [selectedAthlete,     setSelectedAthlete]     = useState(null);
@@ -479,6 +481,24 @@ export default function CoachDashboard({ userData }) {
           setTrainingItems(allSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(i => i.category === 'Training'));
         } catch (e2) { console.error('Training load error:', e2.message); }
       }
+
+      // Load next upcoming meet for Training Hub card
+      try {
+        const meetsSnap = await getDocs(query(
+          collection(db, 'raceMeets'),
+          where('schoolId', '==', userData.schoolId)
+        ));
+        const allMeets = meetsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+        const upcoming = allMeets
+          .filter(m => { const d = m.date?.toDate ? m.date.toDate() : new Date(m.date); return d >= todayStart; })
+          .sort((a, b) => {
+            const aD = a.date?.toDate ? a.date.toDate() : new Date(a.date);
+            const bD = b.date?.toDate ? b.date.toDate() : new Date(b.date);
+            return aD - bD;
+          });
+        setNextMeet(upcoming[0] || null);
+      } catch { setNextMeet(null); }
 
       try {
         const today = new Date().toISOString().split('T')[0];
@@ -874,6 +894,7 @@ export default function CoachDashboard({ userData }) {
             athletes={athletes}
             groups={groups}
             trainingItems={trainingItems}
+            nextMeet={nextMeet}
             onNavigate={(section) => setTrainingSection(section)}
           />
         </View>
@@ -899,6 +920,18 @@ export default function CoachDashboard({ userData }) {
             onSaved={(data) => {
               setSchool(prev => ({ ...prev, seasons: data.seasons }));
             }}
+          />
+        </View>
+      )}
+      {/* Training > Races */}
+      {trainingSection === 'races' && (
+        <View style={styles.subScreen}>
+          <RaceManager
+            schoolId={userData.schoolId}
+            school={school}
+            athletes={athletes}
+            groups={groups}
+            onClose={() => { setTrainingSection('hub'); loadDashboard(); }}
           />
         </View>
       )}

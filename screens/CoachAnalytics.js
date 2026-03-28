@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { collection, getDocs, orderBy, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -15,16 +15,43 @@ import {
   BRAND, BRAND_ACCENT, BRAND_DARK, BRAND_LIGHT,
   FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
 } from '../constants/design';
+import { calcPackAnalysis, formatTime, formatPace } from '../utils/raceUtils';
 
 export default function CoachAnalytics({
   athletes, athleteWeeklyMiles, athlete3WeekAvg, athleteWeeklyBreakdown = {},
   athleteZonePct, overtTrainingAlerts, athleteMiles, groups, school, schoolId, onClose,
 }) {
+  const [analyticsTab, setAnalyticsTab] = useState('training');
   const [expandedSection, setExpandedSection] = useState(null);
   const [wellnessData, setWellnessData] = useState(null);
   const [loadingWellness, setLoadingWellness] = useState(true);
+  const [raceMeets, setRaceMeets] = useState([]);
+  const [raceResults, setRaceResults] = useState([]);
+  const [races, setRaces] = useState([]);
+  const [loadingRaces, setLoadingRaces] = useState(false);
 
-  useEffect(() => { loadWellnessData(); }, []);
+  useEffect(() => { loadWellnessData(); loadRaceData(); }, []);
+
+  const loadRaceData = async () => {
+    setLoadingRaces(true);
+    try {
+      const [meetsSnap, racesSnap, resultsSnap] = await Promise.all([
+        getDocs(query(collection(db, 'raceMeets'), where('schoolId', '==', schoolId))),
+        getDocs(query(collection(db, 'races'), where('schoolId', '==', schoolId))),
+        getDocs(query(collection(db, 'raceResults'), where('schoolId', '==', schoolId))),
+      ]);
+      const meets = meetsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      meets.sort((a, b) => {
+        const aD = a.date?.toDate ? a.date.toDate() : new Date(a.date);
+        const bD = b.date?.toDate ? b.date.toDate() : new Date(b.date);
+        return aD - bD;
+      });
+      setRaceMeets(meets);
+      setRaces(racesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setRaceResults(resultsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (e) { console.warn('Failed to load race data:', e); }
+    setLoadingRaces(false);
+  };
 
   const loadWellnessData = async () => {
     setLoadingWellness(true);
@@ -195,6 +222,20 @@ export default function CoachAnalytics({
         <View style={{ width: 60 }} />
       </View>
 
+      {/* Tab bar */}
+      <View style={styles.tabRow}>
+        {[{ key: 'training', label: 'Training' }, { key: 'races', label: 'Races' }].map(t => (
+          <TouchableOpacity
+            key={t.key}
+            style={[styles.tab, analyticsTab === t.key && { borderBottomColor: BRAND, borderBottomWidth: 2 }]}
+            onPress={() => setAnalyticsTab(t.key)}
+          >
+            <Text style={[styles.tabText, analyticsTab === t.key && { color: BRAND, fontWeight: FONT_WEIGHT.bold }]}>{t.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {analyticsTab === 'training' ? (
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
 
         {/* ── 1. Volume Compliance (last 3 weeks) ── */}
@@ -505,13 +546,123 @@ export default function CoachAnalytics({
         )}
 
       </ScrollView>
+      ) : (
+      /* ── Race Analytics Tab ── */
+      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+        {loadingRaces ? (
+          <View style={{ padding: 40, alignItems: 'center' }}><ActivityIndicator size="large" color={BRAND} /></View>
+        ) : raceMeets.length === 0 ? (
+          <View style={[styles.section, { alignItems: 'center', marginTop: SPACE.xl }]}>
+            <Text style={{ fontSize: 40, marginBottom: SPACE.md }}>🏁</Text>
+            <Text style={styles.sectionTitle}>No race data yet</Text>
+            <Text style={[styles.sectionSub, { textAlign: 'center', marginTop: SPACE.sm }]}>
+              Create meets and enter results in Training {'>'} Races to see analytics here.
+            </Text>
+          </View>
+        ) : (() => {
+          // Build per-race pack analysis for races with results
+          const raceAnalytics = [];
+          for (const meet of raceMeets) {
+            const meetRaces = races.filter(r => r.meetId === meet.id);
+            for (const race of meetRaces) {
+              const results = raceResults.filter(r => r.raceId === race.id);
+              if (results.length === 0) continue;
+              const pack = calcPackAnalysis(results);
+              if (!pack || pack.scorerCount < 5) continue;
+              const meetDate = meet.date?.toDate ? meet.date.toDate() : new Date(meet.date);
+              raceAnalytics.push({ meet, race, pack, date: meetDate });
+            }
+          }
+          raceAnalytics.sort((a, b) => a.date - b.date);
+
+          if (raceAnalytics.length === 0) {
+            return (
+              <View style={[styles.section, { alignItems: 'center', marginTop: SPACE.xl }]}>
+                <Text style={styles.sectionTitle}>No complete results yet</Text>
+                <Text style={[styles.sectionSub, { textAlign: 'center', marginTop: SPACE.sm }]}>
+                  Enter results for at least 5 athletes in a race to see pack analysis.
+                </Text>
+              </View>
+            );
+          }
+
+          // Season trend: 1-5 spread over time
+          const latestPack = raceAnalytics[raceAnalytics.length - 1]?.pack;
+          const firstPack = raceAnalytics[0]?.pack;
+          const spreadImproved = raceAnalytics.length >= 2 && latestPack.spread15 < firstPack.spread15;
+
+          return (
+            <>
+              {/* Season overview */}
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionNum}>{raceAnalytics.length}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.sectionTitle}>Races with Results</Text>
+                    <Text style={styles.sectionSub}>Season pack spread trend</Text>
+                  </View>
+                </View>
+                {raceAnalytics.length >= 2 && (
+                  <View style={[styles.summaryRow, { marginTop: SPACE.md }]}>
+                    <View style={[styles.summaryCard, { backgroundColor: spreadImproved ? '#e8f5e9' : '#fff3e0' }]}>
+                      <Text style={[styles.summaryNum, { color: spreadImproved ? '#2e7d32' : '#e65100' }]}>
+                        {spreadImproved ? '↓' : '↑'} {formatTime(Math.abs(latestPack.spread15 - firstPack.spread15))}
+                      </Text>
+                      <Text style={styles.summaryLabel}>Spread change</Text>
+                    </View>
+                    <View style={[styles.summaryCard, { backgroundColor: BRAND_LIGHT }]}>
+                      <Text style={[styles.summaryNum, { color: BRAND }]}>{formatTime(latestPack.spread15)}</Text>
+                      <Text style={styles.summaryLabel}>Current 1-5 spread</Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+
+              {/* Per-race breakdown */}
+              {raceAnalytics.map((ra, i) => (
+                <View key={`${ra.race.id}`} style={styles.section}>
+                  <Text style={styles.sectionTitle}>{ra.meet.name}</Text>
+                  <Text style={styles.sectionSub}>
+                    {ra.race.label} · {ra.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </Text>
+                  <View style={[styles.summaryRow, { marginTop: SPACE.md }]}>
+                    <View style={[styles.summaryCard, { backgroundColor: NEUTRAL.bg }]}>
+                      <Text style={[styles.summaryNum, { color: BRAND_DARK }]}>{formatTime(ra.pack.spread15)}</Text>
+                      <Text style={styles.summaryLabel}>1-5 Spread</Text>
+                    </View>
+                    <View style={[styles.summaryCard, { backgroundColor: NEUTRAL.bg }]}>
+                      <Text style={[styles.summaryNum, { color: BRAND_DARK }]}>{formatTime(ra.pack.teamAvg)}</Text>
+                      <Text style={styles.summaryLabel}>Team Avg</Text>
+                    </View>
+                    {ra.pack.teamScore && (
+                      <View style={[styles.summaryCard, { backgroundColor: NEUTRAL.bg }]}>
+                        <Text style={[styles.summaryNum, { color: BRAND_DARK }]}>{ra.pack.teamScore}</Text>
+                        <Text style={styles.summaryLabel}>Score</Text>
+                      </View>
+                    )}
+                  </View>
+                  {ra.pack.runner6 && (
+                    <Text style={[styles.sectionSub, { marginTop: SPACE.sm }]}>
+                      #6 {ra.pack.runner6.name} (+{formatTime(ra.pack.gap6to5)}) · #7 {ra.pack.runner7?.name || '—'} {ra.pack.gap7to5 ? `(+${formatTime(ra.pack.gap7to5)})` : ''}
+                    </Text>
+                  )}
+                </View>
+              ))}
+            </>
+          );
+        })()}
+      </ScrollView>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container:       { flex: 1, backgroundColor: NEUTRAL.bg },
-  header:          { backgroundColor: NEUTRAL.card, paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
+  header:          { backgroundColor: NEUTRAL.card, paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  tabRow:          { flexDirection: 'row', backgroundColor: NEUTRAL.card, borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
+  tab:             { flex: 1, paddingVertical: 12, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  tabText:         { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted },
   backBtn:         { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6 },
   backText:        { color: BRAND_DARK, fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.semibold },
   headerTitle:     { fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },

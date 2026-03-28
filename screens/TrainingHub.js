@@ -14,7 +14,7 @@ import {
 } from '../constants/design';
 import { getActiveSeason, getPhaseForSeason, SPORTS } from './SeasonPlanner';
 
-export default function TrainingHub({ school, athletes, groups, trainingItems, onNavigate }) {
+export default function TrainingHub({ school, athletes, groups, trainingItems, nextMeet, onNavigate }) {
   // Groups summary
   const groupCount = groups.length;
   const athleteCount = athletes.filter(a => a.groupId).length;
@@ -65,6 +65,14 @@ export default function TrainingHub({ school, athletes, groups, trainingItems, o
       subtitle: thisWeekCount > 0
         ? `This week: ${thisWeekCount} workout${thisWeekCount !== 1 ? 's' : ''} planned`
         : 'Plan your weekly workouts',
+    },
+    {
+      key: 'races',
+      icon: 'flag-outline',
+      title: 'Races',
+      subtitle: nextMeet
+        ? `Next: ${nextMeet.name} · ${new Date(nextMeet.date?.toDate ? nextMeet.date.toDate() : nextMeet.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+        : 'Manage meets and race results',
     },
   ];
 
