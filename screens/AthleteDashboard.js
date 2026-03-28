@@ -145,6 +145,7 @@ export default function AthleteDashboard({ userData }) {
   const [dailyMessage,         setDailyMessage]         = useState(null);
   const [profileVisible,       setProfileVisible]       = useState(false);
   const [feedVisible,          setFeedVisible]          = useState(false);
+  const [unreadFeedCount,      setUnreadFeedCount]      = useState(0);
   const [messageModalVisible,  setMessageModalVisible]  = useState(false);
   const [pendingWellness,      setPendingWellness]      = useState(null);
   const [logModalVisible,      setLogModalVisible]      = useState(false);
@@ -379,6 +380,26 @@ export default function AthleteDashboard({ userData }) {
         } catch (e) { console.log('Team athletes:', e); }
       }
     } catch (error) { console.error('Dashboard load error:', error); }
+
+    // Count unread feed posts (single-field query to avoid composite index requirement)
+    try {
+      if (userData.schoolId) {
+        const freshUserDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+        const freshLastSeen = freshUserDoc.data()?.lastSeenFeed;
+        const lastSeenFeed = freshLastSeen ? (freshLastSeen.toDate ? freshLastSeen.toDate() : new Date(freshLastSeen)) : new Date(0);
+        const postsSnap = await getDocs(query(
+          collection(db, 'teamPosts'),
+          where('schoolId', '==', userData.schoolId)
+        ));
+        const unread = postsSnap.docs.filter(d => {
+          const ts = d.data().createdAt;
+          const created = ts?.toDate ? ts.toDate() : new Date(ts);
+          return created > lastSeenFeed;
+        });
+        setUnreadFeedCount(unread.length);
+      }
+    } catch (e) { console.warn('Unread feed count failed:', e); setUnreadFeedCount(0); }
+
     setLoading(false);
   };
 
@@ -932,8 +953,15 @@ export default function AthleteDashboard({ userData }) {
           <Ionicons name="calendar-outline" size={24} color={calendarVisible ? BRAND : NEUTRAL.muted} />
           <Text style={[styles.bottomNavLabel, calendarVisible && { color: BRAND }]}>Calendar</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setStravaVisible(false); setProfileVisible(false); setFeedVisible(true); }}>
-          <Ionicons name="chatbubbles-outline" size={24} color={feedVisible ? BRAND : NEUTRAL.muted} />
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setStravaVisible(false); setProfileVisible(false); setFeedVisible(true); setUnreadFeedCount(0); updateDoc(doc(db, 'users', auth.currentUser.uid), { lastSeenFeed: new Date() }).catch(() => {}); }}>
+          <View>
+            <Ionicons name="chatbubbles-outline" size={24} color={feedVisible ? BRAND : NEUTRAL.muted} />
+            {unreadFeedCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{unreadFeedCount > 99 ? '99+' : unreadFeedCount}</Text>
+              </View>
+            )}
+          </View>
           <Text style={[styles.bottomNavLabel, feedVisible && { color: BRAND }]}>Feed</Text>
         </TouchableOpacity>
       </View>
@@ -995,6 +1023,8 @@ const styles = StyleSheet.create({
   bottomNavStravaIcon: { width: 28, height: 28, borderRadius: RADIUS.sm, backgroundColor: STRAVA_ORANGE, alignItems: 'center', justifyContent: 'center' },
   bottomNavStravaText: { color: '#fff', fontSize: 15, fontWeight: '900' },
   bottomNavLabel:      { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, fontWeight: FONT_WEIGHT.medium },
+  badge:               { position: 'absolute', top: -4, right: -8, backgroundColor: STATUS.error, borderRadius: 9, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  badgeText:           { color: '#fff', fontSize: 10, fontWeight: FONT_WEIGHT.bold },
   msgModalOverlay:     { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: SPACE['2xl'] },
   msgModal:            { backgroundColor: NEUTRAL.card, borderRadius: SPACE.xl, overflow: 'hidden', width: '100%' },
   msgModalHeader:      { backgroundColor: BRAND, padding: SPACE.xl, paddingBottom: SPACE.lg },

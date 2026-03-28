@@ -249,6 +249,8 @@ export default function CoachDashboard({ userData }) {
   const [athleteWeeklyBreakdown, setAthleteWeeklyBreakdown] = useState({});
   const [athleteZonePct,      setAthleteZonePct]      = useState({});
   const [pendingAthletes,     setPendingAthletes]     = useState([]);
+  const [pendingCoachCount,   setPendingCoachCount]   = useState(0);
+  const [unreadFeedCount,     setUnreadFeedCount]     = useState(0);
   const [trainingItems,       setTrainingItems]       = useState([]);
   const [loading,             setLoading]             = useState(true);
   const [activeTab,           setActiveTab]           = useState('team');
@@ -424,7 +426,28 @@ export default function CoachDashboard({ userData }) {
           where('status', '==', 'pending')
         ));
         setPendingAthletes(pendingSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+        // Count pending assistant coaches
+        const pendingCoachIds = schoolData?.pendingCoachIds || [];
+        setPendingCoachCount(pendingCoachIds.length);
       }
+
+      // Count unread feed posts (single-field query to avoid composite index requirement)
+      try {
+        const freshUserDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+        const freshLastSeen = freshUserDoc.data()?.lastSeenFeed;
+        const lastSeenFeed = freshLastSeen ? (freshLastSeen.toDate ? freshLastSeen.toDate() : new Date(freshLastSeen)) : new Date(0);
+        const postsSnap = await getDocs(query(
+          collection(db, 'teamPosts'),
+          where('schoolId', '==', userData.schoolId)
+        ));
+        const unread = postsSnap.docs.filter(d => {
+          const ts = d.data().createdAt;
+          const created = ts?.toDate ? ts.toDate() : new Date(ts);
+          return created > lastSeenFeed;
+        });
+        setUnreadFeedCount(unread.length);
+      } catch (e) { console.warn('Unread feed count failed:', e); setUnreadFeedCount(0); }
 
       try {
         const trainingSnap = await getDocs(query(
@@ -946,16 +969,23 @@ export default function CoachDashboard({ userData }) {
           <Ionicons name="analytics-outline" size={24} color={analyticsVisible ? BRAND : NEUTRAL.muted} />
           <Text style={[styles.bottomNavLabel, analyticsVisible && { color: BRAND }]}>Analytics</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setTrainingSection(null); setZonesVisible(false); setProfileVisible(false); setAnalyticsVisible(false); setAddFromDashboard(false); setFeedVisible(true); }}>
-          <Ionicons name="chatbubbles-outline" size={24} color={feedVisible ? BRAND : NEUTRAL.muted} />
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setTrainingSection(null); setZonesVisible(false); setProfileVisible(false); setAnalyticsVisible(false); setAddFromDashboard(false); setFeedVisible(true); setUnreadFeedCount(0); updateDoc(doc(db, 'users', auth.currentUser.uid), { lastSeenFeed: new Date() }).catch(() => {}); }}>
+          <View>
+            <Ionicons name="chatbubbles-outline" size={24} color={feedVisible ? BRAND : NEUTRAL.muted} />
+            {unreadFeedCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{unreadFeedCount > 99 ? '99+' : unreadFeedCount}</Text>
+              </View>
+            )}
+          </View>
           <Text style={[styles.bottomNavLabel, feedVisible && { color: BRAND }]}>Feed</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setTrainingSection(null); setFeedVisible(false); setZonesVisible(false); setAnalyticsVisible(false); setAddFromDashboard(false); setProfileVisible(true); }}>
           <View>
             <Ionicons name="person-outline" size={24} color={profileVisible ? BRAND : NEUTRAL.muted} />
-            {pendingAthletes.length > 0 && (
+            {(pendingAthletes.length + pendingCoachCount) > 0 && (
               <View style={styles.badge}>
-                <Text style={styles.badgeText}>{pendingAthletes.length}</Text>
+                <Text style={styles.badgeText}>{pendingAthletes.length + pendingCoachCount}</Text>
               </View>
             )}
           </View>
