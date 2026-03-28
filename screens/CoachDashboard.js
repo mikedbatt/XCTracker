@@ -38,7 +38,7 @@ import CalendarScreen, { TYPE_COLORS } from '../screens/CalendarScreen';
 import ManageGroups from '../screens/ManageGroups';
 import ManageSeasons from '../screens/ManageSeasons';
 import { getActiveSeason, getPhaseForSeason } from '../screens/SeasonPlanner';
-import TeamFeed from '../screens/TeamFeed';
+import ChannelList from '../screens/ChannelList';
 import TimeframePicker, { TIMEFRAMES, getDateRange } from '../screens/TimeframePicker';
 import TrainingHub from '../screens/TrainingHub';
 import ZoneSettings from '../screens/ZoneSettings';
@@ -293,12 +293,13 @@ export default function CoachDashboard({ userData }) {
       } catch (e) { console.warn('Failed to load team zone settings, using defaults:', e); }
 
       // Load training groups
+      let loadedGroups = [];
       try {
         const groupsSnap = await getDocs(query(
           collection(db, 'groups'),
           where('schoolId', '==', userData.schoolId)
         ));
-        const loadedGroups = groupsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        loadedGroups = groupsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         loadedGroups.sort((a, b) => (a.order || 0) - (b.order || 0));
         setGroups(loadedGroups);
       } catch (e) { console.warn('Failed to load groups:', e); }
@@ -432,21 +433,32 @@ export default function CoachDashboard({ userData }) {
         setPendingCoachCount(pendingCoachIds.length);
       }
 
-      // Count unread feed posts (single-field query to avoid composite index requirement)
+      // Count total unread across channels the user belongs to
       try {
         const freshUserDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
-        const freshLastSeen = freshUserDoc.data()?.lastSeenFeed;
-        const lastSeenFeed = freshLastSeen ? (freshLastSeen.toDate ? freshLastSeen.toDate() : new Date(freshLastSeen)) : new Date(0);
+        const lastSeenChannels = freshUserDoc.data()?.lastSeenChannels || {};
+        if (!lastSeenChannels.whole_team && freshUserDoc.data()?.lastSeenFeed) {
+          lastSeenChannels.whole_team = freshUserDoc.data().lastSeenFeed;
+        }
+        // Build set of channels this coach belongs to
+        const myChannelKeys = new Set(['whole_team', 'boys', 'girls', 'parents', 'coaches']);
+        loadedGroups.forEach(g => myChannelKeys.add(`group_${g.id}`));
+
         const postsSnap = await getDocs(query(
           collection(db, 'teamPosts'),
           where('schoolId', '==', userData.schoolId)
         ));
-        const unread = postsSnap.docs.filter(d => {
-          const ts = d.data().createdAt;
-          const created = ts?.toDate ? ts.toDate() : new Date(ts);
-          return created > lastSeenFeed;
+        let totalUnread = 0;
+        postsSnap.docs.forEach(d => {
+          const data = d.data();
+          const ch = data.channel || 'whole_team';
+          if (!myChannelKeys.has(ch)) return;
+          const lastSeen = lastSeenChannels[ch];
+          const lastSeenDate = lastSeen ? (lastSeen.toDate ? lastSeen.toDate() : new Date(lastSeen)) : new Date(0);
+          const created = data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt || 0);
+          if (created > lastSeenDate && data.authorId !== auth.currentUser.uid) totalUnread++;
         });
-        setUnreadFeedCount(unread.length);
+        setUnreadFeedCount(totalUnread);
       } catch (e) { console.warn('Unread feed count failed:', e); setUnreadFeedCount(0); }
 
       try {
@@ -905,7 +917,7 @@ export default function CoachDashboard({ userData }) {
       )}
       {feedVisible && (
         <View style={styles.subScreen}>
-          <TeamFeed userData={userData} school={school} onClose={() => setFeedVisible(false)} />
+          <ChannelList userData={userData} school={school} groups={groups} athletes={athletes} onClose={() => { setFeedVisible(false); loadDashboard(); }} />
         </View>
       )}
       {zonesVisible && (
@@ -969,7 +981,7 @@ export default function CoachDashboard({ userData }) {
           <Ionicons name="analytics-outline" size={24} color={analyticsVisible ? BRAND : NEUTRAL.muted} />
           <Text style={[styles.bottomNavLabel, analyticsVisible && { color: BRAND }]}>Analytics</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setTrainingSection(null); setZonesVisible(false); setProfileVisible(false); setAnalyticsVisible(false); setAddFromDashboard(false); setFeedVisible(true); setUnreadFeedCount(0); updateDoc(doc(db, 'users', auth.currentUser.uid), { lastSeenFeed: new Date() }).catch(() => {}); }}>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setTrainingSection(null); setZonesVisible(false); setProfileVisible(false); setAnalyticsVisible(false); setAddFromDashboard(false); setFeedVisible(true); }}>
           <View>
             <Ionicons name="chatbubbles-outline" size={24} color={feedVisible ? BRAND : NEUTRAL.muted} />
             {unreadFeedCount > 0 && (

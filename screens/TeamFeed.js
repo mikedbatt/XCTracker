@@ -9,6 +9,7 @@ import {
     orderBy,
     query,
     serverTimestamp,
+    updateDoc,
     where,
 } from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
@@ -28,47 +29,76 @@ import {
 import { auth, db } from '../firebaseConfig';
 import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SPACE } from '../constants/design';
 
-export default function TeamFeed({ userData, school, onClose }) {
+export default function TeamFeed({ userData, school, onClose, channel, channelName }) {
   const [posts,       setPosts]       = useState([]);
   const [loading,     setLoading]     = useState(true);
   const [refreshing,  setRefreshing]  = useState(false);
   const [message,     setMessage]     = useState('');
   const [posting,     setPosting]     = useState(false);
+  const [showTip,     setShowTip]     = useState(false);
   const inputRef = useRef(null);
 
   const primaryColor = school?.primaryColor || BRAND;
   const isCoach = userData.role === 'admin_coach' || userData.role === 'assistant_coach';
   const myUid   = auth.currentUser?.uid;
 
-  // ── Real-time listener ────────────────────────────────────────────────────
+  const activeChannel = channel || 'whole_team';
+
+  // ── Mark channel as seen on open ────────────────────────────────────────
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (uid) {
+      updateDoc(doc(db, 'users', uid), {
+        [`lastSeenChannels.${activeChannel}`]: new Date(),
+        // Also update legacy lastSeenFeed for backward compat
+        ...(activeChannel === 'whole_team' && { lastSeenFeed: new Date() }),
+      }).catch(() => {});
+    }
+  }, [activeChannel]);
+
+  // ── Real-time listener (filtered by channel) ───────────────────────────
   useEffect(() => {
     if (!userData.schoolId) return;
+    // Single-field query on schoolId, filter channel client-side to avoid composite index
     const q = query(
       collection(db, 'teamPosts'),
       where('schoolId', '==', userData.schoolId),
-      orderBy('createdAt', 'desc'),
-      limit(100)
     );
     const unsub = onSnapshot(q, snap => {
-      setPosts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const filtered = all
+        .filter(p => (p.channel || 'whole_team') === activeChannel)
+        .sort((a, b) => {
+          const aT = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+          const bT = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+          return bT - aT;
+        })
+        .slice(0, 100);
+      setPosts(filtered);
       setLoading(false);
     }, err => {
       console.log('TeamFeed listener:', err);
-      // Fall back to one-time fetch if listener fails (index not ready)
       loadPosts();
     });
     return () => unsub();
-  }, []);
+  }, [activeChannel]);
 
   const loadPosts = async () => {
     try {
       const snap = await getDocs(query(
         collection(db, 'teamPosts'),
         where('schoolId', '==', userData.schoolId),
-        orderBy('createdAt', 'desc'),
-        limit(100)
       ));
-      setPosts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const filtered = all
+        .filter(p => (p.channel || 'whole_team') === activeChannel)
+        .sort((a, b) => {
+          const aT = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+          const bT = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+          return bT - aT;
+        })
+        .slice(0, 100);
+      setPosts(filtered);
     } catch (e) { console.log('Load posts:', e); }
     setLoading(false);
     setRefreshing(false);
@@ -90,6 +120,7 @@ export default function TeamFeed({ userData, school, onClose }) {
     try {
       await addDoc(collection(db, 'teamPosts'), {
         schoolId:    userData.schoolId,
+        channel:     activeChannel,
         text,
         authorId:    myUid,
         authorName:  `${userData.firstName} ${userData.lastName}`,
@@ -152,35 +183,37 @@ export default function TeamFeed({ userData, school, onClose }) {
     const initials = post.authorName?.split(' ').map(n => n[0]).join('').slice(0, 2) || '?';
 
     return (
-      <View style={[styles.postCard, isOwn && { borderLeftColor: primaryColor, borderLeftWidth: 3 }]}>
-        <View style={styles.postHeader}>
-          <View style={[styles.postAvatar, { backgroundColor: isOwn ? primaryColor : badge ? badge.color : '#888' }]}>
+      <View style={[styles.bubbleRow, isOwn && styles.bubbleRowOwn]}>
+        {!isOwn && (
+          <View style={[styles.postAvatar, { backgroundColor: badge ? badge.color : '#888' }]}>
             <Text style={styles.postAvatarText}>{initials}</Text>
           </View>
-          <View style={styles.postMeta}>
-            <View style={styles.postNameRow}>
-              <Text style={[styles.postAuthor, isOwn && { color: primaryColor }]}>
-                {isOwn ? 'You' : post.authorName}
-              </Text>
+        )}
+        <View style={[styles.bubble, isOwn ? { backgroundColor: primaryColor, borderBottomRightRadius: 4 } : styles.bubbleOther]}>
+          {!isOwn && (
+            <View style={styles.bubbleHeader}>
+              <Text style={styles.bubbleAuthor}>{post.authorName}</Text>
               {badge && (
                 <View style={[styles.roleBadge, { backgroundColor: badge.color }]}>
                   <Text style={styles.roleBadgeText}>{badge.label}</Text>
                 </View>
               )}
             </View>
-            <Text style={styles.postTime}>{formatTime(post.createdAt)}</Text>
-          </View>
-          {canDelete && (
-            <TouchableOpacity
-              style={styles.deleteBtn}
-              onPress={() => handleDelete(post)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Text style={styles.deleteBtnText}>✕</Text>
-            </TouchableOpacity>
           )}
+          <Text style={[styles.bubbleText, isOwn && { color: '#fff' }]}>{post.text}</Text>
+          <View style={styles.bubbleFooter}>
+            <Text style={[styles.bubbleTime, isOwn && { color: 'rgba(255,255,255,0.6)' }]}>{formatTime(post.createdAt)}</Text>
+            {canDelete && (
+              <TouchableOpacity
+                onPress={() => handleDelete(post)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={[styles.bubbleDelete, isOwn && { color: 'rgba(255,255,255,0.5)' }]}>Delete</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
-        <Text style={styles.postText}>{post.text}</Text>
+        {isOwn && <View style={{ width: 38 }} />}
       </View>
     );
   };
@@ -194,11 +227,23 @@ export default function TeamFeed({ userData, school, onClose }) {
           <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Team Feed</Text>
+          <Text style={styles.headerTitle}>{channelName || 'Team Feed'}</Text>
           <Text style={styles.headerSub}>{school?.name}</Text>
         </View>
-        <View style={{ width: 60 }} />
+        {isCoach ? (
+          <TouchableOpacity onPress={() => setShowTip(t => !t)} style={styles.tipBtn}>
+            <Ionicons name="information-circle-outline" size={22} color={NEUTRAL.muted} />
+          </TouchableOpacity>
+        ) : <View style={{ width: 40 }} />}
       </View>
+      {showTip && (
+        <View style={styles.tipBanner}>
+          <Text style={styles.tipText}>Coaches can delete any message. Athletes can only delete their own. Tap "Delete" on any message.</Text>
+          <TouchableOpacity onPress={() => setShowTip(false)}>
+            <Ionicons name="close" size={16} color={NEUTRAL.muted} />
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Posts list */}
       {loading ? (
@@ -210,6 +255,7 @@ export default function TeamFeed({ userData, school, onClose }) {
           data={posts}
           keyExtractor={item => item.id}
           renderItem={renderPost}
+          inverted
           contentContainerStyle={styles.listContent}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={primaryColor} />
@@ -221,15 +267,6 @@ export default function TeamFeed({ userData, school, onClose }) {
                 Be the first to post something to the team feed!
               </Text>
             </View>
-          }
-          ListHeaderComponent={
-            isCoach ? (
-              <View style={styles.moderationNote}>
-                <Text style={styles.moderationText}>
-                  As coach you can delete any post. Athletes can only delete their own.
-                </Text>
-              </View>
-            ) : null
           }
         />
       )}
@@ -248,7 +285,7 @@ export default function TeamFeed({ userData, school, onClose }) {
           <TextInput
             ref={inputRef}
             style={styles.composeInput}
-            placeholder="Post to the team..."
+            placeholder={`Message ${channelName || 'the team'}...`}
             placeholderTextColor="#999"
             value={message}
             onChangeText={setMessage}
@@ -287,25 +324,28 @@ const styles = StyleSheet.create({
   headerCenter:      { alignItems: 'center' },
   headerTitle:       { fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
   headerSub:         { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: 1 },
+  tipBtn:            { padding: 8 },
+  tipBanner:         { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff3e0', paddingHorizontal: 14, paddingVertical: 8, gap: 10 },
+  tipText:           { flex: 1, fontSize: 12, color: '#e65100', lineHeight: 16 },
   listContent:       { padding: 16, paddingBottom: 8 },
-  moderationNote:    { backgroundColor: '#fff3e0', borderRadius: 10, padding: 10, marginBottom: 12 },
-  moderationText:    { fontSize: 12, color: '#e65100', textAlign: 'center' },
   emptyCard:         { alignItems: 'center', paddingTop: 60, paddingHorizontal: 40 },
   emptyTitle:        { fontSize: 18, fontWeight: '700', color: '#333', marginBottom: 8 },
   emptySub:          { fontSize: 14, color: '#999', textAlign: 'center', lineHeight: 20 },
-  postCard:          { backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 10 },
-  postHeader:        { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 },
-  postAvatar:        { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  postAvatarText:    { color: '#fff', fontSize: 14, fontWeight: '700' },
-  postMeta:          { flex: 1 },
-  postNameRow:       { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  postAuthor:        { fontSize: 15, fontWeight: '700', color: '#333' },
-  roleBadge:         { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
-  roleBadgeText:     { color: '#fff', fontSize: 11, fontWeight: '700' },
-  postTime:          { fontSize: 12, color: '#bbb', marginTop: 2 },
-  deleteBtn:         { padding: 4 },
-  deleteBtnText:     { fontSize: 16, color: '#ccc', fontWeight: '600' },
-  postText:          { fontSize: 15, color: '#333', lineHeight: 22 },
+  // Chat bubble styles
+  bubbleRow:         { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginBottom: 6 },
+  bubbleRowOwn:      { flexDirection: 'row-reverse' },
+  bubble:            { maxWidth: '75%', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },
+  bubbleOther:       { backgroundColor: '#fff', borderBottomLeftRadius: 4 },
+  bubbleHeader:      { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 },
+  bubbleAuthor:      { fontSize: 13, fontWeight: '700', color: '#555' },
+  bubbleText:        { fontSize: 15, color: '#333', lineHeight: 21 },
+  bubbleFooter:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
+  bubbleTime:        { fontSize: 11, color: '#bbb' },
+  bubbleDelete:      { fontSize: 11, color: '#ccc', marginLeft: 10 },
+  postAvatar:        { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  postAvatarText:    { color: '#fff', fontSize: 12, fontWeight: '700' },
+  roleBadge:         { borderRadius: 6, paddingHorizontal: 5, paddingVertical: 1 },
+  roleBadgeText:     { color: '#fff', fontSize: 10, fontWeight: '700' },
   composeBar:        { flexDirection: 'row', alignItems: 'flex-end', padding: 12, paddingBottom: Platform.OS === 'ios' ? 28 : 12, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#eee', gap: 10 },
   composeAvatar:     { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginBottom: 2 },
   composeAvatarText: { color: '#fff', fontSize: 12, fontWeight: '700' },

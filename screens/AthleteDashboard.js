@@ -47,7 +47,7 @@ import DatePickerField from './DatePickerField';
 import RunDetailModal from './RunDetailModal';
 import { getActiveSeason } from './SeasonPlanner';
 import StravaConnect from './StravaConnect';
-import TeamFeed from './TeamFeed';
+import ChannelList from './ChannelList';
 import TeammateProfile from './TeammateProfile';
 import TimeframePicker, { TIMEFRAMES, getDateRange } from './TimeframePicker';
 import WellnessCheckIn from './WellnessCheckIn';
@@ -385,18 +385,30 @@ export default function AthleteDashboard({ userData }) {
     try {
       if (userData.schoolId) {
         const freshUserDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
-        const freshLastSeen = freshUserDoc.data()?.lastSeenFeed;
-        const lastSeenFeed = freshLastSeen ? (freshLastSeen.toDate ? freshLastSeen.toDate() : new Date(freshLastSeen)) : new Date(0);
+        const lastSeenChannels = freshUserDoc.data()?.lastSeenChannels || {};
+        if (!lastSeenChannels.whole_team && freshUserDoc.data()?.lastSeenFeed) {
+          lastSeenChannels.whole_team = freshUserDoc.data().lastSeenFeed;
+        }
+        // Build set of channels this athlete belongs to
+        const myChannelKeys = new Set(['whole_team']);
+        if (userData.groupId) myChannelKeys.add(`group_${userData.groupId}`);
+        if (userData.gender) myChannelKeys.add(userData.gender);
+
         const postsSnap = await getDocs(query(
           collection(db, 'teamPosts'),
           where('schoolId', '==', userData.schoolId)
         ));
-        const unread = postsSnap.docs.filter(d => {
-          const ts = d.data().createdAt;
-          const created = ts?.toDate ? ts.toDate() : new Date(ts);
-          return created > lastSeenFeed;
+        let totalUnread = 0;
+        postsSnap.docs.forEach(d => {
+          const data = d.data();
+          const ch = data.channel || 'whole_team';
+          if (!myChannelKeys.has(ch)) return;
+          const lastSeen = lastSeenChannels[ch];
+          const lastSeenDate = lastSeen ? (lastSeen.toDate ? lastSeen.toDate() : new Date(lastSeen)) : new Date(0);
+          const created = data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt || 0);
+          if (created > lastSeenDate && data.authorId !== auth.currentUser.uid) totalUnread++;
         });
-        setUnreadFeedCount(unread.length);
+        setUnreadFeedCount(totalUnread);
       }
     } catch (e) { console.warn('Unread feed count failed:', e); setUnreadFeedCount(0); }
 
@@ -921,7 +933,7 @@ export default function AthleteDashboard({ userData }) {
       )}
       {feedVisible && (
         <View style={styles.subScreen}>
-          <TeamFeed userData={userData} school={school} onClose={() => setFeedVisible(false)} />
+          <ChannelList userData={userData} school={school} onClose={() => { setFeedVisible(false); loadDashboard(); }} />
         </View>
       )}
       {profileVisible && (
@@ -953,7 +965,7 @@ export default function AthleteDashboard({ userData }) {
           <Ionicons name="calendar-outline" size={24} color={calendarVisible ? BRAND : NEUTRAL.muted} />
           <Text style={[styles.bottomNavLabel, calendarVisible && { color: BRAND }]}>Calendar</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setStravaVisible(false); setProfileVisible(false); setFeedVisible(true); setUnreadFeedCount(0); updateDoc(doc(db, 'users', auth.currentUser.uid), { lastSeenFeed: new Date() }).catch(() => {}); }}>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setStravaVisible(false); setProfileVisible(false); setFeedVisible(true); }}>
           <View>
             <Ionicons name="chatbubbles-outline" size={24} color={feedVisible ? BRAND : NEUTRAL.muted} />
             {unreadFeedCount > 0 && (
