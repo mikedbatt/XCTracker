@@ -100,7 +100,19 @@ export default function CoachAnalytics({
         const recentMood = recent.length > 0 ? recent.reduce((s, c) => s + (c.mood || 3), 0) / recent.length : 3;
         const olderMood = checks.length > 3 ? checks.slice(3).reduce((s, c) => s + (c.mood || 3), 0) / (checks.length - 3) : recentMood;
 
-        athleteAvgs[uid] = { avgSleep, avgLegs, avgMood, recentMood, moodDeclining: recentMood < olderMood - 0.5, checkCount: checks.length };
+        // Injury & illness tracking
+        const injuryDays = checks.filter(c => c.injury).length;
+        const illnessDays = checks.filter(c => c.illness).length;
+        const injuryLocations = [...new Set(checks.flatMap(c => c.injury?.locations || []))];
+        // Chronic: same body location on 3+ of 7 days
+        const locationCounts = {};
+        checks.forEach(c => (c.injury?.locations || []).forEach(loc => { locationCounts[loc] = (locationCounts[loc] || 0) + 1; }));
+        const hasChronicInjury = Object.values(locationCounts).some(cnt => cnt >= 3);
+
+        athleteAvgs[uid] = {
+          avgSleep, avgLegs, avgMood, recentMood, moodDeclining: recentMood < olderMood - 0.5, checkCount: checks.length,
+          injuryDays, illnessDays, injuryLocations, hasChronicInjury, locationCounts,
+        };
       });
 
       // Team averages
@@ -109,7 +121,24 @@ export default function CoachAnalytics({
       const teamAvgLegs = allCheckins.length > 0 ? allCheckins.reduce((s, c) => s + (c.legFatigue || 3), 0) / allCheckins.length : null;
       const teamAvgMood = allCheckins.length > 0 ? allCheckins.reduce((s, c) => s + (c.mood || 3), 0) / allCheckins.length : null;
 
-      setWellnessData({ athleteAvgs, teamAvgSleep, teamAvgLegs, teamAvgMood, totalCheckins: allCheckins.length });
+      // Injury/illness rates (% of check-ins with injury/illness)
+      const injuryRate = allCheckins.length > 0 ? Math.round((allCheckins.filter(c => c.injury).length / allCheckins.length) * 100) : 0;
+      const illnessRate = allCheckins.length > 0 ? Math.round((allCheckins.filter(c => c.illness).length / allCheckins.length) * 100) : 0;
+
+      // Active injuries grouped by body location
+      const activeInjuryMap = {};
+      allCheckins.forEach(c => {
+        if (!c.injury?.locations) return;
+        c.injury.locations.forEach(loc => {
+          if (!activeInjuryMap[loc]) activeInjuryMap[loc] = new Set();
+          activeInjuryMap[loc].add(c.userId);
+        });
+      });
+      const activeInjuries = Object.entries(activeInjuryMap)
+        .map(([loc, ids]) => ({ location: loc, count: ids.size }))
+        .sort((a, b) => b.count - a.count);
+
+      setWellnessData({ athleteAvgs, teamAvgSleep, teamAvgLegs, teamAvgMood, totalCheckins: allCheckins.length, injuryRate, illnessRate, activeInjuries });
     } catch (e) {
       console.warn('Failed to load wellness data:', e);
       setWellnessData({ athleteAvgs: {}, teamAvgSleep: null, teamAvgLegs: null, teamAvgMood: null, totalCheckins: 0 });
@@ -192,7 +221,7 @@ export default function CoachAnalytics({
   const nonReportingAthletes = athletes.filter(a => !wellnessData?.athleteAvgs[a.id]);
   const concernAthletes = wellnessAthletes.filter(a => {
     const d = wellnessData?.athleteAvgs[a.id];
-    return d && (d.avgSleep < 2.5 || d.avgLegs < 2.5 || d.moodDeclining);
+    return d && (d.avgSleep < 2.5 || d.avgLegs < 2.5 || d.moodDeclining || d.hasChronicInjury);
   });
 
   const toggle = (section) => setExpandedSection(expandedSection === section ? null : section);
@@ -207,6 +236,19 @@ export default function CoachAnalytics({
           <View style={[styles.gaugeFill, { width: pct + '%', backgroundColor: color }]} />
         </View>
         <Text style={[styles.gaugeValue, { color }]}>{value ? value.toFixed(1) : '—'}</Text>
+      </View>
+    );
+  };
+
+  const renderRateGauge = (pctValue, label) => {
+    const color = pctValue <= 10 ? STATUS.success : pctValue <= 25 ? STATUS.warning : STATUS.error;
+    return (
+      <View style={styles.gauge}>
+        <Text style={styles.gaugeLabel}>{label}</Text>
+        <View style={styles.gaugeBg}>
+          <View style={[styles.gaugeFill, { width: Math.min(pctValue, 100) + '%', backgroundColor: color }]} />
+        </View>
+        <Text style={[styles.gaugeValue, { color }]}>{pctValue}%</Text>
       </View>
     );
   };
@@ -478,6 +520,23 @@ export default function CoachAnalytics({
                 {renderGauge(wellnessData.teamAvgLegs, 'Legs')}
                 {renderGauge(wellnessData.teamAvgMood, 'Mood')}
               </View>
+              {(wellnessData.injuryRate > 0 || wellnessData.illnessRate > 0) && (
+                <View style={[styles.gaugeGroup, { marginTop: SPACE.md }]}>
+                  {renderRateGauge(wellnessData.injuryRate, '🩹 Injury rate')}
+                  {renderRateGauge(wellnessData.illnessRate, '🤒 Illness rate')}
+                </View>
+              )}
+              {wellnessData.activeInjuries?.length > 0 && (
+                <View style={styles.activeInjuryRow}>
+                  {wellnessData.activeInjuries.map(inj => (
+                    <View key={inj.location} style={styles.activeInjuryChip}>
+                      <Text style={styles.activeInjuryText}>
+                        {inj.location.charAt(0).toUpperCase() + inj.location.slice(1)} — {inj.count} athlete{inj.count > 1 ? 's' : ''}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
               {concernAthletes.length > 0 && (
                 <Text style={styles.wellnessConcernHint}>{concernAthletes.length} athlete{concernAthletes.length > 1 ? 's' : ''} showing concern signals</Text>
               )}
@@ -513,11 +572,14 @@ export default function CoachAnalytics({
                           {hasConcern && d.avgSleep < 2.5 && <Text style={styles.signalText}>• Poor sleep</Text>}
                           {hasConcern && d.avgLegs < 2.5 && <Text style={styles.signalText}>• Heavy legs</Text>}
                           {hasConcern && d.moodDeclining && <Text style={styles.signalText}>• Mood declining</Text>}
+                          {hasConcern && d.hasChronicInjury && <Text style={styles.signalText}>• Chronic injury risk</Text>}
                         </View>
                         <View style={styles.wellnessScores}>
                           <Text style={[styles.wellnessScore, { color: d.avgSleep < 2.5 ? STATUS.error : d.avgSleep < 3.5 ? STATUS.warning : STATUS.success }]}>😴 {d.avgSleep.toFixed(1)}</Text>
                           <Text style={[styles.wellnessScore, { color: d.avgLegs < 2.5 ? STATUS.error : d.avgLegs < 3.5 ? STATUS.warning : STATUS.success }]}>🦵 {d.avgLegs.toFixed(1)}</Text>
                           <Text style={[styles.wellnessScore, { color: d.avgMood < 2.5 ? STATUS.error : d.avgMood < 3.5 ? STATUS.warning : STATUS.success }]}>😊 {d.avgMood.toFixed(1)}</Text>
+                          {d.injuryDays > 0 && <Text style={[styles.wellnessScore, { color: STATUS.warning }]}>🩹 {d.injuryDays}/7d</Text>}
+                          {d.illnessDays > 0 && <Text style={[styles.wellnessScore, { color: STATUS.warning }]}>🤒 {d.illnessDays}/7d</Text>}
                         </View>
                       </View>
                     );
@@ -710,6 +772,9 @@ const styles = StyleSheet.create({
   pctBadge:        { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
   signalText:      { fontSize: FONT_SIZE.xs, color: STATUS.error, marginTop: 2 },
   noDataText:      { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted, marginTop: SPACE.md, textAlign: 'center' },
+  activeInjuryRow:   { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.sm, marginTop: SPACE.md },
+  activeInjuryChip:  { backgroundColor: STATUS.warningBg, borderRadius: RADIUS.full, paddingHorizontal: SPACE.md, paddingVertical: SPACE.xs, borderWidth: 1, borderColor: STATUS.warning + '40' },
+  activeInjuryText:  { fontSize: FONT_SIZE.xs, color: STATUS.warning, fontWeight: FONT_WEIGHT.semibold },
   wellnessConcernHint: { fontSize: FONT_SIZE.xs, color: STATUS.warning, fontWeight: FONT_WEIGHT.semibold, marginTop: SPACE.md },
   wellnessScores:  { flexDirection: 'row', gap: SPACE.sm },
   wellnessScore:   { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
@@ -731,8 +796,8 @@ const styles = StyleSheet.create({
   packMiles:       { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, width: 40, textAlign: 'right' },
   gaugeGroup:      { gap: SPACE.sm, marginTop: SPACE.md },
   gauge:           { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
-  gaugeLabel:      { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, width: 40 },
+  gaugeLabel:      { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, minWidth: 40 },
   gaugeBg:         { flex: 1, height: 8, backgroundColor: NEUTRAL.bg, borderRadius: 4, overflow: 'hidden' },
   gaugeFill:       { height: '100%', borderRadius: 4 },
-  gaugeValue:      { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, width: 28, textAlign: 'right' },
+  gaugeValue:      { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, minWidth: 28, textAlign: 'right' },
 });

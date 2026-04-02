@@ -181,10 +181,25 @@ async function checkOvertraining(athleteId) {
       if (recentAvgSleep < 2.5) signals.push({ text: 'Poor sleep reported' });
     }
 
+    // Today's injury/illness from most recent check-in
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const todayCheckin = checkins.find(c => {
+      const d = c.date?.toDate ? c.date.toDate() : new Date(c.date);
+      return d >= todayStart;
+    });
+    const todayInjury = todayCheckin?.injury || null;
+    const todayIllness = todayCheckin?.illness || null;
+
+    // Moderate/severe injury feeds into overtraining signal
+    if (todayInjury && (todayInjury.severity === 'moderate' || todayInjury.severity === 'severe')) {
+      const loc = todayInjury.locations?.join(', ') || 'unspecified';
+      signals.push({ text: `Reported ${todayInjury.severity} injury (${loc})` });
+    }
+
     const hasSoloTrigger = signals.some(s => s.solo);
     const alert = hasSoloTrigger || signals.filter(s => !s.solo).length >= 2;
-    return { alert, signals: signals.map(s => s.text) };
-  } catch { return { alert: false, signals: [] }; }
+    return { alert, signals: signals.map(s => s.text), todayInjury, todayIllness };
+  } catch { return { alert: false, signals: [], todayInjury: null, todayIllness: null }; }
 }
 
 // ── Zone % helper — same 3-tier system used everywhere else in the app ────────
@@ -642,6 +657,8 @@ export default function CoachDashboard({ userData }) {
   const activeSeason  = getActiveSeason(school);
   const currentPhase  = activeSeason ? getPhaseForSeason(activeSeason) : getPhaseForSeason(null);
   const alertCount    = Object.values(overtTrainingAlerts).filter(a => a.alert).length;
+  const injuredCount  = Object.values(overtTrainingAlerts).filter(a => a.todayInjury).length;
+  const sickCount     = Object.values(overtTrainingAlerts).filter(a => a.todayIllness).length;
   const filteredAthletes = athletes.filter(a => {
     if (genderFilter !== 'all' && a.gender !== genderFilter) return false;
     if (groupFilter !== 'all' && groupFilter !== 'bygroup') {
@@ -682,7 +699,11 @@ export default function CoachDashboard({ userData }) {
             <Text style={styles.avatarText}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
           </View>
           <View style={styles.athleteInfo}>
-            <Text style={styles.athleteName}>{athlete.firstName} {athlete.lastName}</Text>
+            <View style={styles.athleteNameRow}>
+              <Text style={styles.athleteName}>{athlete.firstName} {athlete.lastName}</Text>
+              {overtrain?.todayInjury && <Text style={styles.injuryBadge}>🩹</Text>}
+              {overtrain?.todayIllness && <Text style={styles.injuryBadge}>🤒</Text>}
+            </View>
             {hasAlert
               ? <Text style={styles.alertText}>⚠️ {overtrain.signals[0]}</Text>
               : <>
@@ -716,6 +737,11 @@ export default function CoachDashboard({ userData }) {
           <View style={styles.headerRight}>
             <Text style={styles.headerRightText}>{athletes.length} athletes  ·  Code: {school?.joinCode || '--'}</Text>
             {alertCount > 0 && <Text style={styles.headerAlertText}>⚠️ {alertCount} alert{alertCount > 1 ? 's' : ''}</Text>}
+            {(injuredCount > 0 || sickCount > 0) && (
+              <Text style={styles.headerInjuryText}>
+                {injuredCount > 0 ? `🩹 ${injuredCount} injured` : ''}{injuredCount > 0 && sickCount > 0 ? '  ·  ' : ''}{sickCount > 0 ? `🤒 ${sickCount} sick` : ''} today
+              </Text>
+            )}
           </View>
         </View>
       </View>
@@ -822,6 +848,41 @@ export default function CoachDashboard({ userData }) {
               [...filteredAthletes]
                 .sort((a, b) => (athleteMiles[b.id] || 0) - (athleteMiles[a.id] || 0))
                 .map((athlete, index) => renderAthleteCard(athlete, index))
+            )}
+
+            {/* Injury & Illness reports */}
+            {filteredAthletes.some(a => overtTrainingAlerts[a.id]?.todayInjury || overtTrainingAlerts[a.id]?.todayIllness) && (
+              <View style={styles.injurySection}>
+                <Text style={styles.injurySectionTitle}>🩹 Injury & illness reports</Text>
+                {filteredAthletes
+                  .filter(a => overtTrainingAlerts[a.id]?.todayInjury || overtTrainingAlerts[a.id]?.todayIllness)
+                  .map(athlete => {
+                    const inj = overtTrainingAlerts[athlete.id]?.todayInjury;
+                    const ill = overtTrainingAlerts[athlete.id]?.todayIllness;
+                    const worstSeverity = [inj?.severity, ill?.severity]
+                      .filter(Boolean)
+                      .reduce((w, s) => s === 'severe' || w === 'severe' ? 'severe' : s === 'moderate' || w === 'moderate' ? 'moderate' : 'mild', 'mild');
+                    const rec = worstSeverity === 'severe' ? 'Recommend rest day'
+                      : worstSeverity === 'moderate' ? 'Consider modified workout or cross-training'
+                      : 'Monitor during practice';
+                    return (
+                      <View key={athlete.id} style={styles.injuryCard}>
+                        <Text style={styles.injuryAthleteName}>{athlete.firstName} {athlete.lastName}</Text>
+                        {inj && (
+                          <Text style={styles.injuryDetail}>
+                            🩹 {inj.locations?.map(l => l.charAt(0).toUpperCase() + l.slice(1)).join(', ')} ({inj.severity}){inj.note ? ` — "${inj.note}"` : ''}
+                          </Text>
+                        )}
+                        {ill && (
+                          <Text style={styles.injuryDetail}>
+                            🤒 Feeling sick — {ill.symptoms?.map(s => s.replace(/_/g, ' ')).join(', ')} ({ill.severity})
+                          </Text>
+                        )}
+                        <Text style={styles.injuryRec}>→ {rec}</Text>
+                      </View>
+                    );
+                  })}
+              </View>
             )}
 
             {/* Overtraining alerts */}
@@ -1007,7 +1068,7 @@ export default function CoachDashboard({ userData }) {
         {hasTrainingAccess && (
         <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setFeedVisible(false); setZonesVisible(false); setProfileVisible(false); setAnalyticsVisible(false); setAddFromDashboard(false); setTrainingSection('hub'); }}>
           <Ionicons name="calendar-outline" size={24} color={trainingSection || addFromDashboard ? BRAND : NEUTRAL.muted} />
-          <Text style={[styles.bottomNavLabel, (trainingSection || addFromDashboard) && { color: BRAND }]}>Training</Text>
+          <Text style={[styles.bottomNavLabel, (trainingSection || addFromDashboard) && { color: BRAND }]}>Program</Text>
         </TouchableOpacity>
         )}
         <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setTrainingSection(null); setFeedVisible(false); setZonesVisible(false); setProfileVisible(false); setAddFromDashboard(false); setAnalyticsVisible(true); }}>
@@ -1105,6 +1166,7 @@ const styles = StyleSheet.create({
   headerRight:          { alignItems: 'flex-end' },
   headerRightText:      { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, fontWeight: FONT_WEIGHT.semibold },
   headerAlertText:      { fontSize: FONT_SIZE.xs, color: STATUS.error, fontWeight: FONT_WEIGHT.bold, marginTop: 2 },
+  headerInjuryText:     { fontSize: FONT_SIZE.xs, color: STATUS.warning, fontWeight: FONT_WEIGHT.bold, marginTop: 2 },
   profileBtn:           { paddingVertical: SPACE.sm, paddingHorizontal: SPACE.md, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: RADIUS.sm },
   profileBtnText:       { color: '#fff', fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold },
   headerStats:          { flexDirection: 'row', alignItems: 'center', gap: SPACE.lg - 2 },
@@ -1142,13 +1204,21 @@ const styles = StyleSheet.create({
   avatar:               { width: 38, height: 38, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center' },
   avatarText:           { color: '#fff', fontWeight: FONT_WEIGHT.bold, fontSize: FONT_SIZE.sm },
   athleteInfo:          { flex: 1 },
+  athleteNameRow:       { flexDirection: 'row', alignItems: 'center', gap: SPACE.xs },
   athleteName:          { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  injuryBadge:          { fontSize: 14 },
   athleteSub:           { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 2 },
   alertText:            { fontSize: FONT_SIZE.xs, color: STATUS.error, marginTop: 2, fontWeight: FONT_WEIGHT.semibold },
   milesBox:             { alignItems: 'center' },
   milesNum:             { fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold },
   milesLabel:           { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted },
   chevron:              { fontSize: 22, color: NEUTRAL.input },
+  injurySection:        { marginTop: SPACE.sm, marginBottom: SPACE.md },
+  injurySectionTitle:   { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: STATUS.warning, marginBottom: SPACE.md },
+  injuryCard:           { backgroundColor: STATUS.warningBg, borderRadius: RADIUS.lg, padding: SPACE.lg - 2, marginBottom: SPACE.md, borderLeftWidth: 4, borderLeftColor: STATUS.warning },
+  injuryAthleteName:    { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.sm },
+  injuryDetail:         { fontSize: FONT_SIZE.sm, color: NEUTRAL.label, marginBottom: 3 },
+  injuryRec:            { fontSize: FONT_SIZE.xs, color: STATUS.warning, marginTop: SPACE.sm, fontWeight: FONT_WEIGHT.semibold },
   alertSection:         { marginTop: SPACE.sm },
   alertSectionTitle:    { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: STATUS.error, marginBottom: SPACE.md },
   alertCard:            { backgroundColor: STATUS.errorBg, borderRadius: RADIUS.lg, padding: SPACE.lg - 2, marginBottom: SPACE.md, borderLeftWidth: 4, borderLeftColor: STATUS.error },

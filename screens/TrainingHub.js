@@ -79,7 +79,7 @@ export default function TrainingHub({ school, athletes, groups, trainingItems, n
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Training</Text>
+        <Text style={styles.headerTitle}>Program</Text>
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>

@@ -52,6 +52,7 @@ import TeammateProfile from './TeammateProfile';
 import TimeframePicker, { TIMEFRAMES, getDateRange } from './TimeframePicker';
 import WellnessCheckIn from './WellnessCheckIn';
 import WorkoutDetailModal from './WorkoutDetailModal';
+import AthleteAnalytics from './AthleteAnalytics';
 
 const EFFORT_LABELS = DESIGN_EFFORT_LABELS;
 const EFFORT_COLORS = DESIGN_EFFORT_COLORS;
@@ -144,6 +145,7 @@ export default function AthleteDashboard({ userData }) {
   const [selectedTeammate,     setSelectedTeammate]     = useState(null);
   const [dailyMessage,         setDailyMessage]         = useState(null);
   const [profileVisible,       setProfileVisible]       = useState(false);
+  const [statsVisible,         setStatsVisible]         = useState(false);
   const [feedVisible,          setFeedVisible]          = useState(false);
   const [unreadFeedCount,      setUnreadFeedCount]      = useState(0);
   const [messageModalVisible,  setMessageModalVisible]  = useState(false);
@@ -871,6 +873,8 @@ export default function AthleteDashboard({ userData }) {
             sleepQuality: data.sleep,
             legFatigue: data.legs,
             mood: data.mood,
+            ...(data.injury && { injury: data.injury }),
+            ...(data.illness && { illness: data.illness }),
           });
           setTodayCheckinDone(true);
         } catch (e) { console.warn('Failed to save daily check-in:', e); }
@@ -936,6 +940,18 @@ export default function AthleteDashboard({ userData }) {
           <ChannelList userData={userData} school={school} onClose={() => { setFeedVisible(false); loadDashboard(); }} />
         </View>
       )}
+      {statsVisible && (
+        <View style={styles.subScreen}>
+          <AthleteAnalytics
+            userData={userData}
+            school={school}
+            myGroup={myGroup}
+            athleteAge={athleteAge}
+            teamZoneSettings={teamZoneSettings}
+            onClose={() => setStatsVisible(false)}
+          />
+        </View>
+      )}
       {profileVisible && (
         <View style={styles.subScreen}>
           <AthleteProfile userData={userData} school={school} coachDisabledHR={coachDisabledHR} onClose={async () => {
@@ -953,19 +969,23 @@ export default function AthleteDashboard({ userData }) {
 
       {/* ── Persistent bottom nav (rendered last = on top) ── */}
       <View style={styles.bottomNav}>
-        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setStravaVisible(false); setFeedVisible(false); setProfileVisible(false); }}>
-          <Ionicons name="home-outline" size={24} color={!calendarVisible && !stravaVisible && !feedVisible && !profileVisible ? BRAND : NEUTRAL.muted} />
-          <Text style={[styles.bottomNavLabel, !calendarVisible && !stravaVisible && !feedVisible && !profileVisible && { color: BRAND }]}>Home</Text>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setStravaVisible(false); setFeedVisible(false); setProfileVisible(false); setStatsVisible(false); }}>
+          <Ionicons name="home-outline" size={24} color={!calendarVisible && !stravaVisible && !feedVisible && !profileVisible && !statsVisible ? BRAND : NEUTRAL.muted} />
+          <Text style={[styles.bottomNavLabel, !calendarVisible && !stravaVisible && !feedVisible && !profileVisible && !statsVisible && { color: BRAND }]}>Home</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { handleLogRunTap(); }}>
           <Ionicons name="add-circle-outline" size={24} color={NEUTRAL.muted} />
           <Text style={styles.bottomNavLabel}>Log run</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setStravaVisible(false); setFeedVisible(false); setProfileVisible(false); setCalendarVisible(true); }}>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setStravaVisible(false); setFeedVisible(false); setProfileVisible(false); setStatsVisible(false); setCalendarVisible(true); }}>
           <Ionicons name="calendar-outline" size={24} color={calendarVisible ? BRAND : NEUTRAL.muted} />
           <Text style={[styles.bottomNavLabel, calendarVisible && { color: BRAND }]}>Calendar</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setStravaVisible(false); setProfileVisible(false); setFeedVisible(true); }}>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setStravaVisible(false); setFeedVisible(false); setProfileVisible(false); setStatsVisible(true); }}>
+          <Ionicons name="stats-chart-outline" size={24} color={statsVisible ? BRAND : NEUTRAL.muted} />
+          <Text style={[styles.bottomNavLabel, statsVisible && { color: BRAND }]}>Stats</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setStravaVisible(false); setProfileVisible(false); setStatsVisible(false); setFeedVisible(true); }}>
           <View>
             <Ionicons name="chatbubbles-outline" size={24} color={feedVisible ? BRAND : NEUTRAL.muted} />
             {unreadFeedCount > 0 && (
