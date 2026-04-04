@@ -125,8 +125,10 @@ export default function CoachAnalytics({
       const injuryRate = allCheckins.length > 0 ? Math.round((allCheckins.filter(c => c.injury).length / allCheckins.length) * 100) : 0;
       const illnessRate = allCheckins.length > 0 ? Math.round((allCheckins.filter(c => c.illness).length / allCheckins.length) * 100) : 0;
 
-      // Active injuries grouped by body location
+      // Active injuries grouped by body location — include athlete names
       const activeInjuryMap = {};
+      const athleteNameMap = {};
+      athletes.forEach(a => { athleteNameMap[a.id] = `${a.firstName} ${a.lastName}`; });
       allCheckins.forEach(c => {
         if (!c.injury?.locations) return;
         c.injury.locations.forEach(loc => {
@@ -135,10 +137,31 @@ export default function CoachAnalytics({
         });
       });
       const activeInjuries = Object.entries(activeInjuryMap)
-        .map(([loc, ids]) => ({ location: loc, count: ids.size }))
+        .map(([loc, ids]) => ({
+          location: loc,
+          count: ids.size,
+          athleteNames: [...ids].map(id => athleteNameMap[id] || 'Unknown').sort(),
+        }))
         .sort((a, b) => b.count - a.count);
 
-      setWellnessData({ athleteAvgs, teamAvgSleep, teamAvgLegs, teamAvgMood, totalCheckins: allCheckins.length, injuryRate, illnessRate, activeInjuries });
+      // Active illnesses grouped by symptom — include athlete names
+      const activeIllnessMap = {};
+      allCheckins.forEach(c => {
+        if (!c.illness?.symptoms) return;
+        c.illness.symptoms.forEach(sym => {
+          if (!activeIllnessMap[sym]) activeIllnessMap[sym] = new Set();
+          activeIllnessMap[sym].add(c.userId);
+        });
+      });
+      const activeIllnesses = Object.entries(activeIllnessMap)
+        .map(([sym, ids]) => ({
+          symptom: sym,
+          count: ids.size,
+          athleteNames: [...ids].map(id => athleteNameMap[id] || 'Unknown').sort(),
+        }))
+        .sort((a, b) => b.count - a.count);
+
+      setWellnessData({ athleteAvgs, teamAvgSleep, teamAvgLegs, teamAvgMood, totalCheckins: allCheckins.length, injuryRate, illnessRate, activeInjuries, activeIllnesses });
     } catch (e) {
       console.warn('Failed to load wellness data:', e);
       setWellnessData({ athleteAvgs: {}, teamAvgSleep: null, teamAvgLegs: null, teamAvgMood: null, totalCheckins: 0 });
@@ -526,17 +549,6 @@ export default function CoachAnalytics({
                   {renderRateGauge(wellnessData.illnessRate, '🤒 Illness rate')}
                 </View>
               )}
-              {wellnessData.activeInjuries?.length > 0 && (
-                <View style={styles.activeInjuryRow}>
-                  {wellnessData.activeInjuries.map(inj => (
-                    <View key={inj.location} style={styles.activeInjuryChip}>
-                      <Text style={styles.activeInjuryText}>
-                        {inj.location.charAt(0).toUpperCase() + inj.location.slice(1)} — {inj.count} athlete{inj.count > 1 ? 's' : ''}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              )}
               {concernAthletes.length > 0 && (
                 <Text style={styles.wellnessConcernHint}>{concernAthletes.length} athlete{concernAthletes.length > 1 ? 's' : ''} showing concern signals</Text>
               )}
@@ -547,6 +559,38 @@ export default function CoachAnalytics({
         </TouchableOpacity>
         {expandedSection === 'wellness' && (
           <View style={styles.detail}>
+            {/* Active injuries & illness breakdown */}
+            {wellnessData?.activeInjuries?.length > 0 && (
+              <View style={styles.activeInjurySection}>
+                <Text style={styles.activeInjurySectionTitle}>🩹 Active injuries this week</Text>
+                {wellnessData.activeInjuries.map(inj => (
+                  <View key={inj.location} style={styles.activeInjuryChip}>
+                    <Text style={styles.activeInjuryLabel}>
+                      {inj.location.charAt(0).toUpperCase() + inj.location.slice(1)}
+                    </Text>
+                    <Text style={styles.activeInjuryNames}>
+                      {inj.athleteNames?.join(', ')}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+            {wellnessData?.activeIllnesses?.length > 0 && (
+              <View style={styles.activeInjurySection}>
+                <Text style={styles.activeInjurySectionTitle}>🤒 Active illness this week</Text>
+                {wellnessData.activeIllnesses.map(ill => (
+                  <View key={ill.symptom} style={[styles.activeInjuryChip, { borderLeftColor: STATUS.warning }]}>
+                    <Text style={styles.activeInjuryLabel}>
+                      {ill.symptom.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase())}
+                    </Text>
+                    <Text style={styles.activeInjuryNames}>
+                      {ill.athleteNames?.join(', ')}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
             {/* All athletes sorted: concerns first, then healthy reporters, then non-reporting */}
             {athletes.length === 0 ? (
               <Text style={styles.detailEmpty}>No athletes on the team.</Text>
@@ -772,9 +816,11 @@ const styles = StyleSheet.create({
   pctBadge:        { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
   signalText:      { fontSize: FONT_SIZE.xs, color: STATUS.error, marginTop: 2 },
   noDataText:      { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted, marginTop: SPACE.md, textAlign: 'center' },
-  activeInjuryRow:   { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.sm, marginTop: SPACE.md },
-  activeInjuryChip:  { backgroundColor: STATUS.warningBg, borderRadius: RADIUS.full, paddingHorizontal: SPACE.md, paddingVertical: SPACE.xs, borderWidth: 1, borderColor: STATUS.warning + '40' },
-  activeInjuryText:  { fontSize: FONT_SIZE.xs, color: STATUS.warning, fontWeight: FONT_WEIGHT.semibold },
+  activeInjurySection:      { marginTop: SPACE.lg },
+  activeInjurySectionTitle: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.sm },
+  activeInjuryChip:         { backgroundColor: STATUS.errorBg, borderRadius: RADIUS.md, padding: SPACE.md, marginBottom: SPACE.sm, borderLeftWidth: 3, borderLeftColor: STATUS.error },
+  activeInjuryLabel:        { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  activeInjuryNames:        { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginTop: 2 },
   wellnessConcernHint: { fontSize: FONT_SIZE.xs, color: STATUS.warning, fontWeight: FONT_WEIGHT.semibold, marginTop: SPACE.md },
   wellnessScores:  { flexDirection: 'row', gap: SPACE.sm },
   wellnessScore:   { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },

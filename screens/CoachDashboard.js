@@ -121,12 +121,17 @@ async function checkOvertraining(athleteId) {
     const [runsSnap, checkinSnap] = await Promise.all([
       getDocs(query(collection(db, 'runs'), where('userId', '==', athleteId),
         where('date', '>=', fourWeeksAgo), orderBy('date', 'desc'))),
-      getDocs(query(collection(db, 'checkins'), where('userId', '==', athleteId),
-        where('date', '>=', thisMonday), orderBy('date', 'desc'))).catch(() => ({ docs: [] })),
+      // Query without orderBy to avoid needing a composite index — sort client-side
+      getDocs(query(collection(db, 'checkins'), where('userId', '==', athleteId)))
+        .catch(() => ({ docs: [] })),
     ]);
 
     const allRuns = runsSnap.docs.map(d => d.data());
-    const checkins = checkinSnap.docs.map(d => d.data());
+    const getCheckinDate = (c) => c.date?.toDate ? c.date.toDate() : new Date(c.date);
+    const checkins = checkinSnap.docs
+      .map(d => d.data())
+      .filter(c => getCheckinDate(c) >= thisMonday)
+      .sort((a, b) => getCheckinDate(b) - getCheckinDate(a));
 
     // Bucket runs into Monday-aligned weeks
     const getRunDate = (r) => r.date?.toDate ? r.date.toDate() : new Date(r.date);
@@ -181,25 +186,25 @@ async function checkOvertraining(athleteId) {
       if (recentAvgSleep < 2.5) signals.push({ text: 'Poor sleep reported' });
     }
 
-    // Today's injury/illness from most recent check-in
-    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-    const todayCheckin = checkins.find(c => {
-      const d = c.date?.toDate ? c.date.toDate() : new Date(c.date);
-      return d >= todayStart;
-    });
-    const todayInjury = todayCheckin?.injury || null;
-    const todayIllness = todayCheckin?.illness || null;
+    // Most recent injury/illness — use latest check-in this week (not just today)
+    // so the coach sees it even if the athlete hasn't checked in yet today
+    const latestCheckin = checkins[0] || null; // already sorted desc by date
+    const latestInjury = latestCheckin?.injury || null;
+    const latestIllness = latestCheckin?.illness || null;
+    const latestCheckinDate = latestCheckin?.date?.toDate
+      ? latestCheckin.date.toDate()
+      : latestCheckin?.date ? new Date(latestCheckin.date) : null;
 
     // Moderate/severe injury feeds into overtraining signal
-    if (todayInjury && (todayInjury.severity === 'moderate' || todayInjury.severity === 'severe')) {
-      const loc = todayInjury.locations?.join(', ') || 'unspecified';
-      signals.push({ text: `Reported ${todayInjury.severity} injury (${loc})` });
+    if (latestInjury && (latestInjury.severity === 'moderate' || latestInjury.severity === 'severe')) {
+      const loc = latestInjury.locations?.join(', ') || 'unspecified';
+      signals.push({ text: `Reported ${latestInjury.severity} injury (${loc})` });
     }
 
     const hasSoloTrigger = signals.some(s => s.solo);
     const alert = hasSoloTrigger || signals.filter(s => !s.solo).length >= 2;
-    return { alert, signals: signals.map(s => s.text), todayInjury, todayIllness };
-  } catch { return { alert: false, signals: [], todayInjury: null, todayIllness: null }; }
+    return { alert, signals: signals.map(s => s.text), todayInjury: latestInjury, todayIllness: latestIllness, injuryCheckinDate: latestCheckinDate };
+  } catch { return { alert: false, signals: [], todayInjury: null, todayIllness: null, injuryCheckinDate: null }; }
 }
 
 // ── Zone % helper — same 3-tier system used everywhere else in the app ────────
@@ -285,6 +290,7 @@ export default function CoachDashboard({ userData }) {
   const [tipText,             setTipText]             = useState('');
   const [sendingTip,          setSendingTip]          = useState(false);
   const [todayTipSent,        setTodayTipSent]        = useState(false);
+  const [injuryCardExpanded,  setInjuryCardExpanded]  = useState(false);
   const [feedVisible,         setFeedVisible]         = useState(false);
   const [zonesVisible,        setZonesVisible]        = useState(false);
   const [analyticsVisible,    setAnalyticsVisible]    = useState(false);
@@ -584,6 +590,7 @@ export default function CoachDashboard({ userData }) {
       athlete={selectedAthlete}
       school={school}
       teamZoneSettings={teamZoneSettings}
+      groups={groups}
       onBack={() => setSelectedAthlete(null)}
     />;
   }
@@ -737,11 +744,6 @@ export default function CoachDashboard({ userData }) {
           <View style={styles.headerRight}>
             <Text style={styles.headerRightText}>{athletes.length} athletes  ·  Code: {school?.joinCode || '--'}</Text>
             {alertCount > 0 && <Text style={styles.headerAlertText}>⚠️ {alertCount} alert{alertCount > 1 ? 's' : ''}</Text>}
-            {(injuredCount > 0 || sickCount > 0) && (
-              <Text style={styles.headerInjuryText}>
-                {injuredCount > 0 ? `🩹 ${injuredCount} injured` : ''}{injuredCount > 0 && sickCount > 0 ? '  ·  ' : ''}{sickCount > 0 ? `🤒 ${sickCount} sick` : ''} today
-              </Text>
-            )}
           </View>
         </View>
       </View>
@@ -765,6 +767,65 @@ export default function CoachDashboard({ userData }) {
             </TouchableOpacity>
           </View>
         )}
+
+        {/* ── Injury / illness alert card — top of page ── */}
+        {(() => {
+          const injuredAthletes = athletes.filter(a => overtTrainingAlerts[a.id]?.todayInjury || overtTrainingAlerts[a.id]?.todayIllness);
+          if (injuredAthletes.length === 0) return null;
+          const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+          const formatWhen = (d) => {
+            if (!d) return '';
+            if (d >= todayStart) return 'today';
+            const daysAgo = Math.round((todayStart - d) / 86400000);
+            return daysAgo === 1 ? 'yesterday' : `${daysAgo}d ago`;
+          };
+          return (
+            <View style={styles.injuryAlertCard}>
+              <TouchableOpacity style={styles.injuryAlertHeader} onPress={() => setInjuryCardExpanded(prev => !prev)}>
+                <Ionicons name="warning" size={20} color={STATUS.error} />
+                <Text style={styles.injuryAlertTitle}>
+                  {injuredAthletes.length} athlete{injuredAthletes.length > 1 ? 's' : ''} reporting injury or illness
+                </Text>
+                <Ionicons name={injuryCardExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={STATUS.error} />
+              </TouchableOpacity>
+              {injuryCardExpanded && injuredAthletes.map(athlete => {
+                const alerts = overtTrainingAlerts[athlete.id];
+                const inj = alerts?.todayInjury;
+                const ill = alerts?.todayIllness;
+                const when = formatWhen(alerts?.injuryCheckinDate);
+                const worstSeverity = [inj?.severity, ill?.severity]
+                  .filter(Boolean)
+                  .reduce((w, s) => s === 'severe' || w === 'severe' ? 'severe' : s === 'moderate' || w === 'moderate' ? 'moderate' : 'mild', 'mild');
+                const sevColor = worstSeverity === 'severe' ? STATUS.error : worstSeverity === 'moderate' ? STATUS.warning : NEUTRAL.label;
+                const rec = worstSeverity === 'severe' ? 'Recommend rest day'
+                  : worstSeverity === 'moderate' ? 'Consider modified workout'
+                  : 'Monitor during practice';
+                return (
+                  <TouchableOpacity key={athlete.id} style={styles.injuryAlertRow} onPress={() => setSelectedAthlete(athlete)}>
+                    <View style={[styles.avatar, { backgroundColor: athlete.avatarColor || BRAND, width: 32, height: 32 }]}>
+                      <Text style={[styles.avatarText, { fontSize: FONT_SIZE.xs }]}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.injuryAlertName}>{athlete.firstName} {athlete.lastName}{when ? <Text style={styles.injuryAlertWhen}> — reported {when}</Text> : ''}</Text>
+                      {inj && (
+                        <Text style={styles.injuryAlertDetail}>
+                          🩹 {inj.locations?.map(l => l.charAt(0).toUpperCase() + l.slice(1)).join(', ')} — <Text style={{ color: sevColor, fontWeight: FONT_WEIGHT.bold }}>{inj.severity}</Text>{inj.note ? ` — "${inj.note}"` : ''}
+                        </Text>
+                      )}
+                      {ill && (
+                        <Text style={styles.injuryAlertDetail}>
+                          🤒 {ill.symptoms?.map(s => s.replace(/_/g, ' ')).join(', ')} — <Text style={{ color: sevColor, fontWeight: FONT_WEIGHT.bold }}>{ill.severity}</Text>
+                        </Text>
+                      )}
+                      <Text style={[styles.injuryAlertRec, { color: sevColor }]}>{rec}</Text>
+                    </View>
+                    <Text style={styles.chevron}>›</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          );
+        })()}
 
         {/* ── Team ── */}
         <View style={styles.section}>
@@ -848,41 +909,6 @@ export default function CoachDashboard({ userData }) {
               [...filteredAthletes]
                 .sort((a, b) => (athleteMiles[b.id] || 0) - (athleteMiles[a.id] || 0))
                 .map((athlete, index) => renderAthleteCard(athlete, index))
-            )}
-
-            {/* Injury & Illness reports */}
-            {filteredAthletes.some(a => overtTrainingAlerts[a.id]?.todayInjury || overtTrainingAlerts[a.id]?.todayIllness) && (
-              <View style={styles.injurySection}>
-                <Text style={styles.injurySectionTitle}>🩹 Injury & illness reports</Text>
-                {filteredAthletes
-                  .filter(a => overtTrainingAlerts[a.id]?.todayInjury || overtTrainingAlerts[a.id]?.todayIllness)
-                  .map(athlete => {
-                    const inj = overtTrainingAlerts[athlete.id]?.todayInjury;
-                    const ill = overtTrainingAlerts[athlete.id]?.todayIllness;
-                    const worstSeverity = [inj?.severity, ill?.severity]
-                      .filter(Boolean)
-                      .reduce((w, s) => s === 'severe' || w === 'severe' ? 'severe' : s === 'moderate' || w === 'moderate' ? 'moderate' : 'mild', 'mild');
-                    const rec = worstSeverity === 'severe' ? 'Recommend rest day'
-                      : worstSeverity === 'moderate' ? 'Consider modified workout or cross-training'
-                      : 'Monitor during practice';
-                    return (
-                      <View key={athlete.id} style={styles.injuryCard}>
-                        <Text style={styles.injuryAthleteName}>{athlete.firstName} {athlete.lastName}</Text>
-                        {inj && (
-                          <Text style={styles.injuryDetail}>
-                            🩹 {inj.locations?.map(l => l.charAt(0).toUpperCase() + l.slice(1)).join(', ')} ({inj.severity}){inj.note ? ` — "${inj.note}"` : ''}
-                          </Text>
-                        )}
-                        {ill && (
-                          <Text style={styles.injuryDetail}>
-                            🤒 Feeling sick — {ill.symptoms?.map(s => s.replace(/_/g, ' ')).join(', ')} ({ill.severity})
-                          </Text>
-                        )}
-                        <Text style={styles.injuryRec}>→ {rec}</Text>
-                      </View>
-                    );
-                  })}
-              </View>
             )}
 
             {/* Overtraining alerts */}
@@ -1213,12 +1239,14 @@ const styles = StyleSheet.create({
   milesNum:             { fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold },
   milesLabel:           { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted },
   chevron:              { fontSize: 22, color: NEUTRAL.input },
-  injurySection:        { marginTop: SPACE.sm, marginBottom: SPACE.md },
-  injurySectionTitle:   { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: STATUS.warning, marginBottom: SPACE.md },
-  injuryCard:           { backgroundColor: STATUS.warningBg, borderRadius: RADIUS.lg, padding: SPACE.lg - 2, marginBottom: SPACE.md, borderLeftWidth: 4, borderLeftColor: STATUS.warning },
-  injuryAthleteName:    { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.sm },
-  injuryDetail:         { fontSize: FONT_SIZE.sm, color: NEUTRAL.label, marginBottom: 3 },
-  injuryRec:            { fontSize: FONT_SIZE.xs, color: STATUS.warning, marginTop: SPACE.sm, fontWeight: FONT_WEIGHT.semibold },
+  injuryAlertCard:      { marginHorizontal: SPACE.lg, marginTop: SPACE.md, backgroundColor: STATUS.errorBg, borderRadius: RADIUS.lg, padding: SPACE.lg, borderWidth: 1.5, borderColor: STATUS.error + '40' },
+  injuryAlertHeader:    { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
+  injuryAlertTitle:     { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: STATUS.error, flex: 1 },
+  injuryAlertRow:       { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, paddingVertical: SPACE.md, borderTopWidth: 1, borderTopColor: STATUS.error + '20' },
+  injuryAlertName:      { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  injuryAlertDetail:    { fontSize: FONT_SIZE.sm, color: NEUTRAL.label, marginTop: 2 },
+  injuryAlertRec:       { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, marginTop: SPACE.xs },
+  injuryAlertWhen:      { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium, color: NEUTRAL.muted },
   alertSection:         { marginTop: SPACE.sm },
   alertSectionTitle:    { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: STATUS.error, marginBottom: SPACE.md },
   alertCard:            { backgroundColor: STATUS.errorBg, borderRadius: RADIUS.lg, padding: SPACE.lg - 2, marginBottom: SPACE.md, borderLeftWidth: 4, borderLeftColor: STATUS.error },

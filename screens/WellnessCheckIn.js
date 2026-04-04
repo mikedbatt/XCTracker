@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
     Modal,
     Platform,
@@ -122,6 +122,9 @@ function ChipRow({ items, selected, onToggle }) {
 // ── Main component ───────────────────────────────────────────────────────────
 
 export default function WellnessCheckIn({ visible, onComplete, onSkip, onClose, doneLabel, primaryColor }) {
+  const scrollRef = useRef(null);
+  const scrollToEnd = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 150);
+
   // Original wellness fields
   const [sleep, setSleep] = useState(null);
   const [legs, setLegs] = useState(null);
@@ -204,6 +207,7 @@ export default function WellnessCheckIn({ visible, onComplete, onSkip, onClose, 
         </View>
 
         <ScrollView
+          ref={scrollRef}
           style={styles.scrollBody}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
@@ -211,13 +215,13 @@ export default function WellnessCheckIn({ visible, onComplete, onSkip, onClose, 
         >
           {/* ── Original wellness fields ── */}
           <Text style={styles.sectionLabel}>Sleep last night</Text>
-          <OptionRow options={SLEEP_OPTIONS} selected={sleep} onSelect={setSleep} />
+          <OptionRow options={SLEEP_OPTIONS} selected={sleep} onSelect={(v) => { setSleep(v); if (legs !== null) scrollToEnd(); }} />
 
           <Text style={styles.sectionLabel}>How are your legs?</Text>
-          <OptionRow options={LEGS_OPTIONS} selected={legs} onSelect={setLegs} />
+          <OptionRow options={LEGS_OPTIONS} selected={legs} onSelect={(v) => { setLegs(v); if (sleep !== null) scrollToEnd(); }} />
 
           <Text style={styles.sectionLabel}>Mood right now</Text>
-          <OptionRow options={MOOD_OPTIONS} selected={mood} onSelect={setMood} />
+          <OptionRow options={MOOD_OPTIONS} selected={mood} onSelect={(v) => { setMood(v); scrollToEnd(); }} />
 
           {/* ── Gateway question ── */}
           {wellnessComplete && (
@@ -248,7 +252,7 @@ export default function WellnessCheckIn({ visible, onComplete, onSkip, onClose, 
                     styles.gatewayBtn,
                     hasIssue === true && { backgroundColor: STATUS.warning, borderColor: STATUS.warning },
                   ]}
-                  onPress={() => setHasIssue(true)}
+                  onPress={() => { setHasIssue(true); scrollToEnd(); }}
                 >
                   <Text style={styles.gatewayEmoji}>🤕</Text>
                   <Text style={[
@@ -297,8 +301,10 @@ export default function WellnessCheckIn({ visible, onComplete, onSkip, onClose, 
                 <TouchableOpacity
                   style={[styles.sickToggle, illnessFlagged && styles.sickToggleActive]}
                   onPress={() => {
+                    const wasOff = !illnessFlagged;
                     setIllnessFlagged(f => !f);
-                    if (illnessFlagged) { setIllnessSymptoms([]); setIllnessSeverity(null); }
+                    if (!wasOff) { setIllnessSymptoms([]); setIllnessSeverity(null); }
+                    else { scrollToEnd(); }
                   }}
                 >
                   <Text style={styles.sickToggleEmoji}>🤒</Text>

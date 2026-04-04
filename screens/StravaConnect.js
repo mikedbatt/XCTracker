@@ -178,21 +178,15 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
       const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
       const data = userDoc.data();
       const ninetyDaysAgo = Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000);
-      const today = new Date().toISOString().split('T')[0];
       const lastSyncStr = data.stravaLastSync;
-      const lastSyncIsToday = lastSyncStr && lastSyncStr.startsWith(today);
 
-      // If last sync was today (bad state) or no sync yet, go back 90 days
-      // Otherwise go back to start of yesterday to catch any runs logged today
+      // Fetch everything since last sync, or 90 days for first sync
       let lastSync;
-      if (!lastSyncStr || lastSyncIsToday) {
+      if (!lastSyncStr) {
         lastSync = ninetyDaysAgo;
       } else {
-        // Use start of yesterday so we always catch runs from today
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        yesterday.setHours(0, 0, 0, 0);
-        lastSync = Math.floor(yesterday.getTime() / 1000);
+        const lastSyncTime = Math.floor(new Date(lastSyncStr).getTime() / 1000);
+        lastSync = Math.max(lastSyncTime, ninetyDaysAgo);
       }
 
       // Fetch activities from Strava
@@ -336,9 +330,10 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { backgroundColor: primaryColor }]}>
+      <View style={styles.header}>
         <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-          <Text style={styles.backText}>‹ Back</Text>
+          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+          <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Strava Sync</Text>
         <View style={{ width: 60 }} />

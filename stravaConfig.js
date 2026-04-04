@@ -202,20 +202,19 @@ export async function autoSyncStrava(userId, userData, teamZoneSettings) {
       }
     }
 
-    // Work out the sync window — mirrors the logic in StravaConnect.handleSync
-    const ninetyDaysAgo  = Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000);
-    const today          = new Date().toISOString().split('T')[0];
-    const lastSyncStr    = data.stravaLastSync;
-    const lastSyncIsToday = lastSyncStr && lastSyncStr.startsWith(today);
+    // Work out the sync window — fetch everything since last sync
+    const ninetyDaysAgo = Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000);
+    const lastSyncStr   = data.stravaLastSync;
 
     let lastSync;
-    if (!lastSyncStr || lastSyncIsToday) {
+    if (!lastSyncStr) {
+      // First sync ever — go back 90 days
       lastSync = ninetyDaysAgo;
     } else {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      yesterday.setHours(0, 0, 0, 0);
-      lastSync = Math.floor(yesterday.getTime() / 1000);
+      // Parse the stored ISO timestamp and fetch everything since then
+      const lastSyncTime = Math.floor(new Date(lastSyncStr).getTime() / 1000);
+      // Clamp to 90 days max to avoid pulling too much history
+      lastSync = Math.max(lastSyncTime, ninetyDaysAgo);
     }
 
     // Fetch new activities from Strava
@@ -280,14 +279,12 @@ export async function autoSyncStrava(userId, userData, teamZoneSettings) {
       imported++;
     }
 
-    // Update total miles + sync timestamp if anything was imported
+    // Always update sync timestamp so the window advances even when no new runs
+    const updateFields = { stravaLastSync: new Date().toISOString() };
     if (imported > 0) {
-      const newTotal = Math.round(((data.totalMiles || 0) + totalMilesImported) * 10) / 10;
-      await updateDoc(doc(db, 'users', userId), {
-        totalMiles:     newTotal,
-        stravaLastSync: new Date().toISOString(),
-      });
+      updateFields.totalMiles = Math.round(((data.totalMiles || 0) + totalMilesImported) * 10) / 10;
     }
+    await updateDoc(doc(db, 'users', userId), updateFields);
 
     return {
       imported,
