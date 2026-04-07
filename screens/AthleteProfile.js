@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as SecureStore from 'expo-secure-store';
 import { signOut, updateEmail } from 'firebase/auth';
 import {
   doc, getDoc, updateDoc
@@ -140,7 +141,11 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
       'Are you sure you want to sign out?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Sign out', style: 'destructive', onPress: () => signOut(auth) },
+        { text: 'Sign out', style: 'destructive', onPress: async () => {
+          await SecureStore.deleteItemAsync('xctracker_email');
+          await SecureStore.deleteItemAsync('xctracker_password');
+          signOut(auth);
+        }},
       ]
     );
   };
@@ -399,9 +404,12 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
 
         {/* Sign out */}
         <View style={styles.signOutSection}>
-          <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
-            <Text style={styles.signOutBtnText}>Sign out</Text>
-          </TouchableOpacity>
+          <Button
+            label="Sign out"
+            variant="destructive"
+            onPress={handleSignOut}
+            style={{ paddingHorizontal: SPACE['4xl'] }}
+          />
           <Text style={styles.signOutHint}>
             You'll need your email and password to sign back in.
           </Text>

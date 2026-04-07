@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
+import * as SecureStore from 'expo-secure-store';
 import { createUserWithEmailAndPassword, sendPasswordResetEmail, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
@@ -47,7 +48,8 @@ export default function LoginScreen({ onAuthSuccess }) {
   const checkBiometrics = async () => {
     const compatible = await LocalAuthentication.hasHardwareAsync();
     const enrolled = await LocalAuthentication.isEnrolledAsync();
-    setBiometricAvailable(compatible && enrolled);
+    const storedEmail = await SecureStore.getItemAsync('xctracker_email');
+    setBiometricAvailable(compatible && enrolled && !!storedEmail);
   };
 
   const handleBiometricLogin = async () => {
@@ -55,11 +57,28 @@ export default function LoginScreen({ onAuthSuccess }) {
       promptMessage: 'Sign in to XCTracker',
       fallbackLabel: 'Use password instead',
     });
-    if (result.success) {
-      Alert.alert('Success', 'Biometric authentication successful!');
-    } else {
+    if (!result.success) {
       Alert.alert('Failed', 'Biometric authentication failed. Please try your password.');
+      return;
     }
+    setLoading(true);
+    try {
+      const storedEmail = await SecureStore.getItemAsync('xctracker_email');
+      const storedPassword = await SecureStore.getItemAsync('xctracker_password');
+      if (!storedEmail || !storedPassword) {
+        Alert.alert('Sign in required', 'Please sign in with your email and password first to enable biometric login.');
+        setLoading(false);
+        return;
+      }
+      const userCredential = await signInWithEmailAndPassword(auth, storedEmail, storedPassword);
+      if (onAuthSuccess) onAuthSuccess({ uid: userCredential.user.uid });
+    } catch (error) {
+      Alert.alert('Sign in failed', 'Your saved credentials are no longer valid. Please sign in with your email and password.');
+      await SecureStore.deleteItemAsync('xctracker_email');
+      await SecureStore.deleteItemAsync('xctracker_password');
+      setBiometricAvailable(false);
+    }
+    setLoading(false);
   };
 
   const calculateAge = () => {
@@ -142,6 +161,8 @@ export default function LoginScreen({ onAuthSuccess }) {
 
       } else {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        await SecureStore.setItemAsync('xctracker_email', email);
+        await SecureStore.setItemAsync('xctracker_password', password);
         if (onAuthSuccess) onAuthSuccess({ uid: userCredential.user.uid });
       }
     } catch (error) {

@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as SecureStore from 'expo-secure-store';
 import { signOut } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
@@ -86,7 +87,11 @@ export default function ParentDashboard({ userData }) {
   const handleSignOut = () => {
     Alert.alert('Sign out', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', onPress: () => signOut(auth) },
+      { text: 'Sign out', onPress: async () => {
+        await SecureStore.deleteItemAsync('xctracker_email');
+        await SecureStore.deleteItemAsync('xctracker_password');
+        signOut(auth);
+      }},
     ]);
   };
 

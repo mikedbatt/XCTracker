@@ -16,6 +16,7 @@ import {
   FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
 } from '../constants/design';
 import { calcPackAnalysis, formatTime, formatPace } from '../utils/raceUtils';
+import { getAthleteWeeklyTarget, getWeekStatus, computeVolumeCompliance } from '../utils/complianceUtils';
 
 export default function CoachAnalytics({
   athletes, athleteWeeklyMiles, athlete3WeekAvg, athleteWeeklyBreakdown = {},
@@ -170,36 +171,9 @@ export default function CoachAnalytics({
   };
 
   // ── Metric 1: Volume Compliance (last 3 completed weeks) ──
-  const getAthleteTarget = (athlete) => {
-    const group = groups.find(g => g.id === athlete.groupId);
-    if (group?.weeklyMilesTarget) return group.weeklyMilesTarget;
-    const avg = athlete3WeekAvg[athlete.id] || 0;
-    return avg > 0 ? Math.round(avg * 1.1 * 10) / 10 : null;
-  };
-
-  const getWeekStatus = (miles, target) => {
-    if (!target || target <= 0) return 'unknown';
-    const pct = miles / target;
-    return pct >= 0.9 && pct <= 1.1 ? 'on' : pct < 0.9 ? 'under' : 'over';
-  };
-
-  const volumeData = athletes.map(a => {
-    const target = getAthleteTarget(a);
-    const wb = athleteWeeklyBreakdown[a.id] || { w1: 0, w2: 0, w3: 0 };
-    const w1Status = getWeekStatus(wb.w1, target);
-    const w2Status = getWeekStatus(wb.w2, target);
-    const w3Status = getWeekStatus(wb.w3, target);
-    const weeks = [w1Status, w2Status, w3Status];
-    const underCount = weeks.filter(w => w === 'under').length;
-    const overCount = weeks.filter(w => w === 'over').length;
-    // Athlete is flagged if they've been under/over for 2+ of the last 3 weeks
-    const status = overCount >= 2 ? 'over' : underCount >= 2 ? 'under' : 'on';
-    return { ...a, target, wb, w1Status, w2Status, w3Status, status, underCount, overCount };
-  });
-
-  const onTarget = volumeData.filter(a => a.status === 'on');
-  const underTarget = volumeData.filter(a => a.status === 'under');
-  const overTarget = volumeData.filter(a => a.status === 'over');
+  const { volumeData, onTarget, underTarget, overTarget } = computeVolumeCompliance(
+    athletes, groups, athlete3WeekAvg, athleteWeeklyBreakdown
+  );
 
   // ── Metric 2: Intensity Distribution ──
   const athletesWithZones = athletes.filter(a => athleteZonePct[a.id] !== undefined && athleteZonePct[a.id] !== null);

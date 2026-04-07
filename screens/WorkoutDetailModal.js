@@ -9,7 +9,7 @@ import {
     View,
 } from 'react-native';
 import { BRAND, BRAND_DARK } from '../constants/design';
-import { TYPE_COLORS } from './CalendarScreen';
+import { TYPE_COLORS } from '../constants/training';
 
 export default function WorkoutDetailModal({ item, visible, onClose, primaryColor = '#213f96', athleteMiles = null, groupName = null }) {
   if (!item) return null;

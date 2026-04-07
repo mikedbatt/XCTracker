@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as SecureStore from 'expo-secure-store';
 import { signOut } from 'firebase/auth';
 import {
   arrayRemove,
@@ -34,7 +35,8 @@ import {
 import AthleteDetailScreen from '../screens/AthleteDetailScreen';
 import CoachAnalytics from '../screens/CoachAnalytics';
 import CoachProfile from '../screens/CoachProfile';
-import CalendarScreen, { TYPE_COLORS } from '../screens/CalendarScreen';
+import CalendarScreen from '../screens/CalendarScreen';
+import { TYPE_COLORS } from '../constants/training';
 import ManageGroups from '../screens/ManageGroups';
 import ManageSeasons from '../screens/ManageSeasons';
 import RaceManager from '../screens/RaceManager';
@@ -43,6 +45,7 @@ import ChannelList from '../screens/ChannelList';
 import TimeframePicker, { TIMEFRAMES, getDateRange } from '../screens/TimeframePicker';
 import TrainingHub from '../screens/TrainingHub';
 import ZoneSettings from '../screens/ZoneSettings';
+import { computeVolumeCompliance, getCurrentWeekPace, getAthleteWeeklyTarget } from '../utils/complianceUtils';
 import {
   DEFAULT_ZONE_BOUNDARIES,
   calcMaxHR,
@@ -295,6 +298,11 @@ export default function CoachDashboard({ userData }) {
   const [zonesVisible,        setZonesVisible]        = useState(false);
   const [analyticsVisible,    setAnalyticsVisible]    = useState(false);
   const [teamZoneSettings,    setTeamZoneSettings]    = useState(null);
+  const [complianceData,      setComplianceData]      = useState({ onTarget: [], underTarget: [], overTarget: [], volumeData: [] });
+  const [athleteLastRunDate,  setAthleteLastRunDate]  = useState({});
+  const [athleteWeekPace,     setAthleteWeekPace]     = useState({});
+  const [teamPulse,           setTeamPulse]           = useState({ checkinCount: 0, totalAthletes: 0, teamAvgMood: null, inactiveCount: 0 });
+  const [complianceExpanded,  setComplianceExpanded]  = useState(false);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -351,6 +359,7 @@ export default function CoachDashboard({ userData }) {
       const threeWeekAvgMap = {};
       const weekBreakdownMap = {};
       const zonePctMap      = {};
+      const lastRunDateMap  = {};
 
       for (const athlete of approvedAthletes) {
         try {
@@ -360,6 +369,12 @@ export default function CoachDashboard({ userData }) {
             orderBy('date', 'desc')
           ));
           const allRuns = runsSnap.docs.map(d => ({ ...d.data() }));
+
+          // Track most recent run date for inactive detection
+          if (allRuns.length > 0) {
+            const d = allRuns[0].date?.toDate?.();
+            if (d) lastRunDateMap[athlete.id] = d;
+          }
 
           // Timeframe filter for period miles
           const filtered = allRuns.filter(r => {
@@ -435,6 +450,58 @@ export default function CoachDashboard({ userData }) {
       setAthlete3WeekAvg(threeWeekAvgMap);
       setAthleteWeeklyBreakdown(weekBreakdownMap);
       setAthleteZonePct(zonePctMap);
+      setAthleteLastRunDate(lastRunDateMap);
+
+      // ── Compliance computation ──
+      const compliance = computeVolumeCompliance(approvedAthletes, loadedGroups, threeWeekAvgMap, weekBreakdownMap);
+      setComplianceData(compliance);
+
+      // Current-week pace per athlete (time-proportional)
+      const mondayDay = dayOfWeek === 0 ? 7 : dayOfWeek; // 1=Mon … 7=Sun
+      const paceMap = {};
+      for (const a of approvedAthletes) {
+        const target = getAthleteWeeklyTarget(a, loadedGroups, threeWeekAvgMap);
+        paceMap[a.id] = getCurrentWeekPace(weeklyMilesMap[a.id] || 0, target, mondayDay);
+      }
+      setAthleteWeekPace(paceMap);
+
+      // ── Team Pulse: bulk check-in query for this week ──
+      try {
+        const checkinSnap = await getDocs(query(
+          collection(db, 'checkins'),
+          where('schoolId', '==', userData.schoolId),
+          where('date', '>=', weekStart)
+        ));
+        const checkinsByAthlete = {};
+        let moodSum = 0;
+        let moodCount = 0;
+        checkinSnap.docs.forEach(d => {
+          const data = d.data();
+          checkinsByAthlete[data.userId] = true;
+          if (data.mood) { moodSum += data.mood; moodCount++; }
+        });
+        const checkinCount = Object.keys(checkinsByAthlete).length;
+        const threeDaysAgo = new Date(now - 3 * 86400000);
+        const inactiveCount = approvedAthletes.filter(a => {
+          const lastRun = lastRunDateMap[a.id];
+          return !lastRun || lastRun < threeDaysAgo;
+        }).length;
+        setTeamPulse({
+          checkinCount,
+          totalAthletes: approvedAthletes.length,
+          teamAvgMood: moodCount > 0 ? Math.round((moodSum / moodCount) * 10) / 10 : null,
+          inactiveCount,
+        });
+      } catch (e) {
+        console.warn('Team pulse check-in query failed:', e);
+        const threeDaysAgo = new Date(now - 3 * 86400000);
+        setTeamPulse({
+          checkinCount: 0,
+          totalAthletes: approvedAthletes.length,
+          teamAvgMood: null,
+          inactiveCount: approvedAthletes.filter(a => !lastRunDateMap[a.id] || lastRunDateMap[a.id] < threeDaysAgo).length,
+        });
+      }
 
       const alertsMap = {};
       for (const athlete of approvedAthletes) {
@@ -622,7 +689,11 @@ export default function CoachDashboard({ userData }) {
   const handleSignOut = () => {
     Alert.alert('Sign out', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: () => signOut(auth) },
+      { text: 'Sign out', style: 'destructive', onPress: async () => {
+        await SecureStore.deleteItemAsync('xctracker_email');
+        await SecureStore.deleteItemAsync('xctracker_password');
+        signOut(auth);
+      }},
     ]);
   };
 
@@ -691,6 +762,11 @@ export default function CoachDashboard({ userData }) {
     const zonePct     = athleteZonePct[athlete.id];
     const hasZoneData = zonePct !== undefined;
     const zoneLow     = hasZoneData && zonePct !== null && zonePct < 70;
+    const pace        = athleteWeekPace[athlete.id];
+    const paceDotColor = pace?.status === 'on_track' ? STATUS.success
+      : pace?.status === 'caution' ? STATUS.warning
+      : pace?.status === 'behind' || pace?.status === 'ahead' ? STATUS.error
+      : null;
     const line1 = `Wk: ${weekMiles} mi${avg3 > 0 ? ` (avg ${avg3})` : ''}${mileageHigh ? '  ↑' : ''}`;
     const line2 = hasZoneData && zonePct !== null ? `Z1+2: ${zonePct}%${zoneLow ? '  ⚠' : ''}` : null;
 
@@ -704,6 +780,7 @@ export default function CoachDashboard({ userData }) {
           <Text style={styles.rankNum}>#{index + 1}</Text>
           <View style={[styles.avatar, { backgroundColor: hasAlert ? '#ef4444' : (athlete.avatarColor || BRAND) }]}>
             <Text style={styles.avatarText}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
+            {paceDotColor && <View style={[styles.paceDot, { backgroundColor: paceDotColor }]} />}
           </View>
           <View style={styles.athleteInfo}>
             <View style={styles.athleteNameRow}>
@@ -754,21 +831,40 @@ export default function CoachDashboard({ userData }) {
         contentContainerStyle={{ paddingBottom: 90 }}
       >
 
-        {/* Daily message button — head coach only, only show when not yet sent */}
-        {isAdmin && !todayTipSent && (
-          <View style={styles.msgRow}>
-            <TouchableOpacity
-              style={styles.msgBtn}
-              onPress={() => handleOpenTip(currentPhase)}
-            >
-              <Text style={[styles.msgBtnText, { color: '#fff' }]}>
-                💬 Send daily message to team
-              </Text>
-            </TouchableOpacity>
+        {/* ── Today's Plan (top of dashboard) ── */}
+        <View style={{ paddingHorizontal: SPACE.lg, paddingTop: SPACE.md }}>
+          <View style={styles.todaySection}>
+            <Text style={styles.todayLabel}>TODAY</Text>
+            {todayItems.length > 0 ? todayItems.map(item => (
+              <TouchableOpacity key={item.id} style={[styles.todayCard, { borderLeftColor: TYPE_COLORS[item.type] || primaryColor }]} onPress={() => { setAddFromDashboard(false); setTrainingSection('weekly'); }}>
+                <View style={styles.todayCardRow}>
+                  <View style={[styles.typeBadge, { backgroundColor: TYPE_COLORS[item.type] || primaryColor, marginBottom: 0 }]}>
+                    <Text style={styles.typeBadgeText}>{item.type}</Text>
+                  </View>
+                  <Text style={[styles.trainingTitle, { flex: 1 }]} numberOfLines={1}>{item.title}</Text>
+                  {item.baseMiles ? <Text style={styles.todayCardMiles}>{item.baseMiles} mi</Text> : null}
+                  <Ionicons name="chevron-forward" size={16} color={NEUTRAL.input} />
+                </View>
+              </TouchableOpacity>
+            )) : (
+              <View style={styles.emptyCard}>
+                <Text style={styles.emptyText}>No training scheduled today.</Text>
+              </View>
+            )}
+            {isAdmin && !todayTipSent && (
+              <TouchableOpacity
+                style={styles.msgBtn}
+                onPress={() => handleOpenTip(currentPhase)}
+              >
+                <Text style={styles.msgBtnText}>
+                  💬 Send daily message to team
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
-        )}
+        </View>
 
-        {/* ── Injury / illness alert card — top of page ── */}
+        {/* ── Injury / illness alert card ── */}
         {(() => {
           const injuredAthletes = athletes.filter(a => overtTrainingAlerts[a.id]?.todayInjury || overtTrainingAlerts[a.id]?.todayIllness);
           if (injuredAthletes.length === 0) return null;
@@ -826,6 +922,99 @@ export default function CoachDashboard({ userData }) {
             </View>
           );
         })()}
+
+        {/* ── Volume Compliance card (expandable, like injury card) ── */}
+        {(complianceData.underTarget.length > 0 || complianceData.overTarget.length > 0) && (
+          <View style={styles.complianceCard}>
+            <TouchableOpacity style={styles.complianceHeader} onPress={() => setComplianceExpanded(prev => !prev)}>
+              <Ionicons name="trending-up" size={20} color={STATUS.warning} />
+              <Text style={styles.complianceTitle}>
+                Volume Compliance — {complianceData.onTarget.length} on track
+                {complianceData.underTarget.length > 0 ? `, ${complianceData.underTarget.length} under` : ''}
+                {complianceData.overTarget.length > 0 ? `, ${complianceData.overTarget.length} over` : ''}
+              </Text>
+              <Ionicons name={complianceExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={STATUS.warning} />
+            </TouchableOpacity>
+            {complianceExpanded && (
+              <View style={{ marginTop: SPACE.sm }}>
+                {complianceData.underTarget.length > 0 && (
+                  <View style={{ marginBottom: SPACE.sm }}>
+                    <Text style={[styles.complianceGroupLabel, { color: STATUS.error }]}>Under target</Text>
+                    {complianceData.underTarget.map(a => (
+                      <TouchableOpacity key={a.id} style={styles.complianceRow} onPress={() => setSelectedAthlete(a)}>
+                        <View style={[styles.avatar, { backgroundColor: a.avatarColor || BRAND, width: 28, height: 28 }]}>
+                          <Text style={[styles.avatarText, { fontSize: 10 }]}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
+                        </View>
+                        <Text style={styles.complianceRowName}>{a.firstName} {a.lastName}</Text>
+                        <View style={styles.complianceWeeks}>
+                          <Text style={[styles.complianceWeekVal, a.w3Status === 'under' && styles.complianceUnder, a.w3Status === 'over' && styles.complianceOver]}>
+                            {a.w3Status === 'under' ? '↓' : a.w3Status === 'over' ? '↑' : '✓'} {a.wb.w3}
+                          </Text>
+                          <Text style={[styles.complianceWeekVal, a.w2Status === 'under' && styles.complianceUnder, a.w2Status === 'over' && styles.complianceOver]}>
+                            {a.w2Status === 'under' ? '↓' : a.w2Status === 'over' ? '↑' : '✓'} {a.wb.w2}
+                          </Text>
+                          <Text style={[styles.complianceWeekVal, a.w1Status === 'under' && styles.complianceUnder, a.w1Status === 'over' && styles.complianceOver]}>
+                            {a.w1Status === 'under' ? '↓' : a.w1Status === 'over' ? '↑' : '✓'} {a.wb.w1}
+                          </Text>
+                        </View>
+                        {a.target && <Text style={styles.complianceTarget}>{a.target} mi</Text>}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+                {complianceData.overTarget.length > 0 && (
+                  <View style={{ marginBottom: SPACE.sm }}>
+                    <Text style={[styles.complianceGroupLabel, { color: STATUS.warning }]}>Over target</Text>
+                    {complianceData.overTarget.map(a => (
+                      <TouchableOpacity key={a.id} style={styles.complianceRow} onPress={() => setSelectedAthlete(a)}>
+                        <View style={[styles.avatar, { backgroundColor: a.avatarColor || BRAND, width: 28, height: 28 }]}>
+                          <Text style={[styles.avatarText, { fontSize: 10 }]}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
+                        </View>
+                        <Text style={styles.complianceRowName}>{a.firstName} {a.lastName}</Text>
+                        <View style={styles.complianceWeeks}>
+                          <Text style={[styles.complianceWeekVal, a.w3Status === 'under' && styles.complianceUnder, a.w3Status === 'over' && styles.complianceOver]}>
+                            {a.w3Status === 'under' ? '↓' : a.w3Status === 'over' ? '↑' : '✓'} {a.wb.w3}
+                          </Text>
+                          <Text style={[styles.complianceWeekVal, a.w2Status === 'under' && styles.complianceUnder, a.w2Status === 'over' && styles.complianceOver]}>
+                            {a.w2Status === 'under' ? '↓' : a.w2Status === 'over' ? '↑' : '✓'} {a.wb.w2}
+                          </Text>
+                          <Text style={[styles.complianceWeekVal, a.w1Status === 'under' && styles.complianceUnder, a.w1Status === 'over' && styles.complianceOver]}>
+                            {a.w1Status === 'under' ? '↓' : a.w1Status === 'over' ? '↑' : '✓'} {a.wb.w1}
+                          </Text>
+                        </View>
+                        {a.target && <Text style={styles.complianceTarget}>{a.target} mi</Text>}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* ── Team Pulse (compact metrics row) ── */}
+        <View style={styles.pulseRow}>
+          <TouchableOpacity style={styles.pulseCard} onPress={() => { setAnalyticsVisible(true); }}>
+            <Text style={styles.pulseValue}>{complianceData.onTarget.length}/{complianceData.volumeData.length}</Text>
+            <Text style={styles.pulseLabel}>On Track</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.pulseCard} onPress={() => { setAnalyticsVisible(true); }}>
+            <Text style={[styles.pulseValue, teamPulse.teamAvgMood !== null && { color: teamPulse.teamAvgMood >= 3.5 ? STATUS.success : teamPulse.teamAvgMood >= 2.5 ? STATUS.warning : STATUS.error }]}>
+              {teamPulse.teamAvgMood !== null ? teamPulse.teamAvgMood.toFixed(1) : '—'}
+            </Text>
+            <Text style={styles.pulseLabel}>Mood</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.pulseCard} onPress={() => { setAnalyticsVisible(true); }}>
+            <Text style={styles.pulseValue}>{teamPulse.checkinCount}/{teamPulse.totalAthletes}</Text>
+            <Text style={styles.pulseLabel}>Checked In</Text>
+          </TouchableOpacity>
+          {teamPulse.inactiveCount > 0 && (
+            <TouchableOpacity style={[styles.pulseCard, { borderColor: STATUS.warning + '60' }]} onPress={() => { setAnalyticsVisible(true); }}>
+              <Text style={[styles.pulseValue, { color: STATUS.warning }]}>{teamPulse.inactiveCount}</Text>
+              <Text style={styles.pulseLabel}>Inactive 3d+</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
         {/* ── Team ── */}
         <View style={styles.section}>
@@ -928,25 +1117,8 @@ export default function CoachDashboard({ userData }) {
             )}
           </View>
 
-          {/* ── Today's training ── */}
+          {/* ── Upcoming training ── */}
           <View style={styles.section}>
-            <View style={styles.todaySection}>
-              <Text style={styles.todayLabel}>TODAY</Text>
-              {todayItems.length > 0 ? todayItems.map(item => (
-                <View key={item.id} style={[styles.todayCard, { borderLeftColor: TYPE_COLORS[item.type] || primaryColor }]}>
-                  <View style={[styles.typeBadge, { backgroundColor: TYPE_COLORS[item.type] || primaryColor }]}>
-                    <Text style={styles.typeBadgeText}>{item.type}</Text>
-                  </View>
-                  <Text style={styles.trainingTitle}>{item.title}</Text>
-                  {item.description && <Text style={styles.trainingDesc}>{item.description}</Text>}
-                  {item.notes && <Text style={styles.trainingNotes}>{item.notes}</Text>}
-                </View>
-              )) : (
-                <View style={styles.emptyCard}>
-                  <Text style={styles.emptyText}>No training scheduled today.</Text>
-                </View>
-              )}
-            </View>
             <View style={styles.upcomingSection}>
               <View style={styles.upcomingHeader}>
                 <Text style={styles.upcomingSectionTitle}>Upcoming training</Text>
@@ -1228,6 +1400,7 @@ const styles = StyleSheet.create({
   statFlagRed:          { fontSize: FONT_SIZE.xs, color: STATUS.error, fontWeight: FONT_WEIGHT.semibold, marginTop: 2 },
   rankNum:              { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: NEUTRAL.muted, width: 24 },
   avatar:               { width: 38, height: 38, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center' },
+  paceDot:              { position: 'absolute', bottom: -1, right: -1, width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: NEUTRAL.card },
   avatarText:           { color: '#fff', fontWeight: FONT_WEIGHT.bold, fontSize: FONT_SIZE.sm },
   athleteInfo:          { flex: 1 },
   athleteNameRow:       { flexDirection: 'row', alignItems: 'center', gap: SPACE.xs },
@@ -1253,9 +1426,28 @@ const styles = StyleSheet.create({
   alertAthleteName:     { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.sm },
   alertSignal:          { fontSize: FONT_SIZE.sm, color: STATUS.error, marginBottom: 3 },
   alertRec:             { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: SPACE.sm, fontStyle: 'italic' },
-  todaySection:         { marginBottom: SPACE['2xl'] },
-  todayLabel:           { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, color: NEUTRAL.muted, letterSpacing: 1, marginBottom: SPACE.md },
-  todayCard:            { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, borderLeftWidth: 4, marginBottom: SPACE.sm, ...SHADOW.sm },
+  complianceCard:       { marginHorizontal: SPACE.lg, marginTop: SPACE.md, backgroundColor: STATUS.warningBg, borderRadius: RADIUS.lg, padding: SPACE.lg, borderWidth: 1.5, borderColor: STATUS.warning + '40' },
+  complianceHeader:     { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
+  complianceTitle:      { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: STATUS.warning, flex: 1 },
+  complianceGroupLabel: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, marginBottom: SPACE.xs, letterSpacing: 0.5 },
+  complianceRow:        { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, paddingVertical: SPACE.xs + 2 },
+  complianceRowName:    { flex: 1, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: BRAND_DARK },
+  complianceWeeks:      { flexDirection: 'row', gap: SPACE.sm },
+  complianceWeekVal:    { fontSize: FONT_SIZE.xs, color: STATUS.success, fontWeight: FONT_WEIGHT.semibold, minWidth: 40, textAlign: 'right' },
+  complianceUnder:      { color: STATUS.error },
+  complianceOver:       { color: STATUS.warning },
+  complianceTarget:     { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, minWidth: 40, textAlign: 'right' },
+  pulseRow:             { flexDirection: 'row', marginHorizontal: SPACE.lg, marginTop: SPACE.md, gap: SPACE.sm },
+  pulseCard:            { flex: 1, backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.md, alignItems: 'center', borderWidth: 1, borderColor: NEUTRAL.border, ...SHADOW.sm },
+  pulseValue:           { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  pulseLabel:           { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 2 },
+  groupMilesRow:        { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.sm, marginTop: SPACE.sm },
+  groupMilesChip:       { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, backgroundColor: NEUTRAL.bg, borderRadius: RADIUS.sm, paddingHorizontal: SPACE.sm, paddingVertical: 3, overflow: 'hidden' },
+  todaySection:         { marginBottom: SPACE.sm },
+  todayLabel:           { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, color: NEUTRAL.muted, letterSpacing: 1, marginBottom: SPACE.sm },
+  todayCard:            { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, paddingVertical: SPACE.md, paddingHorizontal: SPACE.lg - 2, borderLeftWidth: 4, marginBottom: SPACE.xs, ...SHADOW.sm },
+  todayCardRow:         { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
+  todayCardMiles:       { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, fontWeight: FONT_WEIGHT.semibold },
   upcomingSection:      { marginBottom: SPACE.lg },
   upcomingHeader:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACE.md },
   upcomingSectionTitle: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },

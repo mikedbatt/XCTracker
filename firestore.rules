@@ -1,0 +1,190 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper functions ──────────────────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Get the requesting user's Firestore profile
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Check if user belongs to the given school
+    function belongsToSchool(schoolId) {
+      return isSignedIn() && getUserData().schoolId == schoolId;
+    }
+
+    // Check if user is a coach (admin or assistant) at the given school
+    function isCoachAtSchool(schoolId) {
+      let user = getUserData();
+      return isSignedIn()
+        && user.schoolId == schoolId
+        && (user.role == 'admin_coach' || user.role == 'assistant_coach');
+    }
+
+    // Check if user is the head coach at the given school
+    function isAdminCoachAtSchool(schoolId) {
+      let user = getUserData();
+      return isSignedIn()
+        && user.schoolId == schoolId
+        && user.role == 'admin_coach';
+    }
+
+    // ── Users ─────────────────────────────────────────────────────────────────
+    // Anyone signed in can create their own user doc (signup).
+    // Users can read/update their own doc.
+    // Coaches can read athletes in their school.
+    // Athletes can read teammates (for leaderboard, teammate profiles).
+    match /users/{userId} {
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId)
+        || isCoachAtSchool(resource.data.schoolId);
+      allow read:   if isOwner(userId)
+        || belongsToSchool(resource.data.schoolId);
+      allow delete: if false; // no client-side user deletion
+    }
+
+    // ── Schools ───────────────────────────────────────────────────────────────
+    match /schools/{schoolId} {
+      allow create: if isSignedIn(); // coach creates school during onboarding
+      allow read:   if isSignedIn(); // athletes need to read school during join flow
+      allow update: if isCoachAtSchool(schoolId);
+      allow delete: if false;
+    }
+
+    // ── Runs ──────────────────────────────────────────────────────────────────
+    // Athletes write their own runs. Any signed-in user can read (coach reads
+    // athlete runs; some legacy docs may have schoolId: null).
+    match /runs/{runId} {
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn()
+        && resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn();
+    }
+
+    // ── Check-ins (wellness) ──────────────────────────────────────────────────
+    // Any signed-in user can read (coaches query by schoolId; some docs may
+    // have schoolId: null). Only the athlete who owns the check-in can write.
+    match /checkins/{checkinId} {
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn()
+        && resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn();
+      allow delete: if false;
+    }
+
+    // ── Events (training calendar) ────────────────────────────────────────────
+    match /events/{eventId} {
+      allow read:   if isSignedIn()
+        && belongsToSchool(resource.data.schoolId);
+      allow create: if isCoachAtSchool(request.resource.data.schoolId);
+      allow update: if isCoachAtSchool(resource.data.schoolId);
+      allow delete: if isCoachAtSchool(resource.data.schoolId);
+    }
+
+    // ── Groups (training groups) ──────────────────────────────────────────────
+    match /groups/{groupId} {
+      allow read:   if isSignedIn()
+        && belongsToSchool(resource.data.schoolId);
+      allow create: if isCoachAtSchool(request.resource.data.schoolId);
+      allow update: if isCoachAtSchool(resource.data.schoolId);
+      allow delete: if isCoachAtSchool(resource.data.schoolId);
+    }
+
+    // ── Weekly Drafts (planner) ───────────────────────────────────────────────
+    // Read uses isSignedIn() only — getDoc on non-existent docs fails if we
+    // check resource.data.schoolId (resource.data is null for missing docs).
+    // Doc ID format schoolId_mondayISO already scopes access.
+    match /weeklyDrafts/{draftId} {
+      allow read:   if isSignedIn();
+      allow create: if isCoachAtSchool(request.resource.data.schoolId);
+      allow update: if isCoachAtSchool(resource.data.schoolId);
+      allow delete: if isCoachAtSchool(resource.data.schoolId);
+    }
+
+    // ── Team Posts (messaging) ────────────────────────────────────────────────
+    match /teamPosts/{postId} {
+      allow read:   if isSignedIn()
+        && belongsToSchool(resource.data.schoolId);
+      allow create: if isSignedIn()
+        && belongsToSchool(request.resource.data.schoolId);
+      allow delete: if isCoachAtSchool(resource.data.schoolId)
+        || (isSignedIn() && resource.data.authorId == request.auth.uid);
+      allow update: if false;
+    }
+
+    // ── Race Meets ────────────────────────────────────────────────────────────
+    match /raceMeets/{meetId} {
+      allow read:   if isSignedIn()
+        && belongsToSchool(resource.data.schoolId);
+      allow create: if isCoachAtSchool(request.resource.data.schoolId);
+      allow update: if isCoachAtSchool(resource.data.schoolId);
+      allow delete: if isCoachAtSchool(resource.data.schoolId);
+    }
+
+    // ── Races ─────────────────────────────────────────────────────────────────
+    match /races/{raceId} {
+      allow read:   if isSignedIn()
+        && belongsToSchool(resource.data.schoolId);
+      allow create: if isCoachAtSchool(request.resource.data.schoolId);
+      allow update: if isCoachAtSchool(resource.data.schoolId);
+      allow delete: if isCoachAtSchool(resource.data.schoolId);
+    }
+
+    // ── Race Results ──────────────────────────────────────────────────────────
+    match /raceResults/{resultId} {
+      allow read:   if isSignedIn()
+        && belongsToSchool(resource.data.schoolId);
+      allow create: if isCoachAtSchool(request.resource.data.schoolId);
+      allow update: if isCoachAtSchool(resource.data.schoolId);
+      allow delete: if isCoachAtSchool(resource.data.schoolId);
+    }
+
+    // ── Team Zone Settings ────────────────────────────────────────────────────
+    // Doc ID is the schoolId. Read uses isSignedIn() only because getDoc on
+    // a non-existent doc fails if we check resource.data fields.
+    match /teamZoneSettings/{schoolId} {
+      allow read:   if isSignedIn();
+      allow write:  if isCoachAtSchool(schoolId);
+    }
+
+    // ── Zone Settings (legacy, read-only) ─────────────────────────────────────
+    match /zoneSettings/{docId} {
+      allow read:   if isSignedIn();
+      allow write:  if false;
+    }
+
+    // ── Daily Messages ────────────────────────────────────────────────────────
+    // Doc ID format: schoolId_YYYY-MM-DD
+    match /dailyMessages/{messageId} {
+      allow read:   if isSignedIn();
+      allow create, update: if isSignedIn()
+        && isCoachAtSchool(request.resource.data.schoolId);
+      allow delete: if false;
+    }
+
+    // ── Workout Library ───────────────────────────────────────────────────────
+    match /workoutLibrary/{workoutId} {
+      allow read:   if isSignedIn()
+        && belongsToSchool(resource.data.schoolId);
+      allow create: if isCoachAtSchool(request.resource.data.schoolId);
+      allow delete: if isCoachAtSchool(resource.data.schoolId);
+      allow update: if isCoachAtSchool(resource.data.schoolId);
+    }
+
+    // ── Deny everything else ──────────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

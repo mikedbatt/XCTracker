@@ -42,7 +42,8 @@ import {
   parseBirthdate,
 } from '../zoneConfig';
 import AthleteProfile from './AthleteProfile';
-import CalendarScreen, { TYPE_COLORS } from './CalendarScreen';
+import CalendarScreen from './CalendarScreen';
+import { TYPE_COLORS } from '../constants/training';
 import DatePickerField from './DatePickerField';
 import RunDetailModal from './RunDetailModal';
 import { getActiveSeason } from './SeasonPlanner';

@@ -1,6 +1,7 @@
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
+import * as SecureStore from 'expo-secure-store';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { auth, db } from '../firebaseConfig';
@@ -122,7 +123,11 @@ export default function AppNavigator() {
         <TouchableOpacity style={styles.signOutLink} onPress={() => {
           Alert.alert('Sign out', 'Are you sure?', [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Sign out', style: 'destructive', onPress: () => signOut(auth) },
+            { text: 'Sign out', style: 'destructive', onPress: async () => {
+              await SecureStore.deleteItemAsync('xctracker_email');
+              await SecureStore.deleteItemAsync('xctracker_password');
+              signOut(auth);
+            }},
           ]);
         }}>
           <Text style={styles.signOutLinkText}>Sign out</Text>

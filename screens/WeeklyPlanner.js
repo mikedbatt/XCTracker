@@ -13,7 +13,7 @@ import {
   BRAND, BRAND_ACCENT, BRAND_DARK, BRAND_LIGHT,
   FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
 } from '../constants/design';
-import { CATEGORIES, TYPE_COLORS } from './CalendarScreen';
+import { CATEGORIES, TYPE_COLORS } from '../constants/training';
 import { generateVolumeCurve, getPhaseForSeason } from './SeasonPlanner';
 import WorkoutLibrary from './WorkoutLibrary';
 
@@ -161,7 +161,12 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
         setWeekStatus('empty');
       }
       setDraftDirty(false);
-    } catch (e) { console.warn('Failed to load week data:', e); }
+    } catch (e) {
+      console.warn('Failed to load week data:', e);
+      setDaySlots(Array(7).fill(null).map(EMPTY_SLOT));
+      setWeekStatus('empty');
+      setDraftDirty(false);
+    }
   };
 
   // ── Auto-save draft when navigating away ─────────────────────────────────
