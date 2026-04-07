@@ -927,13 +927,13 @@ export default function CoachDashboard({ userData }) {
         {(complianceData.underTarget.length > 0 || complianceData.overTarget.length > 0) && (
           <View style={styles.complianceCard}>
             <TouchableOpacity style={styles.complianceHeader} onPress={() => setComplianceExpanded(prev => !prev)}>
-              <Ionicons name="trending-up" size={20} color={STATUS.warning} />
+              <Ionicons name="trending-up" size={20} color={BRAND} />
               <Text style={styles.complianceTitle}>
                 Volume Compliance — {complianceData.onTarget.length} on track
                 {complianceData.underTarget.length > 0 ? `, ${complianceData.underTarget.length} under` : ''}
                 {complianceData.overTarget.length > 0 ? `, ${complianceData.overTarget.length} over` : ''}
               </Text>
-              <Ionicons name={complianceExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={STATUS.warning} />
+              <Ionicons name={complianceExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={NEUTRAL.muted} />
             </TouchableOpacity>
             {complianceExpanded && (
               <View style={{ marginTop: SPACE.sm }}>
@@ -1402,9 +1402,9 @@ const styles = StyleSheet.create({
   alertAthleteName:     { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.sm },
   alertSignal:          { fontSize: FONT_SIZE.sm, color: STATUS.error, marginBottom: 3 },
   alertRec:             { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: SPACE.sm, fontStyle: 'italic' },
-  complianceCard:       { marginHorizontal: SPACE.lg, marginTop: SPACE.md, backgroundColor: STATUS.warningBg, borderRadius: RADIUS.lg, padding: SPACE.lg, borderWidth: 1.5, borderColor: STATUS.warning + '40' },
+  complianceCard:       { marginHorizontal: SPACE.lg, marginTop: SPACE.md, backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, borderWidth: 1.5, borderColor: NEUTRAL.border, ...SHADOW.sm },
   complianceHeader:     { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
-  complianceTitle:      { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: STATUS.warning, flex: 1 },
+  complianceTitle:      { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, flex: 1 },
   complianceGroupLabel: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, marginBottom: SPACE.xs, letterSpacing: 0.5 },
   complianceRow:        { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, paddingVertical: SPACE.xs + 2 },
   complianceRowName:    { flex: 1, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: BRAND_DARK },

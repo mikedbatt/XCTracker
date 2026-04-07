@@ -33,15 +33,17 @@ export function getWeekStatus(miles, target) {
  */
 export function getCurrentWeekPace(actualMiles, target, dayOfWeek) {
   if (!target || target <= 0) return { pct: null, status: 'unknown' };
+  // Too early in the week (Mon/Tue) to judge — not enough data
+  if (dayOfWeek <= 2) return { pct: null, status: 'unknown' };
   // What fraction of the week has elapsed (end of today)
   const weekFraction = Math.min(dayOfWeek / 7, 1);
   const expectedSoFar = target * weekFraction;
   if (expectedSoFar <= 0) return { pct: null, status: 'unknown' };
   const pct = Math.round((actualMiles / expectedSoFar) * 100);
   let status;
-  if (pct >= 85 && pct <= 115) status = 'on_track';
-  else if (pct >= 70 && pct <= 130) status = 'caution';
-  else status = pct < 70 ? 'behind' : 'ahead';
+  if (pct >= 75 && pct <= 125) status = 'on_track';
+  else if (pct >= 50 && pct <= 150) status = 'caution';
+  else status = pct < 50 ? 'behind' : 'ahead';
   return { pct, status };
 }
 
