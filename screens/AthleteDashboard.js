@@ -307,13 +307,17 @@ export default function AthleteDashboard({ userData }) {
       if (userDoc.exists()) {
         const freshData = userDoc.data();
         setStravaLinked(!!freshData.stravaAccessToken);
-        if (freshData.pendingParentIds?.length > 0) {
+        const allParentIds = [...(freshData.linkedParentIds || []), ...(freshData.pendingParentIds || [])];
+        const uniqueParentIds = [...new Set(allParentIds)];
+        if (uniqueParentIds.length > 0) {
           const parentData = [];
-          for (const pid of freshData.pendingParentIds) {
+          for (const pid of uniqueParentIds) {
             const pDoc = await getDoc(doc(db, 'users', pid));
             if (pDoc.exists()) parentData.push({ id: pDoc.id, ...pDoc.data() });
           }
           setPendingParents(parentData);
+        } else {
+          setPendingParents([]);
         }
       }
 
@@ -475,24 +479,6 @@ export default function AthleteDashboard({ userData }) {
     ]);
   };
 
-  const handleApproveParent = async (parent, approve) => {
-    try {
-      const user = auth.currentUser;
-      const userSnap = await getDoc(doc(db, 'users', user.uid));
-      const currentData = userSnap.data();
-      const newPending = (currentData.pendingParentIds || []).filter(id => id !== parent.id);
-      if (approve) {
-        await updateDoc(doc(db, 'users', user.uid), { pendingParentIds: newPending, parentIds: [...(currentData.parentIds || []), parent.id] });
-        await updateDoc(doc(db, 'users', parent.id), { status: 'approved' });
-        Alert.alert('Approved!', parent.firstName + ' can now follow your training.');
-      } else {
-        await updateDoc(doc(db, 'users', user.uid), { pendingParentIds: newPending });
-        Alert.alert('Declined', 'Parent request has been declined.');
-      }
-      loadDashboard();
-    } catch { Alert.alert('Error', 'Could not update parent request.'); }
-  };
-
   const handleSignOut = () => {
     Alert.alert('Sign out', 'Are you sure?', [{ text: 'Cancel', style: 'cancel' }, { text: 'Sign out', style: 'destructive', onPress: () => signOut(auth) }]);
   };
@@ -539,6 +525,11 @@ export default function AthleteDashboard({ userData }) {
             <View style={[styles.profileAvatar, { backgroundColor: avatarColor }]}>
               <Text style={styles.profileAvatarText}>{userData.firstName?.[0]}{userData.lastName?.[0]}</Text>
             </View>
+            {pendingParents.length > 0 && (
+              <View style={styles.profileBadge}>
+                <Text style={styles.profileBadgeText}>{pendingParents.length}</Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -681,21 +672,6 @@ export default function AthleteDashboard({ userData }) {
           </View>
         )}
 
-        {pendingParents.length > 0 && pendingParents.map(parent => (
-          <View key={parent.id} style={styles.parentCard}>
-            <Text style={styles.parentTitle}>Parent follow request</Text>
-            <Text style={styles.parentName}>{parent.firstName} {parent.lastName} wants to follow your training.</Text>
-            <View style={styles.parentBtns}>
-              <TouchableOpacity style={styles.approveBtn} onPress={() => handleApproveParent(parent, true)}>
-                <Text style={styles.approveBtnText}>Approve</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.denyBtn} onPress={() => handleApproveParent(parent, false)}>
-                <Text style={styles.denyBtnText}>Decline</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ))}
-
         <View style={styles.timeframeRow}>
           <TimeframePicker selected={selectedTimeframe} onSelect={setSelectedTimeframe} customStart={customStart} customEnd={customEnd} onCustomChange={(s, e) => { setCustomStart(s); setCustomEnd(e); }} activeSeason={getActiveSeason(school)} primaryColor={primaryColor} />
         </View>
@@ -703,7 +679,7 @@ export default function AthleteDashboard({ userData }) {
         {selectedTimeframe.key !== 'week' && (
           <View style={styles.periodMilesCard}>
             <View style={styles.periodMilesRow}>
-              <Text style={styles.periodMilesNum}>{Number(totalMiles).toFixed(2)}</Text>
+              <Text style={styles.periodMilesNum}>{(Math.round(totalMiles * 10) / 10).toFixed(1)}</Text>
               <Text style={styles.periodMilesLabel}>miles — {selectedTimeframe.label?.toLowerCase() || 'selected period'}</Text>
             </View>
 
@@ -803,7 +779,7 @@ export default function AthleteDashboard({ userData }) {
                     <Text style={[styles.leaderName, isMe && { color: BRAND, fontWeight: '700' }]}>{isMe ? 'You' : athlete.firstName + ' ' + athlete.lastName}</Text>
                     {!isMe && <Text style={styles.leaderTap}>Tap to view profile</Text>}
                   </View>
-                  <Text style={[styles.leaderMiles, { color: isMe ? BRAND : BRAND_DARK }]}>{Number(miles).toFixed(2)} mi</Text>
+                  <Text style={[styles.leaderMiles, { color: isMe ? BRAND : BRAND_DARK }]}>{(Math.round(miles * 10) / 10).toFixed(1)} mi</Text>
                 </TouchableOpacity>
               );
             })}
@@ -812,7 +788,7 @@ export default function AthleteDashboard({ userData }) {
                 <Text style={[styles.leaderRank, { color: BRAND }]}>#{displayRank}</Text>
                 <View style={[styles.leaderAvatar, { backgroundColor: avatarColor }]}><Text style={styles.leaderAvatarText}>{userData.firstName?.[0]}{userData.lastName?.[0]}</Text></View>
                 <View style={styles.leaderInfo}><Text style={[styles.leaderName, { color: BRAND, fontWeight: '700' }]}>You</Text></View>
-                <Text style={[styles.leaderMiles, { color: BRAND }]}>{Number(totalMiles).toFixed(2)} mi</Text>
+                <Text style={[styles.leaderMiles, { color: BRAND }]}>{(Math.round(totalMiles * 10) / 10).toFixed(1)} mi</Text>
               </View>
             )}
           </View>
@@ -1015,6 +991,8 @@ const styles = StyleSheet.create({
   profileBtn:          { padding: SPACE.xs },
   profileAvatar:       { width: 40, height: 40, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center' },
   profileAvatarText:   { color: '#fff', fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold },
+  profileBadge:        { position: 'absolute', top: 0, right: 0, backgroundColor: STATUS.error, borderRadius: 9, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  profileBadgeText:    { color: '#fff', fontSize: 10, fontWeight: FONT_WEIGHT.bold },
   syncingBar:          { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginHorizontal: SPACE.lg, marginTop: SPACE.md },
   syncingText:         { color: NEUTRAL.body, fontSize: FONT_SIZE.xs },
   pendingBanner:       { backgroundColor: STATUS.warningBg, borderRadius: RADIUS.md, padding: SPACE.md, marginHorizontal: SPACE.lg, marginTop: SPACE.md, alignItems: 'center', borderLeftWidth: 3, borderLeftColor: STATUS.warning },
@@ -1121,14 +1099,8 @@ const styles = StyleSheet.create({
   runRight:            { alignItems: 'center' },
   effortLabel:         { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted },
   effortValue:         { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.bold, color: BRAND },
-  parentCard:          { margin: SPACE.lg, marginBottom: 0, backgroundColor: STATUS.warningBg, borderRadius: RADIUS.lg, padding: SPACE.lg, borderLeftWidth: 4, borderLeftColor: STATUS.warning },
-  parentTitle:         { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: '#92400e', marginBottom: SPACE.xs },
-  parentName:          { fontSize: FONT_SIZE.sm, color: NEUTRAL.label, marginBottom: SPACE.md },
-  parentBtns:          { flexDirection: 'row', gap: SPACE.md },
-  approveBtn:          { flex: 1, borderRadius: RADIUS.sm, padding: SPACE.md, alignItems: 'center', backgroundColor: BRAND },
-  approveBtnText:      { color: '#fff', fontWeight: FONT_WEIGHT.bold },
-  denyBtn:             { flex: 1, borderRadius: RADIUS.sm, padding: SPACE.md, alignItems: 'center', backgroundColor: STATUS.errorBg },
-  denyBtnText:         { color: STATUS.error, fontWeight: FONT_WEIGHT.bold },
+  parentCard:          { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginHorizontal: SPACE.lg, marginBottom: 0, backgroundColor: BRAND_LIGHT, borderRadius: RADIUS.lg, paddingVertical: SPACE.md, paddingHorizontal: SPACE.lg },
+  parentName:          { fontSize: FONT_SIZE.sm, color: BRAND_DARK, flex: 1 },
   modal:               { flex: 1, backgroundColor: NEUTRAL.bg },
   modalHeader:         { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: SPACE.xl, paddingTop: 60, backgroundColor: NEUTRAL.card, borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
   modalTitle:          { fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },

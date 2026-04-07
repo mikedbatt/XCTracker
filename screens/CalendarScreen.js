@@ -24,11 +24,7 @@ import RunDetailModal from './RunDetailModal';
 // Re-export so existing imports from CalendarScreen keep working
 export { CATEGORIES, TYPE_COLORS };
 
-import WeeklyPlanner from './WeeklyPlanner';
-import { getActiveSeason } from './SeasonPlanner';
-
-export default function CalendarScreen({ userData, school, onClose, autoOpenAdd, prefillWorkout, groups = [], defaultPlannerMode }) {
-  const [plannerMode, setPlannerMode] = useState(defaultPlannerMode || 'calendar');
+export default function CalendarScreen({ userData, school, onClose, autoOpenAdd, prefillWorkout, groups = [], externalAthleteRuns = null }) {
   const [markedDates, setMarkedDates] = useState({});
   const [allItems, setAllItems] = useState([]);
   const [athleteRuns, setAthleteRuns] = useState([]);
@@ -57,16 +53,6 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
   const [notes, setNotes] = useState('');
   const [baseMiles, setBaseMiles] = useState('');
   const [groupAdjustments, setGroupAdjustments] = useState({});
-  const [viewMode, setViewMode] = useState('week');
-  const [weekStart, setWeekStart] = useState(() => {
-    const now = new Date();
-    const day = now.getDay();
-    const mon = new Date(now);
-    mon.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
-    mon.setHours(0, 0, 0, 0);
-    return mon;
-  });
-
   const primaryColor = school?.primaryColor || BRAND;
   const isCoach = userData.role === 'admin_coach' || userData.role === 'assistant_coach';
 
@@ -129,17 +115,21 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
         }
       });
 
-      // Also load athlete's own runs and show as gray dots
-      // This lets athletes see what they actually ran vs what was scheduled
+      // Show athlete runs as gray dots — from Firestore (athlete) or external prop (parent)
       const isAthlete = userData.role === 'athlete';
-      if (isAthlete) {
+      if (isAthlete || externalAthleteRuns) {
         try {
-          const runsSnap = await getDocs(query(
-            collection(db, 'runs'),
-            where('userId', '==', auth.currentUser.uid),
-            orderBy('date', 'desc')
-          ));
-          const runs = runsSnap.docs.map(d => ({ id: d.id, _isRun: true, ...d.data() }));
+          let runs;
+          if (externalAthleteRuns) {
+            runs = externalAthleteRuns.map(r => ({ ...r, _isRun: true }));
+          } else {
+            const runsSnap = await getDocs(query(
+              collection(db, 'runs'),
+              where('userId', '==', auth.currentUser.uid),
+              orderBy('date', 'desc')
+            ));
+            runs = runsSnap.docs.map(d => ({ id: d.id, _isRun: true, ...d.data() }));
+          }
           setAthleteRuns(runs);
           runs.forEach(run => {
             const runDate = run.date?.toDate?.();
@@ -310,146 +300,10 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
         ) : <View style={{ width: 60 }} />}
       </View>
 
-      {/* Calendar / Weekly Plan toggle (coach only) */}
-      {isCoach && (
-        <View style={styles.plannerToggle}>
-          {['calendar', 'planner'].map(m => (
-            <TouchableOpacity
-              key={m}
-              style={[styles.plannerToggleBtn, plannerMode === m && styles.plannerToggleBtnActive]}
-              onPress={() => setPlannerMode(m)}
-            >
-              <Text style={[styles.plannerToggleText, plannerMode === m && styles.plannerToggleTextActive]}>
-                {m === 'calendar' ? 'Calendar' : 'Weekly Plan'}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
-
-      {/* Show WeeklyPlanner or Calendar content */}
-      {plannerMode === 'planner' && isCoach ? (
-        <WeeklyPlanner
-          schoolId={userData.schoolId}
-          userData={userData}
-          school={school}
-          groups={groups}
-          activeSeason={getActiveSeason(school)}
-          onClose={() => setPlannerMode('calendar')}
-        />
-      ) : (
       <>
-
-      {/* View mode toggle */}
-      {isCoach && (
-        <View style={styles.viewToggle}>
-          {['week', 'month'].map(m => (
-            <TouchableOpacity
-              key={m}
-              style={[styles.viewToggleBtn, viewMode === m && { backgroundColor: primaryColor, borderColor: primaryColor }]}
-              onPress={() => setViewMode(m)}
-            >
-              <Text style={[styles.viewToggleBtnText, viewMode === m && { color: '#fff' }]}>
-                {m === 'month' ? 'Month' : 'Week'}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
 
       {loading ? (
         <View style={styles.loading}><ActivityIndicator size="large" color={primaryColor} /></View>
-      ) : viewMode === 'week' && isCoach ? (
-        // ── Week view ──
-        (() => {
-          const weekEnd = new Date(weekStart);
-          weekEnd.setDate(weekStart.getDate() + 6);
-          weekEnd.setHours(23, 59, 59, 999);
-          const days = [];
-          for (let i = 0; i < 7; i++) {
-            const d = new Date(weekStart);
-            d.setDate(weekStart.getDate() + i);
-            days.push(d);
-          }
-          const weekEvents = allItems.filter(e => {
-            const ed = e.date?.toDate?.();
-            return ed && ed >= weekStart && ed <= weekEnd;
-          });
-          // Weekly totals by group
-          const weeklyTotals = {};
-          groups.forEach(g => { weeklyTotals[g.id] = 0; });
-          weekEvents.forEach(e => {
-            if (e.groupMiles) {
-              groups.forEach(g => { weeklyTotals[g.id] += (e.groupMiles[g.id] || 0); });
-            } else if (e.baseMiles) {
-              groups.forEach(g => { weeklyTotals[g.id] += e.baseMiles; });
-            }
-          });
-
-          const weekLabel = `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
-
-          return (
-            <ScrollView style={styles.scroll}>
-              <View style={styles.weekNav}>
-                <TouchableOpacity onPress={() => setWeekStart(prev => { const d = new Date(prev); d.setDate(d.getDate() - 7); return d; })}>
-                  <Text style={[styles.weekNavBtn, { color: primaryColor }]}>‹ Prev</Text>
-                </TouchableOpacity>
-                <Text style={styles.weekNavLabel}>{weekLabel}</Text>
-                <TouchableOpacity onPress={() => setWeekStart(prev => { const d = new Date(prev); d.setDate(d.getDate() + 7); return d; })}>
-                  <Text style={[styles.weekNavBtn, { color: primaryColor }]}>Next ›</Text>
-                </TouchableOpacity>
-              </View>
-
-              {days.map(day => {
-                const dayStr = day.toISOString().split('T')[0];
-                const dayEvents = weekEvents.filter(e => e.date?.toDate?.()?.toISOString().split('T')[0] === dayStr);
-                const dayLabel = day.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-                const isToday = dayStr === new Date().toISOString().split('T')[0];
-                return (
-                  <View key={dayStr} style={[styles.weekDay, isToday && { backgroundColor: primaryColor + '08' }]}>
-                    <View style={styles.weekDayHeader}>
-                      <Text style={[styles.weekDayLabel, isToday && { color: primaryColor, fontWeight: '700' }]}>{dayLabel}</Text>
-                      <TouchableOpacity onPress={() => openNew(day)}>
-                        <Text style={[styles.weekDayAdd, { color: primaryColor }]}>+ Add</Text>
-                      </TouchableOpacity>
-                    </View>
-                    {dayEvents.length === 0 ? (
-                      <Text style={styles.weekDayEmpty}>Rest</Text>
-                    ) : dayEvents.map(event => (
-                      <TouchableOpacity key={event.id} style={styles.weekEvent} onPress={() => { setDetailItem(event); setDetailVisible(true); }}>
-                        <Text style={styles.weekEventTitle}>{event.type} — {event.title}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                );
-              })}
-
-              {/* Weekly totals */}
-              {groups.length > 0 && (
-                <View style={styles.weekTotals}>
-                  <Text style={styles.weekTotalsTitle}>Weekly totals</Text>
-                  {groups.map(g => {
-                    const total = Math.round(weeklyTotals[g.id] * 10) / 10;
-                    const weekMondayISO = weekStart.toISOString().split('T')[0];
-                    const target = g.weeklyPlan?.[weekMondayISO] ?? g.weeklyMilesTarget;
-                    const diff = target ? Math.round((total - target) * 10) / 10 : null;
-                    const onTrack = target && total >= target * 0.9;
-                    return (
-                      <View key={g.id} style={styles.weekTotalRow}>
-                        <Text style={styles.weekTotalName}>{g.name}</Text>
-                        <Text style={[styles.weekTotalMiles, onTrack && { color: BRAND }]}>
-                          {total} mi{target ? ` / ${target}` : ''}{diff != null ? ` (${diff >= 0 ? '+' : ''}${diff})` : ''}
-                        </Text>
-                      </View>
-                    );
-                  })}
-                </View>
-              )}
-
-              <View style={{ height: 40 }} />
-            </ScrollView>
-          );
-        })()
       ) : (
         <ScrollView style={styles.scroll}>
 
@@ -479,10 +333,10 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
                 <Text style={styles.legendText}>{type}</Text>
               </View>
             ))}
-            {userData.role === 'athlete' && (
+            {(userData.role === 'athlete' || externalAthleteRuns) && (
               <View style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: '#9e9e9e' }]} />
-                <Text style={styles.legendText}>My run</Text>
+                <Text style={styles.legendText}>{externalAthleteRuns ? 'Logged run' : 'My run'}</Text>
               </View>
             )}
           </ScrollView>
@@ -526,7 +380,7 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
               {/* Show athlete's logged runs for this day */}
               {selectedRuns.length > 0 && (
                 <View style={styles.runsDaySection}>
-                  <Text style={styles.runsDayTitle}>My logged runs</Text>
+                  <Text style={styles.runsDayTitle}>{externalAthleteRuns ? 'Logged runs' : 'My logged runs'}</Text>
                   {selectedRuns.map(run => (
                     <TouchableOpacity
                       key={run.id}
@@ -816,7 +670,6 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
         </KeyboardAvoidingView>
       </Modal>
     </>
-    )}
     </View>
   );
 }

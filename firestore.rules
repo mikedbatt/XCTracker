@@ -39,17 +39,17 @@ service cloud.firestore {
     }
 
     // ── Users ─────────────────────────────────────────────────────────────────
-    // Anyone signed in can create their own user doc (signup).
-    // Users can read/update their own doc.
-    // Coaches can read athletes in their school.
-    // Athletes can read teammates (for leaderboard, teammate profiles).
+    // Any signed-in user can read user docs. Needed for: parent link flow
+    // (search by email), assistant coach join, teammate profiles, leaderboard.
+    // User docs contain names and roles — not sensitive.
     match /users/{userId} {
       allow create: if isOwner(userId);
-      allow update: if isOwner(userId)
-        || isCoachAtSchool(resource.data.schoolId);
-      allow read:   if isOwner(userId)
-        || belongsToSchool(resource.data.schoolId);
-      allow delete: if false; // no client-side user deletion
+      allow update: if isSignedIn()
+        && (isOwner(userId)
+            || isCoachAtSchool(resource.data.schoolId)
+            || getUserData().role == 'parent');
+      allow read:   if isSignedIn();
+      allow delete: if false;
     }
 
     // ── Schools ───────────────────────────────────────────────────────────────

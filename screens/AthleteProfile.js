@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import { signOut, updateEmail } from 'firebase/auth';
 import {
-  doc, getDoc, updateDoc
+  arrayRemove, doc, getDoc, updateDoc
 } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
@@ -39,11 +39,13 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
   const [showHRZones,   setShowHRZones]   = useState(userData.showHRZones !== false);
   const [hrZoneLoaded,  setHrZoneLoaded]  = useState(false);
   const [avatarColor,   setAvatarColor]   = useState(userData.avatarColor || BRAND);
+  const [linkedParents, setLinkedParents] = useState([]);
 
   useEffect(() => {
     loadMessages();
     checkStrava();
     loadHRZonePref();
+    loadLinkedParents();
   }, []);
 
   const loadHRZonePref = async () => {
@@ -135,6 +137,44 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
     } catch (e) { console.warn('Failed to save HR zone preference:', e); }
   };
 
+  const loadLinkedParents = async () => {
+    try {
+      // Fetch fresh from Firestore — userData prop may be stale
+      const freshSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
+      const freshData = freshSnap.exists() ? freshSnap.data() : {};
+      const allIds = [...(freshData.linkedParentIds || []), ...(freshData.pendingParentIds || [])];
+      const parentIds = [...new Set(allIds)];
+      if (parentIds.length === 0) { setLinkedParents([]); return; }
+      const parents = [];
+      for (const pid of parentIds) {
+        const snap = await getDoc(doc(db, 'users', pid));
+        if (snap.exists()) parents.push({ id: snap.id, ...snap.data() });
+      }
+      setLinkedParents(parents);
+    } catch (e) { console.warn('Failed to load linked parents:', e); }
+  };
+
+  const handleRemoveParent = (parent) => {
+    Alert.alert(
+      'Remove parent?',
+      `${parent.firstName} ${parent.lastName} will no longer be able to see your training data.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: async () => {
+          try {
+            await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+              linkedParentIds: arrayRemove(parent.id),
+            });
+            await updateDoc(doc(db, 'users', parent.id), {
+              linkedAthleteIds: arrayRemove(auth.currentUser.uid),
+            });
+            setLinkedParents(prev => prev.filter(p => p.id !== parent.id));
+          } catch (e) { console.warn('Failed to remove parent:', e); }
+        }},
+      ]
+    );
+  };
+
   const handleSignOut = () => {
     Alert.alert(
       'Sign out',
@@ -197,10 +237,17 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
             style={[styles.tab, activeSection === s && { borderBottomColor: BRAND, borderBottomWidth: 2 }]}
             onPress={() => setActiveSection(s)}
           >
-            <Text style={[styles.tabText, activeSection === s && { color: BRAND, fontWeight: '700' }]}>
-              {sectionLabels[s]}
-              {s === 'messages' && messages.length > 0 ? ` (${messages.length})` : ''}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Text style={[styles.tabText, activeSection === s && { color: BRAND, fontWeight: '700' }]}>
+                {sectionLabels[s]}
+                {s === 'messages' && messages.length > 0 ? ` (${messages.length})` : ''}
+              </Text>
+              {s === 'connections' && linkedParents.length > 0 && (
+                <View style={{ backgroundColor: STATUS.error, borderRadius: 9, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}>
+                  <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>{linkedParents.length}</Text>
+                </View>
+              )}
+            </View>
           </TouchableOpacity>
         ))}
       </View>
@@ -399,6 +446,31 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
                 <Text style={[styles.connectionBtnText, { color: '#ccc' }]}>Soon</Text>
               </View>
             </View>
+
+            {/* Connected Parents */}
+            <Text style={[styles.sectionTitle, { marginTop: SPACE.xl }]}>Connected parents</Text>
+            {linkedParents.length === 0 ? (
+              <View style={styles.emptyCard}>
+                <Text style={styles.emptyTitle}>No parents connected</Text>
+                <Text style={styles.emptySub}>Parents can link to your account using your email address.</Text>
+              </View>
+            ) : linkedParents.map(parent => (
+              <View key={parent.id} style={styles.connectionCard}>
+                <View style={[styles.connectionLogo, { backgroundColor: BRAND }]}>
+                  <Text style={styles.connectionLogoText}>{parent.firstName?.[0]}{parent.lastName?.[0]}</Text>
+                </View>
+                <View style={styles.connectionInfo}>
+                  <Text style={styles.connectionName}>{parent.firstName} {parent.lastName}</Text>
+                  <Text style={styles.connectionStatus}>{parent.email}</Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.connectionBtn, { borderColor: STATUS.error }]}
+                  onPress={() => handleRemoveParent(parent)}
+                >
+                  <Text style={[styles.connectionBtnText, { color: STATUS.error }]}>Remove</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
           </View>
         )}
 

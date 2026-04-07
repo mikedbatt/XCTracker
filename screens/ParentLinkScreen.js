@@ -56,12 +56,12 @@ export default function ParentLinkScreen({ onLinkComplete }) {
       });
 
       await updateDoc(doc(db, 'users', foundAthlete.id), {
-        pendingParentIds: arrayUnion(user.uid),
+        linkedParentIds: arrayUnion(user.uid),
       });
 
       Alert.alert(
-        'Request Sent!',
-        `A follow request has been sent to ${foundAthlete.firstName}. Once they approve it, you'll be able to see their training calendar and mileage.`,
+        'Linked!',
+        `You're now connected to ${foundAthlete.firstName}'s training. You can view their miles, schedule, and recent runs.`,
         [{ text: 'Got it!', onPress: () => onLinkComplete && onLinkComplete() }]
       );
     } catch (error) {

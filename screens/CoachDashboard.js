@@ -41,6 +41,7 @@ import ManageGroups from '../screens/ManageGroups';
 import ManageSeasons from '../screens/ManageSeasons';
 import RaceManager from '../screens/RaceManager';
 import { getActiveSeason, getPhaseForSeason } from '../screens/SeasonPlanner';
+import WeeklyPlanner from '../screens/WeeklyPlanner';
 import ChannelList from '../screens/ChannelList';
 import TimeframePicker, { TIMEFRAMES, getDateRange } from '../screens/TimeframePicker';
 import TrainingHub from '../screens/TrainingHub';
@@ -281,7 +282,7 @@ export default function CoachDashboard({ userData }) {
   const [profileVisible,      setProfileVisible]      = useState(false);
   const [groups,              setGroups]              = useState([]);
   const [groupFilter,         setGroupFilter]         = useState('all');
-  const [trainingSection,     setTrainingSection]     = useState(null); // null | 'groups' | 'seasons' | 'weekly' | 'races'
+  const [trainingSection,     setTrainingSection]     = useState(null); // null | 'hub' | 'groups' | 'seasons' | 'weekly' | 'calendar' | 'races'
   const [nextMeet,            setNextMeet]            = useState(null);
   const [addFromDashboard,    setAddFromDashboard]    = useState(false);
   const [pendingWorkout,      setPendingWorkout]      = useState(null);
@@ -754,8 +755,6 @@ export default function CoachDashboard({ userData }) {
   ) / 10;
 
   const renderAthleteCard = (athlete, index) => {
-    const overtrain   = overtTrainingAlerts[athlete.id];
-    const hasAlert    = overtrain?.alert;
     const weekMiles   = athleteWeeklyMiles[athlete.id] || 0;
     const avg3        = athlete3WeekAvg[athlete.id] || 0;
     const mileageHigh = avg3 > 0 && weekMiles > avg3 * 1.20;
@@ -773,31 +772,24 @@ export default function CoachDashboard({ userData }) {
     return (
       <TouchableOpacity
         key={athlete.id}
-        style={[styles.athleteCard, hasAlert && styles.athleteCardAlert]}
+        style={styles.athleteCard}
         onPress={() => setSelectedAthlete(athlete)}
       >
         <View style={styles.athleteCardTop}>
           <Text style={styles.rankNum}>#{index + 1}</Text>
-          <View style={[styles.avatar, { backgroundColor: hasAlert ? '#ef4444' : (athlete.avatarColor || BRAND) }]}>
+          <View style={[styles.avatar, { backgroundColor: athlete.avatarColor || BRAND }]}>
             <Text style={styles.avatarText}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
             {paceDotColor && <View style={[styles.paceDot, { backgroundColor: paceDotColor }]} />}
           </View>
           <View style={styles.athleteInfo}>
             <View style={styles.athleteNameRow}>
               <Text style={styles.athleteName}>{athlete.firstName} {athlete.lastName}</Text>
-              {overtrain?.todayInjury && <Text style={styles.injuryBadge}>🩹</Text>}
-              {overtrain?.todayIllness && <Text style={styles.injuryBadge}>🤒</Text>}
             </View>
-            {hasAlert
-              ? <Text style={styles.alertText}>⚠️ {overtrain.signals[0]}</Text>
-              : <>
-                  <Text style={styles.athleteSub}>{line1}</Text>
-                  {line2 && <Text style={styles.athleteSub}>{line2}</Text>}
-                </>
-            }
+            <Text style={styles.athleteSub}>{line1}</Text>
+            {line2 && <Text style={styles.athleteSub}>{line2}</Text>}
           </View>
           <View style={styles.milesBox}>
-            <Text style={[styles.milesNum, { color: hasAlert ? STATUS.error : BRAND }]}>
+            <Text style={[styles.milesNum, { color: BRAND }]}>
               {athleteMiles[athlete.id] ?? '—'}
             </Text>
             <Text style={styles.milesLabel}>miles</Text>
@@ -820,7 +812,6 @@ export default function CoachDashboard({ userData }) {
           </View>
           <View style={styles.headerRight}>
             <Text style={styles.headerRightText}>{athletes.length} athletes  ·  Code: {school?.joinCode || '--'}</Text>
-            {alertCount > 0 && <Text style={styles.headerAlertText}>⚠️ {alertCount} alert{alertCount > 1 ? 's' : ''}</Text>}
           </View>
         </View>
       </View>
@@ -1076,21 +1067,6 @@ export default function CoachDashboard({ userData }) {
                 .map((athlete, index) => renderAthleteCard(athlete, index))
             )}
 
-            {/* Overtraining alerts */}
-            {filteredAthletes.some(a => overtTrainingAlerts[a.id]?.alert) && (
-              <View style={styles.alertSection}>
-                <Text style={styles.alertSectionTitle}>⚠️ Overtraining alerts</Text>
-                {filteredAthletes.filter(a => overtTrainingAlerts[a.id]?.alert).map(athlete => (
-                  <View key={athlete.id} style={styles.alertCard}>
-                    <Text style={styles.alertAthleteName}>{athlete.firstName} {athlete.lastName}</Text>
-                    {overtTrainingAlerts[athlete.id].signals.map((sig, i) => (
-                      <Text key={i} style={styles.alertSignal}>• {sig}</Text>
-                    ))}
-                    <Text style={styles.alertRec}>Recommendation: Consider a recovery day or reduce intensity.</Text>
-                  </View>
-                ))}
-              </View>
-            )}
           </View>
 
           {/* ── Upcoming training ── */}
@@ -1170,15 +1146,27 @@ export default function CoachDashboard({ userData }) {
           />
         </View>
       )}
-      {/* Training > Weekly Plans (Calendar/Planner) */}
-      {(trainingSection === 'weekly' || addFromDashboard) && (
+      {/* Training > Weekly Plans */}
+      {(trainingSection === 'weekly' && !addFromDashboard) && (
+        <View style={styles.subScreen}>
+          <WeeklyPlanner
+            schoolId={userData.schoolId}
+            userData={userData}
+            school={school}
+            groups={groups}
+            activeSeason={getActiveSeason(school)}
+            onClose={() => { setTrainingSection('hub'); loadDashboard(); }}
+          />
+        </View>
+      )}
+      {/* Training > Calendar */}
+      {(trainingSection === 'calendar' || addFromDashboard) && (
         <View style={styles.subScreen}>
           <CalendarScreen
             userData={userData} school={school}
             groups={groups}
             autoOpenAdd={addFromDashboard}
             prefillWorkout={pendingWorkout}
-            defaultPlannerMode="planner"
             onClose={() => { setTrainingSection(addFromDashboard ? null : 'hub'); setAddFromDashboard(false); setPendingWorkout(null); loadDashboard(); }}
           />
         </View>

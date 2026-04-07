@@ -54,7 +54,7 @@ export default function TrainingHub({ school, athletes, groups, trainingItems, n
     },
     {
       key: 'seasons',
-      icon: 'calendar-outline',
+      icon: 'time-outline',
       title: 'Manage Seasons',
       subtitle: seasonSummary,
     },
@@ -65,6 +65,12 @@ export default function TrainingHub({ school, athletes, groups, trainingItems, n
       subtitle: thisWeekCount > 0
         ? `This week: ${thisWeekCount} workout${thisWeekCount !== 1 ? 's' : ''} planned`
         : 'Plan your weekly workouts',
+    },
+    {
+      key: 'calendar',
+      icon: 'calendar-outline',
+      title: 'Calendar',
+      subtitle: 'View scheduled workouts and events',
     },
     {
       key: 'races',

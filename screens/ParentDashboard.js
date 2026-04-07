@@ -1,49 +1,58 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import { signOut } from 'firebase/auth';
-import { collection, doc, getDoc, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, orderBy, query, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator, Alert,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator, Alert,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { BRAND, BRAND_DARK } from '../constants/design';
+import {
+  BRAND, BRAND_DARK, BRAND_LIGHT,
+  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
+} from '../constants/design';
 import { auth, db } from '../firebaseConfig';
+import AthleteDetailScreen from './AthleteDetailScreen';
+import CalendarScreen from './CalendarScreen';
+import ParentLinkScreen from './ParentLinkScreen';
 
 export default function ParentDashboard({ userData }) {
   const [athletes, setAthletes] = useState([]);
   const [selectedAthlete, setSelectedAthlete] = useState(null);
+  const [addAthleteVisible, setAddAthleteVisible] = useState(false);
   const [school, setSchool] = useState(null);
-  const [recentRuns, setRecentRuns] = useState([]);
-  const [upcomingEvents, setUpcomingEvents] = useState([]);
+  const [teamZoneSettings, setTeamZoneSettings] = useState(null);
+  const [groups, setGroups] = useState([]);
+  const [athleteRuns, setAthleteRuns] = useState([]);
+  const [upcomingMeets, setUpcomingMeets] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activeView, setActiveView] = useState('training');
 
-  useEffect(() => {
-    loadDashboard();
-  }, []);
+  useEffect(() => { loadDashboard(); }, []);
 
   const loadDashboard = async () => {
     setLoading(true);
     try {
-      // Load linked athletes
-      if (userData.linkedAthleteIds?.length > 0) {
+      const parentSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
+      const parentData = parentSnap.exists() ? parentSnap.data() : userData;
+      const linkedIds = parentData.linkedAthleteIds || [];
+
+      if (linkedIds.length > 0) {
         const athleteData = [];
-        for (const athleteId of userData.linkedAthleteIds) {
+        for (const athleteId of linkedIds) {
           const athleteDoc = await getDoc(doc(db, 'users', athleteId));
           if (athleteDoc.exists()) athleteData.push({ id: athleteDoc.id, ...athleteDoc.data() });
         }
         setAthletes(athleteData);
-
-        // Auto select first athlete
-        const firstAthlete = athleteData[0];
-        if (firstAthlete) {
-          setSelectedAthlete(firstAthlete);
-          await loadAthleteData(firstAthlete);
+        const first = athleteData[0];
+        if (first) {
+          setSelectedAthlete(first);
+          await loadAthleteData(first);
         }
       }
     } catch (error) {
@@ -54,31 +63,38 @@ export default function ParentDashboard({ userData }) {
 
   const loadAthleteData = async (athlete) => {
     try {
-      // Load school
       if (athlete.schoolId) {
-        const schoolDoc = await getDoc(doc(db, 'schools', athlete.schoolId));
-        if (schoolDoc.exists()) setSchool(schoolDoc.data());
+        const [schoolDoc, zoneDoc, groupsSnap, meetsSnap] = await Promise.all([
+          getDoc(doc(db, 'schools', athlete.schoolId)),
+          getDoc(doc(db, 'teamZoneSettings', athlete.schoolId)).catch(() => null),
+          getDocs(query(collection(db, 'groups'), where('schoolId', '==', athlete.schoolId))).catch(() => ({ docs: [] })),
+          getDocs(query(collection(db, 'raceMeets'), where('schoolId', '==', athlete.schoolId))).catch(() => ({ docs: [] })),
+        ]);
 
-        // Load upcoming events
-        const eventsQuery = query(
-          collection(db, 'events'),
-          where('schoolId', '==', athlete.schoolId),
-          orderBy('date', 'asc'),
-          limit(5)
-        );
-        const eventsSnap = await getDocs(eventsQuery);
-        setUpcomingEvents(eventsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        if (schoolDoc.exists()) setSchool({ id: schoolDoc.id, ...schoolDoc.data() });
+        if (zoneDoc?.exists()) setTeamZoneSettings(zoneDoc.data());
+        setGroups(groupsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+        // Upcoming meets
+        const now = new Date();
+        const allMeets = meetsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const upcoming = allMeets
+          .filter(m => { const d = m.date?.toDate ? m.date.toDate() : new Date(m.date); return d >= now; })
+          .sort((a, b) => {
+            const da = a.date?.toDate ? a.date.toDate() : new Date(a.date);
+            const db2 = b.date?.toDate ? b.date.toDate() : new Date(b.date);
+            return da - db2;
+          });
+        setUpcomingMeets(upcoming);
       }
 
-      // Load recent runs
-      const runsQuery = query(
+      // Load athlete's runs for calendar overlay
+      const runsSnap = await getDocs(query(
         collection(db, 'runs'),
         where('userId', '==', athlete.id),
-        orderBy('date', 'desc'),
-        limit(5)
-      );
-      const runsSnap = await getDocs(runsQuery);
-      setRecentRuns(runsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        orderBy('date', 'desc')
+      ));
+      setAthleteRuns(runsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (error) {
       console.error('Athlete data load error:', error);
     }
@@ -95,18 +111,27 @@ export default function ParentDashboard({ userData }) {
     ]);
   };
 
-  if (loading) {
-    return <View style={styles.loading}><ActivityIndicator size="large" color={BRAND} /></View>;
-  }
+  const handleSwitchAthlete = (athlete) => {
+    setSelectedAthlete(athlete);
+    setActiveView('training');
+    loadAthleteData(athlete);
+  };
 
-  const primaryColor = school?.primaryColor || '#213f96';
+  const formatMeetDate = (d) => {
+    const date = d?.toDate ? d.toDate() : new Date(d);
+    return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  };
 
-  // Weekly miles calculation
-  const oneWeekAgo = new Date();
-  oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-  const weeklyMiles = recentRuns
-    .filter(r => r.date?.toDate?.() >= oneWeekAgo)
-    .reduce((sum, r) => sum + (r.miles || 0), 0);
+  const daysUntil = (d) => {
+    const date = d?.toDate ? d.toDate() : new Date(d);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const diff = Math.ceil((date - today) / 86400000);
+    return diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : `${diff} days`;
+  };
+
+  if (loading) return <View style={styles.loading}><ActivityIndicator size="large" color={BRAND} /></View>;
+
+  const primaryColor = school?.primaryColor || BRAND;
 
   return (
     <View style={styles.container}>
@@ -124,159 +149,157 @@ export default function ParentDashboard({ userData }) {
         </View>
 
         {/* Athlete selector */}
-        {athletes.length > 1 && (
+        {athletes.length > 0 && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.athleteSelector}>
             {athletes.map((athlete) => (
               <TouchableOpacity
                 key={athlete.id}
                 style={[styles.athleteChip, selectedAthlete?.id === athlete.id && styles.athleteChipActive]}
-                onPress={() => { setSelectedAthlete(athlete); loadAthleteData(athlete); }}
+                onPress={() => handleSwitchAthlete(athlete)}
               >
                 <Text style={[styles.athleteChipText, selectedAthlete?.id === athlete.id && styles.athleteChipTextActive]}>
                   {athlete.firstName}
                 </Text>
               </TouchableOpacity>
             ))}
+            <TouchableOpacity
+              style={[styles.athleteChip, { borderStyle: 'dashed' }]}
+              onPress={() => setAddAthleteVisible(true)}
+            >
+              <Text style={styles.athleteChipText}>+ Add</Text>
+            </TouchableOpacity>
           </ScrollView>
+        )}
+
+        {/* View toggle */}
+        {selectedAthlete && (
+          <View style={styles.viewToggle}>
+            {[{ key: 'training', icon: 'bar-chart-outline', label: 'Training' }, { key: 'calendar', icon: 'calendar-outline', label: 'Calendar' }].map(v => (
+              <TouchableOpacity
+                key={v.key}
+                style={[styles.toggleBtn, activeView === v.key && { backgroundColor: BRAND, borderColor: BRAND }]}
+                onPress={() => setActiveView(v.key)}
+              >
+                <Ionicons name={v.icon} size={14} color={activeView === v.key ? '#fff' : NEUTRAL.body} />
+                <Text style={[styles.toggleBtnText, activeView === v.key && { color: '#fff' }]}>{v.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         )}
       </View>
 
+      {/* Body */}
       {athletes.length === 0 ? (
         <View style={styles.noAthletes}>
           <Text style={styles.noAthletesTitle}>No athletes linked</Text>
           <Text style={styles.noAthletesText}>
             Ask your athlete to sign up for XCTracker first, then you can link to their account.
           </Text>
+          <TouchableOpacity style={styles.linkBtn} onPress={() => setAddAthleteVisible(true)}>
+            <Text style={styles.linkBtnText}>Link an Athlete</Text>
+          </TouchableOpacity>
+        </View>
+      ) : activeView === 'training' ? (
+        <View style={{ flex: 1 }}>
+          {/* Upcoming meets compact card */}
+          {upcomingMeets.length > 0 && (
+            <TouchableOpacity style={styles.meetsCard} onPress={() => setActiveView('calendar')}>
+              <Ionicons name="flag" size={18} color={STATUS.error} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.meetsCardTitle}>
+                  Next: {upcomingMeets[0].name}
+                </Text>
+                <Text style={styles.meetsCardSub}>
+                  {formatMeetDate(upcomingMeets[0].date)}
+                  {upcomingMeets[0].location ? ` · ${upcomingMeets[0].location}` : ''}
+                  {' · '}{daysUntil(upcomingMeets[0].date)}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={NEUTRAL.muted} />
+            </TouchableOpacity>
+          )}
+
+          {/* Athlete detail (parentMode) */}
+          <AthleteDetailScreen
+            key={selectedAthlete.id}
+            athlete={selectedAthlete}
+            school={school}
+            teamZoneSettings={teamZoneSettings}
+            groups={groups}
+            parentMode
+          />
         </View>
       ) : (
-        <ScrollView style={styles.scroll}>
-
-          {/* Athlete stats */}
-          {selectedAthlete && (
-            <View style={styles.athleteHeader}>
-              <View style={[styles.bigAvatar, { backgroundColor: primaryColor }]}>
-                <Text style={styles.bigAvatarText}>
-                  {selectedAthlete.firstName?.[0]}{selectedAthlete.lastName?.[0]}
-                </Text>
-              </View>
-              <View style={styles.athleteDetails}>
-                <Text style={styles.athleteFullName}>
-                  {selectedAthlete.firstName} {selectedAthlete.lastName}
-                </Text>
-                <Text style={styles.athleteStatus}>
-                  {selectedAthlete.status === 'approved' ? '✓ Active on team' : 'Awaiting coach approval'}
-                </Text>
-              </View>
+        <View style={{ flex: 1 }}>
+          {/* Upcoming meets expanded */}
+          {upcomingMeets.length > 0 && (
+            <View style={styles.meetsSection}>
+              <Text style={styles.meetsSectionTitle}>Upcoming Meets</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {upcomingMeets.map(meet => (
+                  <View key={meet.id} style={styles.meetCard}>
+                    <Text style={styles.meetCardDate}>{formatMeetDate(meet.date)}</Text>
+                    <Text style={styles.meetCardName}>{meet.name}</Text>
+                    {meet.location && <Text style={styles.meetCardLocation}>{meet.location}</Text>}
+                    <Text style={styles.meetCardDays}>{daysUntil(meet.date)}</Text>
+                  </View>
+                ))}
+              </ScrollView>
             </View>
           )}
 
-          {/* Stats row */}
-          <View style={styles.statsRow}>
-            <View style={styles.statCard}>
-              <Text style={styles.statNumber}>{Math.round(weeklyMiles * 10) / 10}</Text>
-              <Text style={styles.statLabel}>Miles this week</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statNumber}>{selectedAthlete?.totalMiles || 0}</Text>
-              <Text style={styles.statLabel}>Total miles</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statNumber}>{recentRuns.length}</Text>
-              <Text style={styles.statLabel}>Recent runs</Text>
-            </View>
-          </View>
+          {/* Calendar */}
+          <CalendarScreen
+            userData={{ ...userData, schoolId: selectedAthlete.schoolId }}
+            school={school}
+            groups={groups}
+            externalAthleteRuns={athleteRuns}
+            onClose={() => setActiveView('training')}
+          />
+        </View>
+      )}
 
-          {/* Upcoming events */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Upcoming Events</Text>
-            {upcomingEvents.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Text style={styles.emptyText}>No upcoming events posted yet.</Text>
-              </View>
-            ) : (
-              upcomingEvents.map((event) => (
-                <View key={event.id} style={styles.eventCard}>
-                  <View style={[styles.eventType, { backgroundColor: event.type === 'race' ? '#dc2626' : BRAND }]}>
-                    <Text style={styles.eventTypeText}>{event.type?.toUpperCase() || 'EVENT'}</Text>
-                  </View>
-                  <View style={styles.eventInfo}>
-                    <Text style={styles.eventTitle}>{event.title}</Text>
-                    {event.location && <Text style={styles.eventDetail}>{event.location}</Text>}
-                    {event.time && <Text style={styles.eventDetail}>{event.time}</Text>}
-                    <Text style={styles.eventDate}>
-                      {event.date?.toDate?.()?.toLocaleDateString() || event.date}
-                    </Text>
-                  </View>
-                </View>
-              ))
-            )}
-          </View>
-
-          {/* Recent runs */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{selectedAthlete?.firstName}'s Recent Runs</Text>
-            {recentRuns.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Text style={styles.emptyText}>No runs logged yet.</Text>
-              </View>
-            ) : (
-              recentRuns.map((run) => (
-                <View key={run.id} style={styles.runCard}>
-                  <Text style={styles.runMiles}>{run.miles} mi</Text>
-                  <Text style={styles.runDate}>{run.date?.toDate?.()?.toLocaleDateString() || 'Today'}</Text>
-                  <Text style={[styles.runEffort, { color: BRAND }]}>Effort: {run.effort}/10</Text>
-                </View>
-              ))
-            )}
-          </View>
-
-        </ScrollView>
+      {/* Add athlete overlay */}
+      {addAthleteVisible && (
+        <View style={styles.overlay}>
+          <ParentLinkScreen onLinkComplete={() => { setAddAthleteVisible(false); loadDashboard(); }} />
+        </View>
       )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F6FA' },
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header: { backgroundColor: '#fff', paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 16, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
-  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  greeting: { fontSize: 22, fontWeight: 'bold', color: '#111827' },
-  schoolName: { fontSize: 14, color: '#6B7280', marginTop: 2 },
-  signOutBtn: { paddingVertical: 6, paddingHorizontal: 12, backgroundColor: '#F5F6FA', borderRadius: 8 },
-  signOutText: { color: '#6B7280', fontSize: 13 },
-  athleteSelector: { marginTop: 12 },
-  athleteChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F5F6FA', marginRight: 8 },
-  athleteChipActive: { backgroundColor: '#213f96' },
-  athleteChipText: { color: '#6B7280', fontWeight: '600' },
+  container:          { flex: 1, backgroundColor: NEUTRAL.bg },
+  loading:            { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  header:             { backgroundColor: NEUTRAL.card, paddingTop: Platform.OS === 'ios' ? SPACE['5xl'] : SPACE['3xl'], paddingBottom: SPACE.md, paddingHorizontal: SPACE.xl, borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
+  headerTop:          { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  greeting:           { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  schoolName:         { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginTop: 2 },
+  signOutBtn:         { paddingVertical: SPACE.xs, paddingHorizontal: SPACE.md, backgroundColor: NEUTRAL.bg, borderRadius: RADIUS.sm },
+  signOutText:        { color: NEUTRAL.body, fontSize: FONT_SIZE.sm },
+  athleteSelector:    { marginTop: SPACE.md },
+  athleteChip:        { paddingHorizontal: SPACE.lg - 2, paddingVertical: SPACE.sm, borderRadius: RADIUS.full, backgroundColor: NEUTRAL.bg, marginRight: SPACE.sm, borderWidth: 1.5, borderColor: NEUTRAL.border },
+  athleteChipActive:  { backgroundColor: BRAND, borderColor: BRAND },
+  athleteChipText:    { color: NEUTRAL.body, fontWeight: FONT_WEIGHT.semibold, fontSize: FONT_SIZE.sm },
   athleteChipTextActive: { color: '#fff' },
-  noAthletes: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
-  noAthletesTitle: { fontSize: 20, fontWeight: 'bold', color: '#111827', marginBottom: 10 },
-  noAthletesText: { fontSize: 15, color: '#6B7280', textAlign: 'center', lineHeight: 22 },
-  scroll: { flex: 1 },
-  athleteHeader: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16 },
-  bigAvatar: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
-  bigAvatarText: { color: '#fff', fontWeight: 'bold', fontSize: 20 },
-  athleteDetails: { flex: 1 },
-  athleteFullName: { fontSize: 18, fontWeight: '700', color: '#111827' },
-  athleteStatus: { fontSize: 13, color: '#6B7280', marginTop: 4 },
-  statsRow: { flexDirection: 'row', paddingHorizontal: 16, gap: 10, marginBottom: 8 },
-  statCard: { flex: 1, backgroundColor: '#fff', borderRadius: 12, padding: 14, alignItems: 'center' },
-  statNumber: { fontSize: 22, fontWeight: 'bold', color: '#111827' },
-  statLabel: { fontSize: 11, color: '#9CA3AF', marginTop: 4, textAlign: 'center' },
-  section: { padding: 16 },
-  sectionTitle: { fontSize: 18, fontWeight: '700', color: '#111827', marginBottom: 12 },
-  emptyCard: { backgroundColor: '#fff', borderRadius: 12, padding: 20, alignItems: 'center' },
-  emptyText: { color: '#9CA3AF', fontSize: 14, textAlign: 'center' },
-  eventCard: { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 10, flexDirection: 'row', gap: 12 },
-  eventType: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, alignSelf: 'flex-start' },
-  eventTypeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  eventInfo: { flex: 1 },
-  eventTitle: { fontSize: 15, fontWeight: '700', color: '#111827' },
-  eventDetail: { fontSize: 13, color: '#6B7280', marginTop: 2 },
-  eventDate: { fontSize: 12, color: '#9CA3AF', marginTop: 4 },
-  runCard: { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  runMiles: { fontSize: 18, fontWeight: 'bold', color: '#111827' },
-  runDate: { fontSize: 13, color: '#9CA3AF' },
-  runEffort: { fontSize: 14, fontWeight: '600' },
+  viewToggle:         { flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md },
+  toggleBtn:          { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.xs, borderRadius: RADIUS.md, paddingVertical: SPACE.sm, borderWidth: 1.5, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.card },
+  toggleBtnText:      { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.body },
+  noAthletes:         { flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACE['3xl'] },
+  noAthletesTitle:    { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.md },
+  noAthletesText:     { fontSize: FONT_SIZE.base, color: NEUTRAL.body, textAlign: 'center', lineHeight: 22, marginBottom: SPACE.xl },
+  linkBtn:            { backgroundColor: BRAND, borderRadius: RADIUS.md, paddingVertical: SPACE.md, paddingHorizontal: SPACE['3xl'] },
+  linkBtnText:        { color: '#fff', fontWeight: FONT_WEIGHT.bold, fontSize: FONT_SIZE.base },
+  meetsCard:          { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, marginHorizontal: SPACE.lg, marginTop: SPACE.md, backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, paddingVertical: SPACE.md, paddingHorizontal: SPACE.lg, borderLeftWidth: 4, borderLeftColor: STATUS.error, ...SHADOW.sm },
+  meetsCardTitle:     { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  meetsCardSub:       { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: 2 },
+  meetsSection:       { paddingHorizontal: SPACE.lg, paddingTop: SPACE.md, paddingBottom: SPACE.xs },
+  meetsSectionTitle:  { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.sm },
+  meetCard:           { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, marginRight: SPACE.md, width: 200, borderLeftWidth: 4, borderLeftColor: STATUS.error, ...SHADOW.sm },
+  meetCardDate:       { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, fontWeight: FONT_WEIGHT.semibold, marginBottom: SPACE.xs },
+  meetCardName:       { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.xs },
+  meetCardLocation:   { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginBottom: SPACE.xs },
+  meetCardDays:       { fontSize: FONT_SIZE.xs, color: STATUS.error, fontWeight: FONT_WEIGHT.bold },
+  overlay:            { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: NEUTRAL.bg, zIndex: 10 },
 });

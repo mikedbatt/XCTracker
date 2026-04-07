@@ -59,7 +59,7 @@ function formatPaceFromSeconds(totalSec) {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function AthleteDetailScreen({ athlete, school, teamZoneSettings, groups, onBack }) {
+export default function AthleteDetailScreen({ athlete, school, teamZoneSettings, groups, onBack, parentMode = false }) {
   const [loading, setLoading] = useState(true);
   const [expandedSection, setExpandedSection] = useState(null);
   const [selectedRun, setSelectedRun] = useState(null);
@@ -369,58 +369,88 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
     <View style={styles.container}>
 
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={onBack} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
-          <Text style={styles.backText}>Back to team</Text>
-        </TouchableOpacity>
-        <View style={styles.athleteRow}>
-          <View style={[styles.avatar, { backgroundColor: athlete.avatarColor || primaryColor }]}>
-            <Text style={styles.avatarText}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
+      {!parentMode && (
+        <View style={styles.header}>
+          <TouchableOpacity onPress={onBack} style={styles.backBtn}>
+            <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+            <Text style={styles.backText}>Back to team</Text>
+          </TouchableOpacity>
+          <View style={styles.athleteRow}>
+            <View style={[styles.avatar, { backgroundColor: athlete.avatarColor || primaryColor }]}>
+              <Text style={styles.avatarText}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
+            </View>
+            <View style={styles.athleteMeta}>
+              <Text style={styles.athleteName}>{athlete.firstName} {athlete.lastName}</Text>
+              <Text style={styles.athleteEmail}>
+                {athlete.email}{athleteGroup ? ` · ${athleteGroup.name}` : ''}
+              </Text>
+            </View>
           </View>
-          <View style={styles.athleteMeta}>
-            <Text style={styles.athleteName}>{athlete.firstName} {athlete.lastName}</Text>
-            <Text style={styles.athleteEmail}>
-              {athlete.email}{athleteGroup ? ` · ${athleteGroup.name}` : ''}
-            </Text>
-          </View>
-        </View>
 
-        <View style={styles.headerStats}>
-          <View style={styles.headerStat}>
-            <Text style={styles.headerStatNum}>{weekMiles}</Text>
-            <Text style={styles.headerStatLabel}>This week</Text>
+          <View style={styles.headerStats}>
+            <View style={styles.headerStat}>
+              <Text style={styles.headerStatNum}>{weekMiles}</Text>
+              <Text style={styles.headerStatLabel}>This week</Text>
+            </View>
+            <View style={styles.headerStatDivider} />
+            <View style={styles.headerStat}>
+              <Text style={styles.headerStatNum}>{monthMiles}</Text>
+              <Text style={styles.headerStatLabel}>This month</Text>
+            </View>
+            <View style={styles.headerStatDivider} />
+            <View style={styles.headerStat}>
+              <Text style={styles.headerStatNum}>{allRuns.length}</Text>
+              <Text style={styles.headerStatLabel}>Total runs</Text>
+            </View>
+            {eighty20 && (
+              <>
+                <View style={styles.headerStatDivider} />
+                <View style={styles.headerStat}>
+                  <Text style={[styles.headerStatNum, {
+                    color: eighty20.easyPct >= 78 ? STATUS.success : eighty20.easyPct >= 70 ? STATUS.warning : STATUS.error,
+                  }]}>{eighty20.easyPct}%</Text>
+                  <Text style={styles.headerStatLabel}>Easy (30d)</Text>
+                </View>
+              </>
+            )}
           </View>
-          <View style={styles.headerStatDivider} />
-          <View style={styles.headerStat}>
-            <Text style={styles.headerStatNum}>{monthMiles}</Text>
-            <Text style={styles.headerStatLabel}>This month</Text>
-          </View>
-          <View style={styles.headerStatDivider} />
-          <View style={styles.headerStat}>
-            <Text style={styles.headerStatNum}>{allRuns.length}</Text>
-            <Text style={styles.headerStatLabel}>Total runs</Text>
-          </View>
-          {eighty20 && (
-            <>
-              <View style={styles.headerStatDivider} />
-              <View style={styles.headerStat}>
-                <Text style={[styles.headerStatNum, {
-                  color: eighty20.easyPct >= 78 ? STATUS.success : eighty20.easyPct >= 70 ? STATUS.warning : STATUS.error,
-                }]}>{eighty20.easyPct}%</Text>
-                <Text style={styles.headerStatLabel}>Easy (30d)</Text>
-              </View>
-            </>
-          )}
         </View>
-      </View>
+      )}
 
       {loading ? (
         <View style={styles.center}><ActivityIndicator size="large" color={BRAND} /></View>
       ) : (
         <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
 
-          {/* ── 1. Readiness & Recovery ── */}
+          {/* Parent mode: athlete name + compact stat cards */}
+          {parentMode && (
+            <View style={styles.parentHeader}>
+              <View style={styles.athleteRow}>
+                <View style={[styles.avatar, { backgroundColor: athlete.avatarColor || primaryColor }]}>
+                  <Text style={styles.avatarText}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
+                </View>
+                <View style={styles.athleteMeta}>
+                  <Text style={styles.athleteName}>{athlete.firstName} {athlete.lastName}</Text>
+                  <Text style={styles.athleteEmail}>
+                    {athleteGroup ? athleteGroup.name : ''}{athlete.gender ? `${athleteGroup ? ' · ' : ''}${athlete.gender === 'boys' ? 'Boys' : 'Girls'}` : ''}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.parentStats}>
+                <View style={styles.parentStatCard}>
+                  <Text style={styles.parentStatNum}>{weekMiles}</Text>
+                  <Text style={styles.parentStatLabel}>This week</Text>
+                </View>
+                <View style={styles.parentStatCard}>
+                  <Text style={styles.parentStatNum}>{monthMiles}</Text>
+                  <Text style={styles.parentStatLabel}>This month</Text>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* ── 1. Readiness & Recovery (coach only) ── */}
+          {!parentMode && (<>
           <TouchableOpacity style={styles.section} onPress={() => toggle('readiness')} activeOpacity={0.8}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionNum}>1</Text>
@@ -488,7 +518,10 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
             </View>
           )}
 
-          {/* ── 2. Training Quality ── */}
+          </>)}
+
+          {/* ── 2. Training Quality (coach only) ── */}
+          {!parentMode && (<>
           <TouchableOpacity style={styles.section} onPress={() => toggle('quality')} activeOpacity={0.8}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionNum}>2</Text>
@@ -557,10 +590,12 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
             </View>
           )}
 
+          </>)}
+
           {/* ── 3. Season Volume Arc ── */}
           <TouchableOpacity style={styles.section} onPress={() => toggle('volume')} activeOpacity={0.8}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionNum}>3</Text>
+              <Text style={styles.sectionNum}>{parentMode ? '1' : '3'}</Text>
               <View style={{ flex: 1 }}>
                 <Text style={styles.sectionTitle}>Season Volume Arc</Text>
                 <Text style={styles.sectionSub}>
@@ -627,7 +662,7 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
           {/* ── 4. Race Performance ── */}
           <TouchableOpacity style={styles.section} onPress={() => toggle('races')} activeOpacity={0.8}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionNum}>4</Text>
+              <Text style={styles.sectionNum}>{parentMode ? '2' : '4'}</Text>
               <View style={{ flex: 1 }}>
                 <Text style={styles.sectionTitle}>Race Performance</Text>
                 <Text style={styles.sectionSub}>{myResults.length} race{myResults.length !== 1 ? 's' : ''} this season</Text>
@@ -685,7 +720,8 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
             </View>
           )}
 
-          {/* ── 5. Fitness Fingerprint ── */}
+          {/* ── 5. Fitness Fingerprint (coach only) ── */}
+          {!parentMode && (<>
           <TouchableOpacity style={styles.section} onPress={() => toggle('fitness')} activeOpacity={0.8}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionNum}>5</Text>
@@ -762,10 +798,12 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
             </View>
           )}
 
+          </>)}
+
           {/* ── 6. Run History ── */}
           <TouchableOpacity style={styles.section} onPress={() => toggle('runs')} activeOpacity={0.8}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionNum}>6</Text>
+              <Text style={styles.sectionNum}>{parentMode ? '3' : '6'}</Text>
               <View style={{ flex: 1 }}>
                 <Text style={styles.sectionTitle}>Run History</Text>
                 <Text style={styles.sectionSub}>{allRuns.length} run{allRuns.length !== 1 ? 's' : ''} logged</Text>
@@ -832,6 +870,11 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
 const styles = StyleSheet.create({
   container:      { flex: 1, backgroundColor: NEUTRAL.bg },
   center:         { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  parentHeader:   { backgroundColor: NEUTRAL.card, padding: SPACE.lg, borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
+  parentStats:    { flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.md },
+  parentStatCard: { flex: 1, backgroundColor: NEUTRAL.bg, borderRadius: RADIUS.lg, padding: SPACE.md, alignItems: 'center' },
+  parentStatNum:  { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  parentStatLabel:{ fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 2 },
   header:         { backgroundColor: NEUTRAL.card, paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 16, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
   backBtn:        { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, marginBottom: 12 },
   backText:       { color: BRAND_DARK, fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.semibold },
