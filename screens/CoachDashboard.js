@@ -992,30 +992,6 @@ export default function CoachDashboard({ userData }) {
           </View>
         )}
 
-        {/* ── Team Pulse (compact metrics row) ── */}
-        <View style={styles.pulseRow}>
-          <TouchableOpacity style={styles.pulseCard} onPress={() => { setAnalyticsVisible(true); }}>
-            <Text style={styles.pulseValue}>{complianceData.onTarget.length}/{complianceData.volumeData.length}</Text>
-            <Text style={styles.pulseLabel}>On Track</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.pulseCard} onPress={() => { setAnalyticsVisible(true); }}>
-            <Text style={[styles.pulseValue, teamPulse.teamAvgMood !== null && { color: teamPulse.teamAvgMood >= 3.5 ? STATUS.success : teamPulse.teamAvgMood >= 2.5 ? STATUS.warning : STATUS.error }]}>
-              {teamPulse.teamAvgMood !== null ? teamPulse.teamAvgMood.toFixed(1) : '—'}
-            </Text>
-            <Text style={styles.pulseLabel}>Mood</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.pulseCard} onPress={() => { setAnalyticsVisible(true); }}>
-            <Text style={styles.pulseValue}>{teamPulse.checkinCount}/{teamPulse.totalAthletes}</Text>
-            <Text style={styles.pulseLabel}>Checked In</Text>
-          </TouchableOpacity>
-          {teamPulse.inactiveCount > 0 && (
-            <TouchableOpacity style={[styles.pulseCard, { borderColor: STATUS.warning + '60' }]} onPress={() => { setAnalyticsVisible(true); }}>
-              <Text style={[styles.pulseValue, { color: STATUS.warning }]}>{teamPulse.inactiveCount}</Text>
-              <Text style={styles.pulseLabel}>Inactive 3d+</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
         {/* ── Team ── */}
         <View style={styles.section}>
 
