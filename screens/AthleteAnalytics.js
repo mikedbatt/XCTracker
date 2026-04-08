@@ -251,6 +251,51 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
   const displayEighty20 = usePace ? paceEighty20 : eighty20;
   const displayWeekTrend = usePace ? paceWeekTrend : weekTrend;
 
+  // ── Weekly intensity compliance (season-aligned, like volume arc) ──
+  const TARGET_EASY_PCT = 80;
+  const intensityWeeks = volumeWeeks.map(w => {
+    const monday = new Date(w.monday + 'T00:00:00');
+    const sunday = new Date(monday); sunday.setDate(monday.getDate() + 7);
+    const wRuns = allRuns.filter(r => { const d = getRunDate(r); return d >= monday && d < sunday; });
+    if (w.actual == null || wRuns.length === 0) return { ...w, easyPct: null };
+
+    if (usePace && trainingPaces) {
+      const comb = { e: 0, m: 0, t: 0, i: 0, r: 0 };
+      let hasData = false;
+      wRuns.forEach(r => {
+        if (r.rawPaceStream?.length > 0) {
+          const zones = calcPaceZoneBreakdown(r.rawPaceStream, trainingPaces);
+          Object.keys(zones).forEach(k => { comb[k] += zones[k]; });
+          hasData = true;
+        } else if (r.paceZoneSeconds) {
+          Object.keys(r.paceZoneSeconds).forEach(k => { comb[k] += (r.paceZoneSeconds[k] || 0); });
+          hasData = true;
+        }
+      });
+      if (hasData) {
+        const result = calcPace8020(comb);
+        return { ...w, easyPct: result ? result.easyPct : null };
+      }
+    }
+
+    // HR fallback
+    const boundaries = teamZoneSettings?.boundaries || DEFAULT_ZONE_BOUNDARIES;
+    const customMaxHR = teamZoneSettings?.customMaxHR || null;
+    const maxHR = calcMaxHR(athleteAge, customMaxHR);
+    const rawStreamRuns = wRuns.filter(r => r.rawHRStream?.length > 0);
+    if (rawStreamRuns.length > 0) {
+      const combined = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
+      rawStreamRuns.forEach(r => {
+        const bd = calcZoneBreakdownFromStream(r.rawHRStream, maxHR, boundaries);
+        if (bd) bd.forEach(z => { combined[`z${z.zone}`] = (combined[`z${z.zone}`] || 0) + z.seconds; });
+      });
+      const total = Object.values(combined).reduce((s, v) => s + v, 0);
+      if (total > 0) return { ...w, easyPct: Math.round(((combined.z1 + combined.z2) / total) * 100) };
+    }
+
+    return { ...w, easyPct: null };
+  });
+
   // ── Feature 4: Readiness data ──
   const fourteenDaysAgo = new Date(now - 14 * 86400000);
   const recentCheckins = checkins.filter(c => {
@@ -526,6 +571,42 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
 
         {expandedSection === 'quality' && (
           <View style={styles.detail}>
+            {/* Weekly intensity compliance chart (mirrors volume arc) */}
+            {intensityWeeks.length > 0 && intensityWeeks.some(w => w.easyPct != null) && (
+              <View style={{ marginBottom: SPACE.lg }}>
+                <Text style={styles.detailSectionLabel}>Weekly easy % — target {TARGET_EASY_PCT}%</Text>
+                <Text style={styles.detailHint}>Each bar shows the % of training at easy pace. Aim for {TARGET_EASY_PCT}%+.</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.volumeChartScroll}>
+                  {intensityWeeks.map((w, i) => {
+                    const barH = w.easyPct != null ? (w.easyPct / 100) * 80 : 0;
+                    const targetH = (TARGET_EASY_PCT / 100) * 80;
+                    const barColor = w.easyPct == null ? NEUTRAL.border
+                      : w.easyPct >= 78 ? STATUS.success
+                      : w.easyPct >= 68 ? STATUS.warning : STATUS.error;
+                    return (
+                      <View key={w.monday} style={[styles.volumeBar, w.isCurrent && styles.volumeBarCurrent]}>
+                        <View style={styles.volumeBarInner}>
+                          {/* Target line at 80% */}
+                          <View style={[styles.intensityTargetLine, { bottom: targetH }]} />
+                          {/* Actual easy % bar */}
+                          {w.easyPct != null && <View style={[styles.volumeActual, { height: barH, backgroundColor: barColor }]} />}
+                        </View>
+                        <Text style={[styles.volumeWeekLabel, w.isCurrent && { color: BRAND, fontWeight: FONT_WEIGHT.bold }]}>
+                          {w.isCurrent ? 'Now' : `W${i + 1}`}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+                <View style={styles.volumeLegend}>
+                  <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: NEUTRAL.muted, height: 2, borderRadius: 1 }]} /><Text style={styles.legendText}>{TARGET_EASY_PCT}% target</Text></View>
+                  <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: STATUS.success }]} /><Text style={styles.legendText}>On track</Text></View>
+                  <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: STATUS.warning }]} /><Text style={styles.legendText}>Caution</Text></View>
+                  <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: STATUS.error }]} /><Text style={styles.legendText}>Too hard</Text></View>
+                </View>
+              </View>
+            )}
+
             {/* Pace zone breakdown (primary when VDOT set) */}
             {usePace && paceZoneBreakdown && (
               <View style={styles.zoneSection}>
@@ -761,6 +842,7 @@ const styles = StyleSheet.create({
   volumeBarInner: { height: 80, width: 18, justifyContent: 'flex-end', position: 'relative' },
   volumeTarget:   { position: 'absolute', bottom: 0, width: '100%', backgroundColor: NEUTRAL.bg, borderWidth: 1, borderColor: NEUTRAL.border, borderRadius: 2 },
   volumeActual:   { width: '100%', borderRadius: 2 },
+  intensityTargetLine: { position: 'absolute', left: -2, right: -2, height: 2, backgroundColor: NEUTRAL.muted, borderRadius: 1, zIndex: 1 },
   volumeWeekLabel:{ fontSize: 9, color: NEUTRAL.muted, marginTop: 2 },
   volumeLegend:   { flexDirection: 'row', gap: SPACE.lg, marginTop: SPACE.sm },
   legendItem:     { flexDirection: 'row', alignItems: 'center', gap: SPACE.xs },
