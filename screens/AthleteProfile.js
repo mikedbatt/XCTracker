@@ -166,7 +166,7 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
         vdotUpdatedAt: new Date().toISOString(),
       });
       Alert.alert('Saved!', 'Your training paces have been updated.');
-      onUpdated && onUpdated({ vdot: vdotScore, trainingPaces: vdotPaces });
+      onUpdated && onUpdated({ vdot: vdotScore, trainingPaces: vdotPaces, vdotDistance, vdotTime: vdotTimeStr, vdotUpdatedAt: new Date().toISOString() });
     } catch (e) {
       console.warn('Failed to save VDOT:', e);
       Alert.alert('Error', 'Could not save. Please try again.');

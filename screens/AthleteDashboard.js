@@ -122,7 +122,9 @@ function buildZoneBreakdown(runs, maxHR, boundaries, athleteAge, customMaxHR) {
   return { breakdown, hasStreamData: hasAnyStreamData };
 }
 
-export default function AthleteDashboard({ userData }) {
+export default function AthleteDashboard({ userData: userDataProp }) {
+  const [userOverrides,        setUserOverrides]        = useState({});
+  const userData = { ...userDataProp, ...userOverrides };
   const [school,               setSchool]               = useState(null);
   const [recentRuns,           setRecentRuns]           = useState([]);
   const [upcomingWorkouts,     setUpcomingWorkouts]     = useState([]);
@@ -1018,12 +1020,23 @@ export default function AthleteDashboard({ userData }) {
             try {
               const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
               if (userDoc.exists()) {
-                setHrZonePref(userDoc.data().showHRZones);
-                setLocalAvatarColor(userDoc.data().avatarColor || BRAND);
+                const d = userDoc.data();
+                setHrZonePref(d.showHRZones);
+                setLocalAvatarColor(d.avatarColor || BRAND);
+                setUserOverrides(prev => ({
+                  ...prev,
+                  vdot: d.vdot, vdotDistance: d.vdotDistance, vdotTime: d.vdotTime,
+                  trainingPaces: d.trainingPaces, vdotUpdatedAt: d.vdotUpdatedAt,
+                  avatarColor: d.avatarColor,
+                }));
               }
             } catch (e) { console.warn('Failed to refresh user prefs:', e); }
             setProfileVisible(false);
-          }} onUpdated={() => { setProfileVisible(false); loadDashboard(); }} />
+          }} onUpdated={(updates) => {
+            if (updates) setUserOverrides(prev => ({ ...prev, ...updates }));
+            setProfileVisible(false);
+            loadDashboard();
+          }} />
         </View>
       )}
 
