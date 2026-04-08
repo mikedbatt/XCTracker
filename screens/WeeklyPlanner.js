@@ -764,6 +764,31 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
                       <Ionicons name="book-outline" size={16} color={BRAND} />
                       <Text style={styles.browseLibraryText}>Browse Library</Text>
                     </TouchableOpacity>
+                    {slot.type && slot.description && (
+                      <TouchableOpacity
+                        style={styles.browseLibraryBtn}
+                        onPress={async () => {
+                          try {
+                            await addDoc(collection(db, 'workoutLibrary'), {
+                              name: slot.title || `${DAYS[i]} ${slot.type}`,
+                              type: slot.type,
+                              description: slot.description,
+                              phase: phase?.name || 'General',
+                              schoolId,
+                              createdBy: auth.currentUser?.uid || '',
+                              createdAt: serverTimestamp(),
+                              isCustom: true,
+                            });
+                            Alert.alert('Saved!', `"${slot.title || slot.type}" added to your workout library.`);
+                          } catch (e) {
+                            Alert.alert('Error', 'Could not save to library.');
+                          }
+                        }}
+                      >
+                        <Ionicons name="add-circle-outline" size={16} color={BRAND} />
+                        <Text style={styles.browseLibraryText}>Save to Library</Text>
+                      </TouchableOpacity>
+                    )}
                     <TouchableOpacity onPress={() => { setEditingDay(null); if (draftDirty) saveDraft(); }} style={styles.doneEditBtn}>
                       <Text style={styles.doneEditText}>Done</Text>
                     </TouchableOpacity>
