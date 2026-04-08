@@ -21,6 +21,7 @@ import {
   formatMinutes,
   parseBirthdate,
 } from '../zoneConfig';
+import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
 
 export default function TeammateProfile({ athlete, school, onBack }) {
   const [runs,            setRuns]            = useState([]);
@@ -146,6 +147,42 @@ export default function TeammateProfile({ athlete, school, onBack }) {
   const { breakdown: zoneBreakdown, hasStreamData } = getZoneBreakdown();
   const totalZoneMins = zoneBreakdown ? zoneBreakdown.reduce((s, z) => s + z.minutes, 0) : 0;
 
+  // Pace zone breakdown (primary when teammate has VDOT set)
+  const trainingPaces = athlete.trainingPaces || null;
+  const getPaceBreakdown = () => {
+    if (!trainingPaces) return null;
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    const monthRuns = runs.filter(r => {
+      const d = r.date?.toDate?.();
+      return d && d >= monthStart;
+    });
+    const combined = { e: 0, m: 0, t: 0, i: 0, r: 0 };
+    let hasData = false;
+    monthRuns.forEach(r => {
+      if (r.rawPaceStream?.length > 0) {
+        const zones = calcPaceZoneBreakdown(r.rawPaceStream, trainingPaces);
+        Object.keys(zones).forEach(k => { combined[k] += zones[k]; });
+        hasData = true;
+      } else if (r.paceZoneSeconds) {
+        Object.keys(r.paceZoneSeconds).forEach(k => { combined[k] += (r.paceZoneSeconds[k] || 0); });
+        hasData = true;
+      }
+    });
+    if (!hasData) return null;
+    const total = Object.values(combined).reduce((s, v) => s + v, 0);
+    if (total === 0) return null;
+    return PACE_ZONES.map(z => ({
+      ...z,
+      seconds: combined[z.key],
+      minutes: Math.round(combined[z.key] / 60),
+      pct: Math.round((combined[z.key] / total) * 100),
+    })).filter(z => z.seconds > 0);
+  };
+  const paceBreakdown = getPaceBreakdown();
+  const usePace = !!paceBreakdown;
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -198,8 +235,34 @@ export default function TeammateProfile({ athlete, school, onBack }) {
           </View>
         </View>
 
-        {/* Zone breakdown — uses team zone settings */}
-        {zoneBreakdown && zoneBreakdown.length > 0 && (
+        {/* Pace zone breakdown (primary when teammate has VDOT) */}
+        {usePace && (
+          <View style={styles.section}>
+            <View style={styles.zoneTitleRow}>
+              <Text style={styles.sectionTitle}>Pace zones — this month</Text>
+            </View>
+            <View style={styles.zoneCard}>
+              <View style={styles.zoneStackedBar}>
+                {paceBreakdown.map(z => (
+                  <View key={z.key} style={[styles.zoneStackedSegment, { flex: z.minutes || 1, backgroundColor: z.color }]} />
+                ))}
+              </View>
+              {paceBreakdown.map(z => (
+                <View key={z.key} style={styles.zoneRow}>
+                  <View style={[styles.zoneDot, { backgroundColor: z.color }]} />
+                  <Text style={styles.zoneName}>{z.short} {z.name}</Text>
+                  <View style={styles.zoneBarBg}>
+                    <View style={[styles.zoneBarFill, { width: `${z.pct}%`, backgroundColor: z.color }]} />
+                  </View>
+                  <Text style={styles.zoneCount}>{formatMinutes(z.minutes)}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* HR zone breakdown (fallback when no VDOT/pace data) */}
+        {!usePace && zoneBreakdown && zoneBreakdown.length > 0 && (
           <View style={styles.section}>
             <View style={styles.zoneTitleRow}>
               <Text style={styles.sectionTitle}>Training zones — this month</Text>
