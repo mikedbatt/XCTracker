@@ -260,6 +260,7 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
   const [weekStatus, setWeekStatus] = useState('empty'); // 'empty' | 'draft' | 'published'
   const [draftDirty, setDraftDirty] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [templatePromptDismissed, setTemplatePromptDismissed] = useState(false);
 
   const mondayISO = weekStart.toISOString().split('T')[0];
   const phase = activeSeason ? getPhaseForSeason(activeSeason) : null;
@@ -358,6 +359,8 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
     const newStart = new Date(weekStart);
     newStart.setDate(newStart.getDate() + dir * 7);
     setWeekStart(newStart);
+    setShowTemplates(false);
+    setTemplatePromptDismissed(false);
   };
 
   const updateSlot = (dayIdx, field, value) => {
@@ -532,10 +535,15 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
           </TouchableOpacity>
         </View>
 
-        {/* Template picker (shown when Load Template tapped on existing plan) */}
+        {/* Template picker (shown when Load Template tapped) */}
         {showTemplates && (
           <View style={styles.generateSection}>
-            <Text style={styles.generateHint}>Choose a template to replace your current plan.</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACE.sm }}>
+              <Text style={styles.generateHint}>Choose a template or close to plan manually.</Text>
+              <TouchableOpacity onPress={() => setShowTemplates(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={20} color={NEUTRAL.muted} />
+              </TouchableOpacity>
+            </View>
             <View style={styles.templateGrid}>
               {Object.entries(WEEK_TEMPLATES)
                 .sort(([, a], [, b]) => {
@@ -567,12 +575,17 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
         )}
 
         {/* Empty week prompt — compact link, not blocking */}
-        {weekStatus === 'empty' && daySlots.every(s => !s.type) && !showTemplates && (
+        {weekStatus === 'empty' && daySlots.every(s => !s.type) && !showTemplates && !templatePromptDismissed && (
           <View style={styles.emptyWeekPrompt}>
-            <TouchableOpacity style={styles.emptyWeekBtn} onPress={() => setShowTemplates(true)}>
-              <Ionicons name="flash-outline" size={16} color={BRAND} />
-              <Text style={styles.emptyWeekBtnText}>Generate from template</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
+              <TouchableOpacity style={styles.emptyWeekBtn} onPress={() => setShowTemplates(true)}>
+                <Ionicons name="flash-outline" size={16} color={BRAND} />
+                <Text style={styles.emptyWeekBtnText}>Generate from template</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setTemplatePromptDismissed(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={18} color={NEUTRAL.muted} />
+              </TouchableOpacity>
+            </View>
             <Text style={styles.emptyWeekOr}>or tap any day below to plan manually</Text>
           </View>
         )}
