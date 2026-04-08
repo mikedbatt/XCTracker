@@ -17,7 +17,8 @@ import { Calendar } from 'react-native-calendars';
 import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../firebaseConfig';
 import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SPACE } from '../constants/design';
-import { CATEGORIES, TYPE_COLORS } from '../constants/training';
+import { CATEGORIES, TYPE_COLORS, WORKOUT_PACE_ZONE } from '../constants/training';
+import { formatPace } from '../utils/vdotUtils';
 import DatePickerField from './DatePickerField';
 import RunDetailModal from './RunDetailModal';
 import WorkoutDetailModal from './WorkoutDetailModal';
@@ -25,7 +26,7 @@ import WorkoutDetailModal from './WorkoutDetailModal';
 // Re-export so existing imports from CalendarScreen keep working
 export { CATEGORIES, TYPE_COLORS };
 
-export default function CalendarScreen({ userData, school, onClose, autoOpenAdd, prefillWorkout, groups = [], externalAthleteRuns = null }) {
+export default function CalendarScreen({ userData, school, onClose, autoOpenAdd, prefillWorkout, groups = [], externalAthleteRuns = null, trainingPaces = null }) {
   const [markedDates, setMarkedDates] = useState({});
   const [allItems, setAllItems] = useState([]);
   const [athleteRuns, setAthleteRuns] = useState([]);
@@ -358,25 +359,32 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
                     </TouchableOpacity>
                   )}
                 </View>
-              ) : selectedItems.map(item => (
-                <TouchableOpacity key={item.id} style={styles.itemCard} onPress={() => { setDetailItem(item); setDetailVisible(true); }}>
-                  <View style={[styles.itemBar, { backgroundColor: getColor(item) }]} />
-                  <View style={styles.itemContent}>
-                    <View style={styles.itemBadgeRow}>
-                      <View style={[styles.catBadge, { backgroundColor: CATEGORIES[item.category]?.color || primaryColor }]}>
-                        <Text style={styles.catBadgeText}>{item.category?.toUpperCase()}</Text>
+              ) : selectedItems.map(item => {
+                const itemMiles = item.baseMiles || null;
+                return (
+                  <TouchableOpacity key={item.id} style={styles.itemCard} onPress={() => { setDetailItem(item); setDetailVisible(true); }}>
+                    <View style={[styles.itemBar, { backgroundColor: getColor(item) }]} />
+                    <View style={styles.itemContent}>
+                      <View style={styles.itemBadgeRow}>
+                        <View style={[styles.typeBadge, { backgroundColor: getColor(item) }]}>
+                          <Text style={styles.typeBadgeText}>{item.type}</Text>
+                        </View>
                       </View>
-                      <View style={[styles.typeBadge, { backgroundColor: getColor(item) }]}>
-                        <Text style={styles.typeBadgeText}>{item.type}</Text>
-                      </View>
+                      <Text style={styles.itemTitle}>{item.title}{itemMiles ? ` — ${itemMiles} mi` : ''}</Text>
+                      {trainingPaces && WORKOUT_PACE_ZONE[item.type] && (() => {
+                        const zone = WORKOUT_PACE_ZONE[item.type];
+                        const tp = trainingPaces;
+                        const paceText = zone === 'easy' ? `${formatPace(tp.eLow)}–${formatPace(tp.eHigh)}/mi`
+                          : zone === 'threshold' ? `${formatPace(tp.t)}/mi`
+                          : zone === 'interval' ? `${formatPace(tp.i)}/mi`
+                          : zone === 'repetition' ? `${formatPace(tp.r)}/mi` : null;
+                        return paceText ? <Text style={styles.itemPace}>Target: {paceText}</Text> : null;
+                      })()}
+                      {item.description && <Text style={styles.itemDesc} numberOfLines={1}>{item.description}</Text>}
                     </View>
-                    <Text style={styles.itemTitle}>{item.title}</Text>
-                    {item.location && <Text style={styles.itemMeta}>📍 {item.location}</Text>}
-                    {item.description && <Text style={styles.itemDesc} numberOfLines={2}>{item.description}</Text>}
-                    <Text style={styles.tapHint}>Tap for details →</Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
+                  </TouchableOpacity>
+                );
+              })}
 
               {/* Show athlete's logged runs for this day */}
               {selectedRuns.length > 0 && (
@@ -445,6 +453,7 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
         onClose={() => setDetailVisible(false)}
         primaryColor={primaryColor}
         groups={groups}
+        trainingPaces={trainingPaces}
         onEdit={isCoach ? (item) => { setDetailVisible(false); openEdit(item); } : null}
         onDelete={isCoach ? (item) => { handleDelete(item); } : null}
       />
@@ -671,7 +680,8 @@ const styles = StyleSheet.create({
   typeBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
   itemTitle: { fontSize: 16, fontWeight: '700', color: '#333', marginBottom: 4 },
   itemMeta: { fontSize: 13, color: '#666', marginBottom: 4 },
-  itemDesc: { fontSize: 13, color: '#888', marginBottom: 6 },
+  itemPace: { fontSize: 12, color: BRAND, fontWeight: '600', marginBottom: 2 },
+  itemDesc: { fontSize: 13, color: NEUTRAL.body, marginBottom: 6 },
   tapHint: { fontSize: 11, color: '#bbb', textAlign: 'right' },
   runsDaySection: { marginTop: 12 },
   runsDayTitle: { fontSize: 13, fontWeight: '700', color: '#9e9e9e', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },

@@ -999,7 +999,7 @@ export default function AthleteDashboard({ userData: userDataProp }) {
       {/* ── Sub-screens rendered over content but under nav ── */}
       {calendarVisible && (
         <View style={styles.subScreen}>
-          <CalendarScreen userData={userData} school={school} onClose={() => setCalendarVisible(false)} />
+          <CalendarScreen userData={userData} school={school} trainingPaces={userData.trainingPaces || null} onClose={() => setCalendarVisible(false)} />
         </View>
       )}
       {stravaVisible && (

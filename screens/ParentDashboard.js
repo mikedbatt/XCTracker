@@ -254,6 +254,7 @@ export default function ParentDashboard({ userData }) {
             school={school}
             groups={groups}
             externalAthleteRuns={athleteRuns}
+            trainingPaces={selectedAthlete.trainingPaces || null}
             onClose={() => setActiveView('training')}
           />
         </View>

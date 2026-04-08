@@ -865,8 +865,10 @@ export default function CoachDashboard({ userData }) {
                   <View style={[styles.typeBadge, { backgroundColor: TYPE_COLORS[item.type] || primaryColor, marginBottom: 0 }]}>
                     <Text style={styles.typeBadgeText}>{item.type}</Text>
                   </View>
-                  <Text style={[styles.trainingTitle, { flex: 1 }]} numberOfLines={1}>{item.title}</Text>
-                  {item.baseMiles ? <Text style={styles.todayCardMiles}>{item.baseMiles} mi</Text> : null}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.trainingTitle} numberOfLines={1}>{item.title}{item.baseMiles ? ` — ${item.baseMiles} mi` : ''}</Text>
+                    {item.description && <Text style={styles.todayCardDesc} numberOfLines={1}>{item.description}</Text>}
+                  </View>
                   <Ionicons name="chevron-forward" size={16} color={NEUTRAL.input} />
                 </View>
               </TouchableOpacity>
@@ -1512,6 +1514,7 @@ const styles = StyleSheet.create({
   todayCard:            { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, paddingVertical: SPACE.md, paddingHorizontal: SPACE.lg - 2, borderLeftWidth: 4, marginBottom: SPACE.xs, ...SHADOW.sm },
   todayCardRow:         { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
   todayCardMiles:       { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, fontWeight: FONT_WEIGHT.semibold },
+  todayCardDesc:        { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 2 },
   upcomingSection:      { marginBottom: SPACE.lg },
   upcomingHeader:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACE.md },
   upcomingSectionTitle: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
