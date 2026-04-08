@@ -79,14 +79,18 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
     try {
       const [runsSnap, checkinsSnap, resultsSnap, racesSnap, meetsSnap] = await Promise.all([
         getDocs(query(collection(db, 'runs'), where('userId', '==', uid), orderBy('date', 'desc'))),
-        getDocs(query(collection(db, 'checkins'), where('userId', '==', uid), orderBy('date', 'desc'))).catch(() => ({ docs: [] })),
+        getDocs(query(collection(db, 'checkins'), where('userId', '==', uid))).catch(() => ({ docs: [] })),
         getDocs(query(collection(db, 'raceResults'), where('athleteId', '==', uid))).catch(() => ({ docs: [] })),
         getDocs(query(collection(db, 'races'), where('schoolId', '==', userData.schoolId))).catch(() => ({ docs: [] })),
         getDocs(query(collection(db, 'raceMeets'), where('schoolId', '==', userData.schoolId))).catch(() => ({ docs: [] })),
       ]);
 
       setAllRuns(runsSnap.docs.map(d => d.data()));
-      setCheckins(checkinsSnap.docs.map(d => d.data()));
+      setCheckins(checkinsSnap.docs.map(d => d.data()).sort((a, b) => {
+        const da = a.date?.toDate ? a.date.toDate() : new Date(a.date);
+        const db2 = b.date?.toDate ? b.date.toDate() : new Date(b.date);
+        return db2 - da;
+      }));
       setRaceResults(resultsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       setRaces(racesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       setRaceMeets(meetsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -481,71 +485,10 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
           </View>
         )}
 
-        {/* ── 2. Race Performance ── */}
-        <TouchableOpacity style={styles.section} onPress={() => toggle('races')} activeOpacity={0.8}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionNum}>2</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.sectionTitle}>Race Performance</Text>
-              <Text style={styles.sectionSub}>{myResults.length} race{myResults.length !== 1 ? 's' : ''} this season</Text>
-            </View>
-            <Ionicons name={expandedSection === 'races' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />
-          </View>
-
-          {(() => {
-            const distResults = primaryDistance ? myResults.filter(r => r.distanceLabel === primaryDistance) : myResults;
-            if (distResults.length === 0) return <Text style={styles.noDataText}>No race results yet. Your coach will enter results after each meet.</Text>;
-            const best = distResults.reduce((b, r) => (!b || (r.finishTime && r.finishTime < b.finishTime)) ? r : b, null);
-            const improvement = distResults.length >= 2 ? distResults[0].finishTime - distResults[distResults.length - 1].finishTime : null;
-            return (
-              <View>
-                {best && <Text style={styles.prBanner}>🏆 {primaryDistance} PR: {formatTime(best.finishTime)} — {best.meet?.name || 'Unknown meet'}</Text>}
-                {improvement != null && improvement < 0 && (
-                  <Text style={[styles.improvementText, { color: STATUS.success }]}>↓ {formatTime(Math.abs(improvement))} improvement this season</Text>
-                )}
-              </View>
-            );
-          })()}
-        </TouchableOpacity>
-
-        {expandedSection === 'races' && (
-          <View style={styles.detail}>
-            {myResults.length === 0 ? (
-              <Text style={styles.detailEmpty}>No race results yet.</Text>
-            ) : (
-              [...myResults].reverse().map((res, i, arr) => {
-                const prev = i < arr.length - 1 ? arr[i + 1] : null;
-                const faster = prev && res.finishTime && prev.finishTime ? res.finishTime < prev.finishTime : null;
-                const pace = res.race?.distanceLabel ? calcPace(res.finishTime, res.race.distanceLabel) : null;
-                return (
-                  <View key={res.id} style={styles.raceCard}>
-                    <View style={styles.raceCardLeft}>
-                      <Text style={styles.raceMeetName}>{res.meet?.name || 'Unknown'}</Text>
-                      <Text style={styles.raceDate}>
-                        {res.meetDate?.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {res.distanceLabel}
-                      </Text>
-                      {res.place && <Text style={styles.racePlace}>Place: {res.place}{res.teamPlace ? ` (team #${res.teamPlace})` : ''}</Text>}
-                    </View>
-                    <View style={styles.raceCardRight}>
-                      <Text style={styles.raceTime}>{formatTime(res.finishTime)}</Text>
-                      {pace && <Text style={styles.racePace}>{formatPace(pace)}</Text>}
-                      {faster != null && (
-                        <Text style={{ fontSize: FONT_SIZE.xs, color: faster ? STATUS.success : STATUS.error, fontWeight: FONT_WEIGHT.bold }}>
-                          {faster ? '▼ PR' : '▲'}
-                        </Text>
-                      )}
-                    </View>
-                  </View>
-                );
-              })
-            )}
-          </View>
-        )}
-
-        {/* ── 3. Training Quality ── */}
+        {/* ── 2. Training Quality ── */}
         <TouchableOpacity style={styles.section} onPress={() => toggle('quality')} activeOpacity={0.8}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionNum}>3</Text>
+            <Text style={styles.sectionNum}>2</Text>
             <View style={{ flex: 1 }}>
               <Text style={styles.sectionTitle}>Training Quality</Text>
               <Text style={styles.sectionSub}>Last 30 days — 80/20 compliance & effort</Text>
@@ -633,6 +576,67 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
           </View>
         )}
 
+        {/* ── 3. Race Performance ── */}
+        <TouchableOpacity style={styles.section} onPress={() => toggle('races')} activeOpacity={0.8}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionNum}>3</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sectionTitle}>Race Performance</Text>
+              <Text style={styles.sectionSub}>{myResults.length} race{myResults.length !== 1 ? 's' : ''} this season</Text>
+            </View>
+            <Ionicons name={expandedSection === 'races' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />
+          </View>
+
+          {(() => {
+            const distResults = primaryDistance ? myResults.filter(r => r.distanceLabel === primaryDistance) : myResults;
+            if (distResults.length === 0) return <Text style={styles.noDataText}>No race results yet. Your coach will enter results after each meet.</Text>;
+            const best = distResults.reduce((b, r) => (!b || (r.finishTime && r.finishTime < b.finishTime)) ? r : b, null);
+            const improvement = distResults.length >= 2 ? distResults[0].finishTime - distResults[distResults.length - 1].finishTime : null;
+            return (
+              <View>
+                {best && <Text style={styles.prBanner}>🏆 {primaryDistance} PR: {formatTime(best.finishTime)} — {best.meet?.name || 'Unknown meet'}</Text>}
+                {improvement != null && improvement < 0 && (
+                  <Text style={[styles.improvementText, { color: STATUS.success }]}>↓ {formatTime(Math.abs(improvement))} improvement this season</Text>
+                )}
+              </View>
+            );
+          })()}
+        </TouchableOpacity>
+
+        {expandedSection === 'races' && (
+          <View style={styles.detail}>
+            {myResults.length === 0 ? (
+              <Text style={styles.detailEmpty}>No race results yet.</Text>
+            ) : (
+              [...myResults].reverse().map((res, i, arr) => {
+                const prev = i < arr.length - 1 ? arr[i + 1] : null;
+                const faster = prev && res.finishTime && prev.finishTime ? res.finishTime < prev.finishTime : null;
+                const pace = res.race?.distanceLabel ? calcPace(res.finishTime, res.race.distanceLabel) : null;
+                return (
+                  <View key={res.id} style={styles.raceCard}>
+                    <View style={styles.raceCardLeft}>
+                      <Text style={styles.raceMeetName}>{res.meet?.name || 'Unknown'}</Text>
+                      <Text style={styles.raceDate}>
+                        {res.meetDate?.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {res.distanceLabel}
+                      </Text>
+                      {res.place && <Text style={styles.racePlace}>Place: {res.place}{res.teamPlace ? ` (team #${res.teamPlace})` : ''}</Text>}
+                    </View>
+                    <View style={styles.raceCardRight}>
+                      <Text style={styles.raceTime}>{formatTime(res.finishTime)}</Text>
+                      {pace && <Text style={styles.racePace}>{formatPace(pace)}</Text>}
+                      {faster != null && (
+                        <Text style={{ fontSize: FONT_SIZE.xs, color: faster ? STATUS.success : STATUS.error, fontWeight: FONT_WEIGHT.bold }}>
+                          {faster ? '▼ PR' : '▲'}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        )}
+
         {/* ── 4. Readiness & Recovery ── */}
         <TouchableOpacity style={styles.section} onPress={() => toggle('readiness')} activeOpacity={0.8}>
           <View style={styles.sectionHeader}>
@@ -700,86 +704,6 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
 
             {signals.length === 0 && activeInjuries.length === 0 && (
               <Text style={styles.allClear}>✅ No concerns — you're in good shape to train.</Text>
-            )}
-          </View>
-        )}
-
-        {/* ── 5. Fitness Fingerprint ── */}
-        <TouchableOpacity style={styles.section} onPress={() => toggle('fitness')} activeOpacity={0.8}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionNum}>5</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.sectionTitle}>Fitness Fingerprint</Text>
-              <Text style={styles.sectionSub}>Pace trends & aerobic efficiency</Text>
-            </View>
-            <Ionicons name={expandedSection === 'fitness' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />
-          </View>
-
-          {/* Aerobic efficiency snapshot */}
-          {efficiencyNow && efficiency4wk ? (
-            <View style={styles.efficiencyRow}>
-              <View style={styles.efficiencyBlock}>
-                <Text style={styles.efficiencyLabel}>4 wk ago</Text>
-                <Text style={styles.efficiencyPace}>{formatPaceFromSeconds(efficiency4wk.pace)}/mi</Text>
-                <Text style={styles.efficiencyHR}>@ {efficiency4wk.hr} bpm</Text>
-              </View>
-              <Ionicons name="arrow-forward" size={18} color={NEUTRAL.muted} />
-              <View style={styles.efficiencyBlock}>
-                <Text style={styles.efficiencyLabel}>This week</Text>
-                <Text style={[styles.efficiencyPace, { color: efficiencyNow.pace < efficiency4wk.pace ? STATUS.success : STATUS.error }]}>
-                  {formatPaceFromSeconds(efficiencyNow.pace)}/mi
-                </Text>
-                <Text style={styles.efficiencyHR}>@ {efficiencyNow.hr} bpm</Text>
-              </View>
-            </View>
-          ) : easyPaceWeeks.some(w => w != null) ? (
-            <Text style={styles.noDataHint}>Easy pace trending — expand for details</Text>
-          ) : (
-            <Text style={styles.noDataText}>Log easy runs with duration to track fitness trends.</Text>
-          )}
-        </TouchableOpacity>
-
-        {expandedSection === 'fitness' && (
-          <View style={styles.detail}>
-            {/* Easy run pace bars */}
-            <Text style={styles.detailSectionLabel}>Easy run pace (last 8 weeks)</Text>
-            <Text style={styles.detailHint}>Shorter bars = faster. Downward trend = improving fitness.</Text>
-            <View style={styles.paceChart}>
-              {easyPaceWeeks.map((w, i) => {
-                const maxPace = Math.max(...easyPaceWeeks.filter(x => x).map(x => x.pace), 1);
-                const minPace = Math.min(...easyPaceWeeks.filter(x => x).map(x => x.pace), maxPace);
-                const range = maxPace - minPace || 60;
-                const h = w ? Math.max(((w.pace - minPace + 30) / (range + 60)) * 80, 8) : 0;
-                return (
-                  <View key={i} style={styles.paceBarWrap}>
-                    {w ? (
-                      <>
-                        <Text style={styles.paceBarValue}>{formatPaceFromSeconds(w.pace)}</Text>
-                        <View style={[styles.paceBar, { height: h, backgroundColor: i === 7 ? BRAND : BRAND_ACCENT }]} />
-                      </>
-                    ) : (
-                      <View style={[styles.paceBar, { height: 4, backgroundColor: NEUTRAL.border }]} />
-                    )}
-                    <Text style={[styles.paceBarLabel, i === 7 && { fontWeight: FONT_WEIGHT.bold, color: BRAND }]}>
-                      {i === 7 ? 'Now' : `W${i + 1}`}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
-
-            {/* Personal bests */}
-            {Object.keys(personalBests).length > 0 && (
-              <>
-                <Text style={[styles.detailSectionLabel, { marginTop: SPACE.xl }]}>Personal bests (by pace)</Text>
-                {Object.entries(personalBests).map(([cat, pb]) => (
-                  <View key={cat} style={styles.pbRow}>
-                    <Text style={styles.pbCat}>{cat === 'easy' ? 'Easy run' : cat === 'tempo' ? 'Tempo' : 'Workout'}</Text>
-                    <Text style={styles.pbPace}>{formatPaceFromSeconds(pb.pace)}/mi</Text>
-                    <Text style={styles.pbDate}>{pb.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</Text>
-                  </View>
-                ))}
-              </>
             )}
           </View>
         )}
