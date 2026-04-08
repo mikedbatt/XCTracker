@@ -471,6 +471,36 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
               )}
             </View>
             {phase && <Text style={styles.weekNavPhase}>{phase.name} — Week {phase.weekNum}</Text>}
+            {daySlots.some(s => s.type) && (
+              <TouchableOpacity
+                style={styles.loadTemplateBtn}
+                onPress={() => {
+                  Alert.alert(
+                    'Load Template',
+                    'This will replace your current week plan. Choose a template:',
+                    [
+                      ...Object.entries(WEEK_TEMPLATES)
+                        .sort(([, a], [, b]) => {
+                          const aMatch = phase && a.phases.includes(phase.name) ? 0 : 1;
+                          const bMatch = phase && b.phases.includes(phase.name) ? 0 : 1;
+                          return aMatch - bMatch;
+                        })
+                        .map(([key, tmpl]) => ({
+                          text: `${tmpl.label}${phase && tmpl.phases.includes(phase.name) ? ' ★' : ''}`,
+                          onPress: () => {
+                            const plan = generateWeekPlan(key, weekTargets, groups);
+                            if (plan) { setDaySlots(plan); setDraftDirty(true); setWeekStatus('draft'); }
+                          },
+                        })),
+                      { text: 'Cancel', style: 'cancel' },
+                    ]
+                  );
+                }}
+              >
+                <Ionicons name="refresh-outline" size={14} color={BRAND} />
+                <Text style={styles.loadTemplateBtnText}>Load Template</Text>
+              </TouchableOpacity>
+            )}
           </View>
           <TouchableOpacity onPress={() => navigateWeek(1)} style={styles.weekNavBtn}>
             <Ionicons name="chevron-forward" size={20} color={BRAND} />
@@ -845,6 +875,8 @@ const styles = StyleSheet.create({
   libraryBtn:      { backgroundColor: BRAND_LIGHT, borderRadius: RADIUS.sm, padding: SPACE.sm },
   doneEditBtn:     { paddingVertical: SPACE.sm, paddingHorizontal: SPACE.lg },
   doneEditText:    { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND },
+  loadTemplateBtn:   { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: SPACE.xs },
+  loadTemplateBtnText: { fontSize: FONT_SIZE.xs, color: BRAND, fontWeight: FONT_WEIGHT.semibold },
   generateSection:   { margin: SPACE.lg },
   generateHint:      { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginBottom: SPACE.md, textAlign: 'center' },
   templateGrid:      { gap: SPACE.sm },
