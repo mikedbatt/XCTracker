@@ -108,74 +108,81 @@ function getWeekSuggestions(phase, daySlots, groupTotals, weekTargets) {
 
 // ── Week templates with mileage distribution ──────────────────────────────────
 // Each day has type + pctOfWeek (% of weekly target for base miles)
+// volume: fraction of weekly target to distribute (1.0 = 100%, 0.6 = 60%)
+// pct: relative weight for each day (distribute() normalizes these so sum doesn't matter)
 const WEEK_TEMPLATES = {
   base: {
     label: 'Base Week',
     desc: '6 easy days + long run, build aerobic foundation',
     phases: ['Summer Base', 'Pre-Season Base', 'Base'],
+    volume: 1.0,
     days: [
-      { type: 'Easy', pct: 0.15 },
-      { type: 'Easy', pct: 0.15 },
-      null, // Off
-      { type: 'Easy', pct: 0.15 },
-      { type: 'Easy', pct: 0.15 },
-      { type: 'Long Run', pct: 0.25 },
-      { type: 'Easy', pct: 0.15 },
+      { type: 'Easy', pct: 15 },
+      { type: 'Easy', pct: 15 },
+      null,
+      { type: 'Easy', pct: 15 },
+      { type: 'Easy', pct: 15 },
+      { type: 'Long Run', pct: 25 },
+      { type: 'Easy', pct: 15 },
     ],
   },
   build: {
     label: 'Build Week',
     desc: '2 quality sessions + long run, easy between',
     phases: ['Build'],
+    volume: 1.0,
     days: [
-      { type: 'Easy', pct: 0.15 },
-      { type: 'Tempo', pct: 0.15 },
-      { type: 'Easy', pct: 0.12 },
-      { type: 'Intervals', pct: 0.12 },
-      { type: 'Easy', pct: 0.12 },
-      { type: 'Long Run', pct: 0.22 },
+      { type: 'Easy', pct: 15 },
+      { type: 'Tempo', pct: 15 },
+      { type: 'Easy', pct: 13 },
+      { type: 'Intervals', pct: 13 },
+      { type: 'Easy', pct: 12 },
+      { type: 'Long Run', pct: 22 },
       null,
     ],
   },
   competition: {
     label: 'Competition Week',
-    desc: '1 quality session + long run, race recovery focus',
+    desc: '1 quality session + long run, moderate volume',
     phases: ['Competition'],
+    volume: 0.85,
     days: [
-      { type: 'Easy', pct: 0.15 },
-      { type: 'Tempo', pct: 0.15 },
-      { type: 'Easy', pct: 0.12 },
+      { type: 'Easy', pct: 15 },
+      { type: 'Tempo', pct: 15 },
+      { type: 'Easy', pct: 15 },
       null,
-      { type: 'Easy', pct: 0.10 },
-      { type: 'Long Run', pct: 0.20 },
+      { type: 'Easy', pct: 12 },
+      { type: 'Long Run', pct: 23 },
       null,
     ],
   },
   race: {
     label: 'Race Week',
-    desc: 'Reduced volume, short quality, race day ready',
+    desc: 'Reduced volume (~60%), short quality, race day ready',
     phases: ['Competition', 'Peak'],
+    volume: 0.6,
     days: [
-      { type: 'Easy', pct: 0.12 },
-      { type: 'Tempo', pct: 0.10 },
-      { type: 'Easy', pct: 0.10 },
+      { type: 'Easy', pct: 30 },
+      { type: 'Tempo', pct: 25 },
+      { type: 'Easy', pct: 25 },
       null,
-      { type: 'Easy', pct: 0.08 },
+      { type: 'Easy', pct: 20 },
       { type: 'Race', pct: 0 },
       null,
     ],
   },
   recovery: {
     label: 'Recovery Week',
-    desc: 'Low volume, all easy, active recovery',
+    desc: 'Low volume (~50%), all easy, active recovery',
     phases: ['Taper'],
+    volume: 0.5,
     days: [
       null,
-      { type: 'Easy', pct: 0.15 },
+      { type: 'Easy', pct: 30 },
       { type: 'Cross Train', pct: 0 },
-      { type: 'Easy', pct: 0.15 },
+      { type: 'Easy', pct: 30 },
       null,
-      { type: 'Easy', pct: 0.20 },
+      { type: 'Easy', pct: 40 },
       null,
     ],
   },
@@ -186,17 +193,44 @@ function generateWeekPlan(templateKey, weekTargets, groups) {
   if (!template) return null;
   const targets = groups.map(g => parseFloat(weekTargets[g.id]) || 0);
   const maxTarget = Math.max(...targets, 1);
+  const vol = template.volume || 1.0;
+  const pctSum = template.days.reduce((s, d) => s + (d?.pct || 0), 0);
+
+  // Helper: distribute a total across days proportionally, adjusting the
+  // largest day so the sum is exact (avoids cumulative rounding drift).
+  const distribute = (total) => {
+    const adjusted = Math.round(total * vol);
+    if (adjusted <= 0) return template.days.map(() => 0);
+    const raw = template.days.map(d => (d?.pct || 0) / (pctSum || 1) * adjusted);
+    const rounded = raw.map(v => Math.round(v));
+    const diff = adjusted - rounded.reduce((s, v) => s + v, 0);
+    if (diff !== 0) {
+      // Adjust the day with the largest allocation
+      const maxIdx = raw.reduce((best, v, i) => v > raw[best] ? i : best, 0);
+      rounded[maxIdx] += diff;
+    }
+    return rounded;
+  };
+
+  // Distribute base miles (from max group target)
+  const baseDist = distribute(maxTarget);
+
+  // Distribute per-group miles
+  const groupDists = {};
+  groups.forEach((g, gi) => {
+    if (targets[gi] > 0) {
+      groupDists[g.id] = distribute(targets[gi]);
+    }
+  });
+
   return template.days.map((day, i) => {
     if (!day) return EMPTY_SLOT();
-    const baseMiles = day.pct > 0 ? String(Math.round(maxTarget * day.pct)) : '';
-    // Pre-calculate each group's miles directly from their own target
-    // to avoid double-rounding (base round + scale round)
+    const baseMiles = day.pct > 0 ? String(baseDist[i]) : '';
     const overrides = {};
     if (day.pct > 0) {
-      groups.forEach((g, gi) => {
-        const groupTarget = targets[gi];
-        if (groupTarget > 0) {
-          overrides[g.id] = String(Math.round(groupTarget * day.pct));
+      groups.forEach((g) => {
+        if (groupDists[g.id]) {
+          overrides[g.id] = String(groupDists[g.id][i]);
         }
       });
     }
