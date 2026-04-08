@@ -163,6 +163,7 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
         vdotTime: vdotTimeStr,
         vdot: vdotScore,
         trainingPaces: vdotPaces,
+        vdotUpdatedAt: new Date().toISOString(),
       });
       Alert.alert('Saved!', 'Your training paces have been updated.');
       onUpdated && onUpdated({ vdot: vdotScore, trainingPaces: vdotPaces });

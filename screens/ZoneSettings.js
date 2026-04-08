@@ -55,7 +55,7 @@ export default function ZoneSettings({ school, schoolId, onClose, onSaved }) {
   const [loading,    setLoading]    = useState(true);
   const [saving,     setSaving]     = useState(false);
   const [boundaries, setBoundaries] = useState({ ...DEFAULT_ZONE_BOUNDARIES });
-  const [hrZonesDisabled, setHrZonesDisabled] = useState(false);
+  const [hrZonesDisabled, setHrZonesDisabled] = useState(true);
 
   const primaryColor = '#213f96';
 
@@ -70,7 +70,7 @@ export default function ZoneSettings({ school, schoolId, onClose, onSaved }) {
       const snap = await getDoc(doc(db, 'teamZoneSettings', schoolId));
       if (snap.exists()) {
         if (snap.data().boundaries) setBoundaries(snap.data().boundaries);
-        if (snap.data().hrZonesDisabled) setHrZonesDisabled(true);
+        if (snap.data().hrZonesDisabled !== undefined) setHrZonesDisabled(snap.data().hrZonesDisabled !== false);
       }
     } catch (e) { console.log('Load team zone settings:', e); }
     setLoading(false);

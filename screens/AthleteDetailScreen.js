@@ -23,6 +23,7 @@ import {
 } from '../zoneConfig';
 import { getActiveSeason, getPhaseForSeason, generateVolumeCurve } from './SeasonPlanner';
 import { formatTime, calcPace, formatPace } from '../utils/raceUtils';
+import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
 import RunDetailModal from './RunDetailModal';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -273,6 +274,59 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
     }
     weekTrend.unshift(wPct);
   }
+
+  // ── Feature 2b: Pace-based Training Quality (primary when VDOT set) ──
+  const trainingPaces = athlete.trainingPaces || null;
+  let paceZoneBreakdown = null;
+  let paceEighty20 = null;
+  if (trainingPaces) {
+    const combined = { e: 0, m: 0, t: 0, i: 0, r: 0 };
+    recentRuns.forEach(r => {
+      if (r.rawPaceStream?.length > 0) {
+        const zones = calcPaceZoneBreakdown(r.rawPaceStream, trainingPaces);
+        Object.keys(zones).forEach(k => { combined[k] += zones[k]; });
+      } else if (r.paceZoneSeconds) {
+        Object.keys(r.paceZoneSeconds).forEach(k => { combined[k] += (r.paceZoneSeconds[k] || 0); });
+      }
+    });
+    const total = Object.values(combined).reduce((s, v) => s + v, 0);
+    if (total > 0) {
+      paceZoneBreakdown = PACE_ZONES.map(z => ({
+        ...z,
+        seconds: combined[z.key],
+        pct: Math.round((combined[z.key] / total) * 100),
+      })).filter(z => z.seconds > 0);
+      paceEighty20 = calcPace8020(combined);
+    }
+  }
+
+  // Pace-based 4-week trend
+  const paceWeekTrend = [];
+  if (trainingPaces) {
+    for (let w = 0; w < 4; w++) {
+      const wStart = new Date(now - (w + 1) * 7 * 86400000);
+      const wEnd = new Date(now - w * 7 * 86400000);
+      const wRuns = allRuns.filter(r => { const d = getRunDate(r); return d >= wStart && d < wEnd; });
+      const comb = { e: 0, m: 0, t: 0, i: 0, r: 0 };
+      let hasData = false;
+      wRuns.forEach(r => {
+        if (r.rawPaceStream?.length > 0) {
+          const zones = calcPaceZoneBreakdown(r.rawPaceStream, trainingPaces);
+          Object.keys(zones).forEach(k => { comb[k] += zones[k]; });
+          hasData = true;
+        } else if (r.paceZoneSeconds) {
+          Object.keys(r.paceZoneSeconds).forEach(k => { comb[k] += (r.paceZoneSeconds[k] || 0); });
+          hasData = true;
+        }
+      });
+      const result = hasData ? calcPace8020(comb) : null;
+      paceWeekTrend.unshift(result ? result.easyPct : null);
+    }
+  }
+
+  const usePace = !!paceEighty20;
+  const displayEighty20 = usePace ? paceEighty20 : eighty20;
+  const displayWeekTrend = usePace ? paceWeekTrend : weekTrend;
 
   // ── Feature 3: Season Volume Arc ──
   const seasonKey = activeSeason ? `${activeSeason.sport || 'cross_country'}_${activeSeason.seasonStart?.split?.('T')?.[0] || activeSeason.seasonStart}` : null;
@@ -532,17 +586,17 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
               <Ionicons name={expandedSection === 'quality' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />
             </View>
 
-            {eighty20 ? (
+            {displayEighty20 ? (
               <View>
                 <View style={styles.heroGauge}>
                   <Text style={[styles.heroGaugeNum, {
-                    color: eighty20.easyPct >= 78 ? STATUS.success : eighty20.easyPct >= 70 ? STATUS.warning : STATUS.error,
-                  }]}>{eighty20.easyPct}%</Text>
-                  <Text style={styles.heroGaugeSub}>Z1+Z2 (easy running)</Text>
-                  {hasStreamData && <Text style={styles.streamBadge}>Precise</Text>}
+                    color: displayEighty20.easyPct >= 78 ? STATUS.success : displayEighty20.easyPct >= 70 ? STATUS.warning : STATUS.error,
+                  }]}>{displayEighty20.easyPct}%</Text>
+                  <Text style={styles.heroGaugeSub}>{usePace ? 'Easy running (pace)' : 'Z1+Z2 (easy running)'}</Text>
+                  {!usePace && hasStreamData && <Text style={styles.streamBadge}>Precise</Text>}
                 </View>
                 <View style={styles.trendRow}>
-                  {weekTrend.map((pct, i) => (
+                  {displayWeekTrend.map((pct, i) => (
                     <View key={i} style={styles.trendItem}>
                       <View style={[styles.trendDot, {
                         backgroundColor: pct == null ? NEUTRAL.border : pct >= 78 ? STATUS.success : pct >= 70 ? STATUS.warning : STATUS.error,
@@ -554,13 +608,32 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
                 </View>
               </View>
             ) : (
-              <Text style={styles.noDataText}>Not enough HR or effort data yet.</Text>
+              <Text style={styles.noDataText}>{trainingPaces ? 'Not enough pace data yet.' : 'No training paces set. Not enough HR or effort data.'}</Text>
             )}
           </TouchableOpacity>
 
           {expandedSection === 'quality' && (
             <View style={styles.detail}>
-              {zoneBreakdown && (
+              {/* Pace zone breakdown (primary when VDOT set) */}
+              {usePace && paceZoneBreakdown && (
+                <View style={styles.zoneSection}>
+                  <View style={styles.zoneStackedBar}>
+                    {paceZoneBreakdown.map(z => (
+                      <View key={z.key} style={[styles.zoneBarSegment, { flex: z.pct, backgroundColor: z.color }]} />
+                    ))}
+                  </View>
+                  {paceZoneBreakdown.map(z => (
+                    <View key={z.key} style={styles.zoneRow}>
+                      <View style={[styles.zoneDot, { backgroundColor: z.color }]} />
+                      <Text style={styles.zoneLabel}>{z.short} {z.name}</Text>
+                      <Text style={styles.zonePct}>{z.pct}%</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* HR zone breakdown (fallback when no VDOT, or secondary collapsible when pace is primary) */}
+              {!usePace && zoneBreakdown && (
                 <View style={styles.zoneSection}>
                   <View style={styles.zoneStackedBar}>
                     {zoneBreakdown.map(z => (

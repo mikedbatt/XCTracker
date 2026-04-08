@@ -158,6 +158,7 @@ export default function AthleteDashboard({ userData }) {
   const [localAvatarColor,     setLocalAvatarColor]     = useState(userData.avatarColor || BRAND);
   const [stravaLinked,         setStravaLinked]         = useState(true); // default true to avoid flash
   const [stravaDismissed,      setStravaDismissed]      = useState(false);
+  const [benchmarkDismissed,   setBenchmarkDismissed]   = useState(false);
   const [todayCheckinDone,     setTodayCheckinDone]     = useState(true); // default true to avoid flash
   const [wellnessCardDismissed, setWellnessCardDismissed] = useState(false);
   const [zoneExpanded, setZoneExpanded] = useState(false);
@@ -535,6 +536,13 @@ export default function AthleteDashboard({ userData }) {
   const coachDisabledHR = teamZoneSettings?.hrZonesDisabled === true;
   const showHRZones = !coachDisabledHR && !paceBreakdown && (hrZonePref === true || (hrZonePref !== false && breakdown !== null));
 
+  // Check if VDOT paces are stale (>30 days since last update)
+  const vdotStale = (() => {
+    if (!userData.trainingPaces || !userData.vdotUpdatedAt) return false;
+    const updatedAt = new Date(userData.vdotUpdatedAt);
+    return (Date.now() - updatedAt.getTime()) > 30 * 86400000;
+  })();
+
   const avatarColor = localAvatarColor;
   // No interpolation needed — just multiply by 100 for percentage display
   // The Animated.View width is set inline below
@@ -656,39 +664,6 @@ export default function AthleteDashboard({ userData }) {
             </>
           )}
 
-          {/* HR zone dropdown (fallback — shown when no pace data) */}
-          {showHRZones && selectedTimeframe.key === 'week' && breakdown && (
-            <>
-              <TouchableOpacity style={styles.zoneToggle} onPress={() => setZoneExpanded(e => !e)} activeOpacity={0.7}>
-                <View style={styles.zoneToggleLeft}>
-                  <View style={styles.zoneStackedBarSmall}>
-                    {breakdown.map(z => <View key={z.zone} style={[styles.zoneStackedSegment, { flex: z.minutes, backgroundColor: ZONE_META[z.zone].color }]} />)}
-                  </View>
-                  <Text style={styles.zoneToggleText}>HR zones</Text>
-                  {hasStreamData && <View style={styles.streamBadge}><Text style={styles.streamBadgeText}>Precise</Text></View>}
-                </View>
-                <Ionicons name={zoneExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={NEUTRAL.muted} />
-              </TouchableOpacity>
-              {zoneExpanded && (
-                <View style={styles.zoneDropdown}>
-                  {breakdown.map(z => (
-                    <View key={z.zone} style={styles.zoneRow}>
-                      <View style={[styles.zoneDot, { backgroundColor: ZONE_META[z.zone].color }]} />
-                      <Text style={styles.zoneName}>Z{z.zone} {ZONE_META[z.zone].name}</Text>
-                      <View style={styles.zoneBarBg}><View style={[styles.zoneBarFill, { width: z.pct + '%', backgroundColor: ZONE_META[z.zone].color }]} /></View>
-                      <Text style={styles.zoneTime}>{formatMinutes(z.minutes)}</Text>
-                    </View>
-                  ))}
-                  {analysis && (
-                    <View style={[styles.analysis8020, { backgroundColor: analysis.status === 'great' ? '#e8f5e9' : analysis.status === 'good' ? '#fff8e1' : '#fce4ec' }]}>
-                      <Text style={[styles.analysis8020Text, { color: analysis.status === 'great' ? BRAND : analysis.status === 'good' ? '#f57f17' : '#c62828' }]}>{analysis.message}</Text>
-                    </View>
-                  )}
-                  <Text style={styles.zoneTotalTime}>{formatMinutes(totalZoneMins)} total · {hasStreamData ? 'second-by-second HR data' : 'estimated from avg HR'}</Text>
-                </View>
-              )}
-            </>
-          )}
         </View>
 
         {/* ── Daily wellness check-in prompt ── */}
@@ -708,6 +683,51 @@ export default function AthleteDashboard({ userData }) {
             </View>
             <TouchableOpacity style={styles.wellnessCheckInBtn} onPress={() => setDailyWellnessVisible(true)}>
               <Text style={styles.wellnessCheckInText}>Check in</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ── VDOT setup prompt ── */}
+        {!userData.trainingPaces && (
+          <View style={styles.vdotCard}>
+            <View style={styles.stravaCardTop}>
+              <View style={styles.stravaCardLeft}>
+                <View style={[styles.stravaLogo, { backgroundColor: BRAND_LIGHT }]}>
+                  <Ionicons name="speedometer-outline" size={18} color={BRAND} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.stravaCardTitle}>Set Your Training Paces</Text>
+                  <Text style={styles.stravaCardDesc}>Enter a recent race time to unlock pace-based training zones.</Text>
+                </View>
+              </View>
+            </View>
+            <TouchableOpacity style={[styles.stravaConnectBtn, { backgroundColor: BRAND }]} onPress={() => { setActiveTab('home'); setProfileVisible(true); }}>
+              <Text style={styles.stravaConnectText}>Set up now</Text>
+              <Ionicons name="arrow-forward" size={16} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ── Benchmark update prompt ── */}
+        {vdotStale && !benchmarkDismissed && (
+          <View style={styles.vdotCard}>
+            <View style={styles.stravaCardTop}>
+              <View style={styles.stravaCardLeft}>
+                <View style={[styles.stravaLogo, { backgroundColor: '#e8f5e9' }]}>
+                  <Ionicons name="trophy-outline" size={18} color={STATUS.success} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.stravaCardTitle}>Review your training paces</Text>
+                  <Text style={styles.stravaCardDesc}>It's been a while since you updated. A recent race time can sharpen your zones.</Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={() => setBenchmarkDismissed(true)} style={styles.stravaCloseBtn}>
+                <Ionicons name="close" size={18} color={NEUTRAL.muted} />
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity style={[styles.stravaConnectBtn, { backgroundColor: BRAND }]} onPress={() => { setActiveTab('home'); setProfileVisible(true); }}>
+              <Text style={styles.stravaConnectText}>Update paces</Text>
+              <Ionicons name="arrow-forward" size={16} color="#fff" />
             </TouchableOpacity>
           </View>
         )}
@@ -779,32 +799,6 @@ export default function AthleteDashboard({ userData }) {
               </>
             )}
 
-            {/* HR zone dropdown inside period card (fallback) */}
-            {showHRZones && breakdown && (
-              <>
-                <TouchableOpacity style={styles.zoneToggle} onPress={() => setZoneExpanded(e => !e)} activeOpacity={0.7}>
-                  <View style={styles.zoneToggleLeft}>
-                    <View style={styles.zoneStackedBarSmall}>
-                      {breakdown.map(z => <View key={z.zone} style={[styles.zoneStackedSegment, { flex: z.minutes, backgroundColor: ZONE_META[z.zone].color }]} />)}
-                    </View>
-                    <Text style={styles.zoneToggleText}>HR zones</Text>
-                  </View>
-                  <Ionicons name={zoneExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={NEUTRAL.muted} />
-                </TouchableOpacity>
-                {zoneExpanded && (
-                  <View style={styles.zoneDropdown}>
-                    {breakdown.map(z => (
-                      <View key={z.zone} style={styles.zoneRow}>
-                        <View style={[styles.zoneDot, { backgroundColor: ZONE_META[z.zone].color }]} />
-                        <Text style={styles.zoneName}>Z{z.zone} {ZONE_META[z.zone].name}</Text>
-                        <View style={styles.zoneBarBg}><View style={[styles.zoneBarFill, { width: z.pct + '%', backgroundColor: ZONE_META[z.zone].color }]} /></View>
-                        <Text style={styles.zoneTime}>{formatMinutes(z.minutes)}</Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </>
-            )}
           </View>
         )}
 
@@ -1107,6 +1101,7 @@ const styles = StyleSheet.create({
   wellnessCloseBtn:    { padding: SPACE.xs },
   wellnessCheckInBtn:  { backgroundColor: BRAND, borderRadius: RADIUS.md, paddingVertical: SPACE.md, alignItems: 'center', marginTop: SPACE.md },
   wellnessCheckInText: { color: '#fff', fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold },
+  vdotCard:            { marginHorizontal: SPACE.lg, marginTop: SPACE.md, backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, ...SHADOW.sm },
   stravaCard:          { marginHorizontal: SPACE.lg, marginTop: SPACE.md, backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, ...SHADOW.sm },
   stravaCardTop:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   stravaCardLeft:      { flexDirection: 'row', alignItems: 'flex-start', gap: SPACE.md, flex: 1 },

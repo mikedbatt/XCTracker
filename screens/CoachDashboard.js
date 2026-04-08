@@ -47,6 +47,7 @@ import TimeframePicker, { TIMEFRAMES, getDateRange } from '../screens/TimeframeP
 import TrainingHub from '../screens/TrainingHub';
 import ZoneSettings from '../screens/ZoneSettings';
 import { computeVolumeCompliance, getCurrentWeekPace, getAthleteWeeklyTarget } from '../utils/complianceUtils';
+import { calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
 import {
   DEFAULT_ZONE_BOUNDARIES,
   calcMaxHR,
@@ -263,6 +264,26 @@ function calcAthleteZonePct(recentRuns, age, teamZoneSettings) {
   return null;
 }
 
+// ── Pace easy % helper — uses VDOT training paces instead of HR zones ────────
+function calcAthletePaceEasyPct(recentRuns, trainingPaces) {
+  if (!trainingPaces) return null;
+  const combined = { e: 0, m: 0, t: 0, i: 0, r: 0 };
+  let hasData = false;
+  recentRuns.forEach(r => {
+    if (r.rawPaceStream?.length > 0) {
+      const zones = calcPaceZoneBreakdown(r.rawPaceStream, trainingPaces);
+      Object.keys(zones).forEach(k => { combined[k] += zones[k]; });
+      hasData = true;
+    } else if (r.paceZoneSeconds) {
+      Object.keys(r.paceZoneSeconds).forEach(k => { combined[k] += (r.paceZoneSeconds[k] || 0); });
+      hasData = true;
+    }
+  });
+  if (!hasData) return null;
+  const result = calcPace8020(combined);
+  return result ? result.easyPct : null;
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function CoachDashboard({ userData }) {
   const [school,              setSchool]              = useState(null);
@@ -273,6 +294,7 @@ export default function CoachDashboard({ userData }) {
   const [athlete3WeekAvg,     setAthlete3WeekAvg]     = useState({});
   const [athleteWeeklyBreakdown, setAthleteWeeklyBreakdown] = useState({});
   const [athleteZonePct,      setAthleteZonePct]      = useState({});
+  const [athletePaceEasyPct,  setAthletePaceEasyPct]  = useState({});
   const [pendingAthletes,     setPendingAthletes]     = useState([]);
   const [pendingCoachCount,   setPendingCoachCount]   = useState(0);
   const [unreadFeedCount,     setUnreadFeedCount]     = useState(0);
@@ -304,6 +326,8 @@ export default function CoachDashboard({ userData }) {
   const [athleteWeekPace,     setAthleteWeekPace]     = useState({});
   const [teamPulse,           setTeamPulse]           = useState({ checkinCount: 0, totalAthletes: 0, teamAvgMood: null, inactiveCount: 0 });
   const [complianceExpanded,  setComplianceExpanded]  = useState(false);
+  const [paceComplianceExpanded, setPaceComplianceExpanded] = useState(false);
+  const [paceComplianceData, setPaceComplianceData] = useState({ runningEasy: [], tooHard: [], noPaces: 0 });
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -360,6 +384,7 @@ export default function CoachDashboard({ userData }) {
       const threeWeekAvgMap = {};
       const weekBreakdownMap = {};
       const zonePctMap      = {};
+      const paceEasyPctMap  = {};
       const lastRunDateMap  = {};
 
       for (const athlete of approvedAthletes) {
@@ -436,6 +461,9 @@ export default function CoachDashboard({ userData }) {
             });
             // Store null explicitly so the card can show "No HR data" vs hiding
             zonePctMap[athlete.id] = calcAthleteZonePct(recentRuns, age, currentZoneSettings);
+
+            // Pace-based easy % (uses VDOT training paces instead of HR)
+            paceEasyPctMap[athlete.id] = calcAthletePaceEasyPct(recentRuns, athlete.trainingPaces);
           } catch (e) { console.warn('Zone pct calc failed for athlete:', e); }
 
         } catch (e) {
@@ -451,11 +479,25 @@ export default function CoachDashboard({ userData }) {
       setAthlete3WeekAvg(threeWeekAvgMap);
       setAthleteWeeklyBreakdown(weekBreakdownMap);
       setAthleteZonePct(zonePctMap);
+      setAthletePaceEasyPct(paceEasyPctMap);
       setAthleteLastRunDate(lastRunDateMap);
 
       // ── Compliance computation ──
       const compliance = computeVolumeCompliance(approvedAthletes, loadedGroups, threeWeekAvgMap, weekBreakdownMap);
       setComplianceData(compliance);
+
+      // ── Pace compliance computation ──
+      const paceComp = { runningEasy: [], tooHard: [], noPaces: 0 };
+      for (const a of approvedAthletes) {
+        if (!a.trainingPaces) { paceComp.noPaces++; continue; }
+        const easyPct = paceEasyPctMap[a.id];
+        if (easyPct == null) continue;
+        const entry = { ...a, easyPct };
+        if (easyPct >= 68) paceComp.runningEasy.push(entry);
+        else paceComp.tooHard.push(entry);
+      }
+      paceComp.tooHard.sort((a, b) => a.easyPct - b.easyPct);
+      setPaceComplianceData(paceComp);
 
       // Current-week pace per athlete (time-proportional)
       const mondayDay = dayOfWeek === 0 ? 7 : dayOfWeek; // 1=Mon … 7=Sun
@@ -758,16 +800,19 @@ export default function CoachDashboard({ userData }) {
     const weekMiles   = athleteWeeklyMiles[athlete.id] || 0;
     const avg3        = athlete3WeekAvg[athlete.id] || 0;
     const mileageHigh = avg3 > 0 && weekMiles > avg3 * 1.20;
-    const zonePct     = athleteZonePct[athlete.id];
-    const hasZoneData = zonePct !== undefined;
-    const zoneLow     = hasZoneData && zonePct !== null && zonePct < 70;
+    const paceEasy    = athletePaceEasyPct[athlete.id];
+    const hasPaceData = paceEasy !== undefined && paceEasy !== null;
+    const noVdot      = !athlete.trainingPaces;
+    const easyLow     = hasPaceData && paceEasy < 70;
     const pace        = athleteWeekPace[athlete.id];
     const paceDotColor = pace?.status === 'on_track' ? STATUS.success
       : pace?.status === 'caution' ? STATUS.warning
       : pace?.status === 'behind' || pace?.status === 'ahead' ? STATUS.error
       : null;
     const line1 = `Wk: ${weekMiles} mi${avg3 > 0 ? ` (avg ${avg3})` : ''}${mileageHigh ? '  ↑' : ''}`;
-    const line2 = hasZoneData && zonePct !== null ? `Z1+2: ${zonePct}%${zoneLow ? '  ⚠' : ''}` : null;
+    const line2 = hasPaceData
+      ? `Easy: ${paceEasy}%${easyLow ? '  ⚠' : ''}`
+      : noVdot ? 'No paces set' : null;
 
     return (
       <TouchableOpacity
@@ -786,7 +831,7 @@ export default function CoachDashboard({ userData }) {
               <Text style={styles.athleteName}>{athlete.firstName} {athlete.lastName}</Text>
             </View>
             <Text style={styles.athleteSub}>{line1}</Text>
-            {line2 && <Text style={styles.athleteSub}>{line2}</Text>}
+            {line2 && <Text style={[styles.athleteSub, noVdot && !hasPaceData && { color: NEUTRAL.muted, fontStyle: 'italic' }]}>{line2}</Text>}
           </View>
           <View style={styles.milesBox}>
             <Text style={[styles.milesNum, { color: BRAND }]}>
@@ -974,6 +1019,62 @@ export default function CoachDashboard({ userData }) {
                           </Text>
                         </View>
                         {a.target && <Text style={styles.complianceTarget}>{a.target} mi</Text>}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* ── Pace setup indicator ── */}
+        {paceComplianceData.noPaces > 0 && (
+          <View style={styles.paceSetupNote}>
+            <Ionicons name="alert-circle-outline" size={16} color={STATUS.warning} />
+            <Text style={styles.paceSetupNoteText}>
+              {paceComplianceData.noPaces} athlete{paceComplianceData.noPaces !== 1 ? 's' : ''} need training paces
+            </Text>
+          </View>
+        )}
+
+        {/* ── Pace Compliance card (expandable) ── */}
+        {(paceComplianceData.tooHard.length > 0 || paceComplianceData.runningEasy.length > 0) && (
+          <View style={styles.complianceCard}>
+            <TouchableOpacity style={styles.complianceHeader} onPress={() => setPaceComplianceExpanded(prev => !prev)}>
+              <Ionicons name="speedometer-outline" size={20} color={BRAND} />
+              <Text style={styles.complianceTitle}>
+                Pace Compliance — {paceComplianceData.runningEasy.length} running easy
+                {paceComplianceData.tooHard.length > 0 ? `, ${paceComplianceData.tooHard.length} too hard` : ''}
+              </Text>
+              <Ionicons name={paceComplianceExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={NEUTRAL.muted} />
+            </TouchableOpacity>
+            {paceComplianceExpanded && (
+              <View style={{ marginTop: SPACE.sm }}>
+                {paceComplianceData.tooHard.length > 0 && (
+                  <View style={{ marginBottom: SPACE.sm }}>
+                    <Text style={[styles.complianceGroupLabel, { color: STATUS.error }]}>Too hard (easy &lt; 68%)</Text>
+                    {paceComplianceData.tooHard.map(a => (
+                      <TouchableOpacity key={a.id} style={styles.complianceRow} onPress={() => setSelectedAthlete(a)}>
+                        <View style={[styles.avatar, { backgroundColor: a.avatarColor || BRAND, width: 28, height: 28 }]}>
+                          <Text style={[styles.avatarText, { fontSize: 10 }]}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
+                        </View>
+                        <Text style={styles.complianceRowName}>{a.firstName} {a.lastName}</Text>
+                        <Text style={[styles.complianceTarget, { color: STATUS.error }]}>Easy: {a.easyPct}%</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+                {paceComplianceData.runningEasy.length > 0 && (
+                  <View style={{ marginBottom: SPACE.sm }}>
+                    <Text style={[styles.complianceGroupLabel, { color: STATUS.success }]}>Running easy (≥ 68%)</Text>
+                    {paceComplianceData.runningEasy.map(a => (
+                      <TouchableOpacity key={a.id} style={styles.complianceRow} onPress={() => setSelectedAthlete(a)}>
+                        <View style={[styles.avatar, { backgroundColor: a.avatarColor || BRAND, width: 28, height: 28 }]}>
+                          <Text style={[styles.avatarText, { fontSize: 10 }]}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
+                        </View>
+                        <Text style={styles.complianceRowName}>{a.firstName} {a.lastName}</Text>
+                        <Text style={[styles.complianceTarget, { color: STATUS.success }]}>Easy: {a.easyPct}%</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -1390,6 +1491,8 @@ const styles = StyleSheet.create({
   alertAthleteName:     { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.sm },
   alertSignal:          { fontSize: FONT_SIZE.sm, color: STATUS.error, marginBottom: 3 },
   alertRec:             { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: SPACE.sm, fontStyle: 'italic' },
+  paceSetupNote:        { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginHorizontal: SPACE.lg, marginTop: SPACE.md, paddingVertical: SPACE.sm, paddingHorizontal: SPACE.md, backgroundColor: '#fff8e1', borderRadius: RADIUS.md },
+  paceSetupNoteText:    { fontSize: FONT_SIZE.sm, color: STATUS.warning, fontWeight: FONT_WEIGHT.medium },
   complianceCard:       { marginHorizontal: SPACE.lg, marginTop: SPACE.md, backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, borderWidth: 1.5, borderColor: NEUTRAL.border, ...SHADOW.sm },
   complianceHeader:     { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
   complianceTitle:      { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, flex: 1 },
