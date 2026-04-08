@@ -715,16 +715,17 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
                       {groups.map(g => {
                         const autoVal = calcGroupMiles(slot.baseMiles)[g.id] || 0;
                         const override = slot.groupMilesOverrides?.[g.id];
-                        const displayVal = override !== undefined && override !== '' ? override : String(autoVal);
-                        const isOverridden = override !== undefined && override !== '';
+                        const hasOverride = override !== undefined && override !== '';
+                        const displayVal = hasOverride ? override : String(autoVal);
                         return (
                           <View key={g.id} style={styles.autoGroupRow}>
                             <Text style={styles.autoGroupName}>{g.name}:</Text>
                             <TextInput
-                              style={[styles.groupMilesInput, isOverridden && { borderColor: BRAND, color: BRAND }]}
+                              style={[styles.groupMilesInput, hasOverride && { borderColor: BRAND, color: BRAND }]}
                               value={String(displayVal)}
                               onChangeText={(text) => {
-                                const val = text === '' || text === String(autoVal) ? undefined : text;
+                                // Empty = clear override and use auto-calc
+                                const val = text === '' ? undefined : text;
                                 updateSlot(i, 'groupMilesOverrides', { ...(slot.groupMilesOverrides || {}), [g.id]: val });
                               }}
                               keyboardType="decimal-pad"
