@@ -45,6 +45,7 @@ import WeeklyPlanner from '../screens/WeeklyPlanner';
 import ChannelList from '../screens/ChannelList';
 import TimeframePicker, { TIMEFRAMES, getDateRange } from '../screens/TimeframePicker';
 import TrainingHub from '../screens/TrainingHub';
+import WorkoutDetailModal from '../screens/WorkoutDetailModal';
 import ZoneSettings from '../screens/ZoneSettings';
 import { computeVolumeCompliance, getCurrentWeekPace, getAthleteWeeklyTarget } from '../utils/complianceUtils';
 import { calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
@@ -314,6 +315,7 @@ export default function CoachDashboard({ userData }) {
   const [athleteWeekPace,     setAthleteWeekPace]     = useState({});
   const [teamPulse,           setTeamPulse]           = useState({ checkinCount: 0, totalAthletes: 0, teamAvgMood: null, inactiveCount: 0 });
   const [complianceExpanded,  setComplianceExpanded]  = useState(false);
+  const [todayWorkoutDetail,  setTodayWorkoutDetail]  = useState(null);
   const [paceComplianceExpanded, setPaceComplianceExpanded] = useState(false);
   const [paceComplianceData, setPaceComplianceData] = useState({ runningEasy: [], tooHard: [], noPaces: 0, noPacesAthletes: [] });
 
@@ -860,7 +862,7 @@ export default function CoachDashboard({ userData }) {
           <View style={styles.todaySection}>
             <Text style={styles.todayLabel}>TODAY</Text>
             {todayItems.length > 0 ? todayItems.map(item => (
-              <TouchableOpacity key={item.id} style={[styles.todayCard, { borderLeftColor: TYPE_COLORS[item.type] || primaryColor }]} onPress={() => { setAddFromDashboard(false); setTrainingSection('weekly'); }}>
+              <TouchableOpacity key={item.id} style={[styles.todayCard, { borderLeftColor: TYPE_COLORS[item.type] || primaryColor }]} onPress={() => setTodayWorkoutDetail(item)}>
                 <View style={styles.todayCardRow}>
                   <View style={[styles.typeBadge, { backgroundColor: TYPE_COLORS[item.type] || primaryColor, marginBottom: 0 }]}>
                     <Text style={styles.typeBadgeText}>{item.type}</Text>
@@ -1322,6 +1324,14 @@ export default function CoachDashboard({ userData }) {
       )}
 
       {/* ── Persistent bottom nav ── */}
+      <WorkoutDetailModal
+        item={todayWorkoutDetail}
+        visible={!!todayWorkoutDetail}
+        onClose={() => setTodayWorkoutDetail(null)}
+        primaryColor={primaryColor}
+        groups={groups}
+      />
+
       <View style={styles.bottomNav}>
         <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setTrainingSection(null); setFeedVisible(false); setZonesVisible(false); setProfileVisible(false); setAnalyticsVisible(false); setAddFromDashboard(false); }}>
           <Ionicons name="home-outline" size={24} color={!trainingSection && !feedVisible && !zonesVisible && !profileVisible && !analyticsVisible && !addFromDashboard ? BRAND : NEUTRAL.muted} />
