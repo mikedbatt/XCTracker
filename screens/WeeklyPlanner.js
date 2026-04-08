@@ -566,37 +566,14 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
           </View>
         )}
 
-        {/* Generate week button (shown when empty) */}
-        {weekStatus === 'empty' && daySlots.every(s => !s.type) && (
-          <View style={styles.generateSection}>
-            <Text style={styles.generateHint}>Start by generating a week plan based on your season phase.</Text>
-            <View style={styles.templateGrid}>
-              {Object.entries(WEEK_TEMPLATES)
-                .sort(([, a], [, b]) => {
-                  const aMatch = phase && a.phases.includes(phase.name) ? 0 : 1;
-                  const bMatch = phase && b.phases.includes(phase.name) ? 0 : 1;
-                  return aMatch - bMatch;
-                })
-                .map(([key, tmpl]) => {
-                  const isRecommended = phase && tmpl.phases.includes(phase.name);
-                  const daySummary = tmpl.days.map((d, di) => d ? `${DAYS[di].slice(0, 3)} ${d.type}` : `${DAYS[di].slice(0, 3)} Off`).join(' · ');
-                  return (
-                    <TouchableOpacity
-                      key={key}
-                      style={[styles.templateCard, isRecommended && { borderColor: BRAND, borderWidth: 1.5 }]}
-                      onPress={() => {
-                        const plan = generateWeekPlan(key, weekTargets, groups);
-                        if (plan) { setDaySlots(plan); setDraftDirty(true); setWeekStatus('draft'); }
-                      }}
-                    >
-                      {isRecommended && <Text style={styles.templateRecommended}>Recommended</Text>}
-                      <Text style={styles.templateName}>{tmpl.label}</Text>
-                      <Text style={styles.templateDesc}>{tmpl.desc}</Text>
-                      <Text style={styles.templateDays}>{daySummary}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-            </View>
+        {/* Empty week prompt — compact link, not blocking */}
+        {weekStatus === 'empty' && daySlots.every(s => !s.type) && !showTemplates && (
+          <View style={styles.emptyWeekPrompt}>
+            <TouchableOpacity style={styles.emptyWeekBtn} onPress={() => setShowTemplates(true)}>
+              <Ionicons name="flash-outline" size={16} color={BRAND} />
+              <Text style={styles.emptyWeekBtnText}>Generate from template</Text>
+            </TouchableOpacity>
+            <Text style={styles.emptyWeekOr}>or tap any day below to plan manually</Text>
           </View>
         )}
 
@@ -946,6 +923,10 @@ const styles = StyleSheet.create({
   doneEditText:    { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND },
   loadTemplateBtn:   { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: SPACE.xs },
   loadTemplateBtnText: { fontSize: FONT_SIZE.xs, color: BRAND, fontWeight: FONT_WEIGHT.semibold },
+  emptyWeekPrompt:   { alignItems: 'center', paddingVertical: SPACE.md, marginHorizontal: SPACE.lg },
+  emptyWeekBtn:      { flexDirection: 'row', alignItems: 'center', gap: SPACE.xs, backgroundColor: BRAND_LIGHT, paddingHorizontal: SPACE.lg, paddingVertical: SPACE.sm, borderRadius: RADIUS.full },
+  emptyWeekBtnText:  { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: BRAND },
+  emptyWeekOr:       { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: SPACE.xs },
   generateSection:   { margin: SPACE.lg },
   generateHint:      { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginBottom: SPACE.md, textAlign: 'center' },
   templateGrid:      { gap: SPACE.sm },
