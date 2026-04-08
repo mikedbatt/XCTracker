@@ -503,11 +503,166 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
             </View>
           )}
 
-          {/* ── 1. Readiness & Recovery (coach only) ── */}
+          {/* ── 1. Volume Compliance ── */}
+          <TouchableOpacity style={styles.section} onPress={() => toggle('volume')} activeOpacity={0.8}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionNum}>1</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionTitle}>Volume Compliance</Text>
+                <Text style={styles.sectionSub}>
+                  {phaseInfo.weekNum ? `Week ${phaseInfo.weekNum}${totalWeeks ? ` of ${totalWeeks}` : ''} · ${phaseInfo.name}` : 'No active season'}
+                  {phaseInfo.daysToChamp != null && phaseInfo.daysToChamp > 0 ? ` · ${phaseInfo.daysToChamp}d to championship` : ''}
+                </Text>
+              </View>
+              <Ionicons name={expandedSection === 'volume' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />
+            </View>
+
+            {volumeWeeks.length > 0 ? (
+              <View>
+                <View style={styles.phaseStrip}>
+                  {(phaseInfo.phases || []).map((p, i) => (
+                    <View key={i} style={[styles.phaseChip, p.name === phaseInfo.name && { backgroundColor: p.color, borderColor: p.color }]}>
+                      <Text style={[styles.phaseChipText, p.name === phaseInfo.name && { color: '#fff' }]}>{p.name.replace('Pre-Season ', 'Pre-')}</Text>
+                    </View>
+                  ))}
+                </View>
+                {volumeWeeks.find(w => w.isCurrent) && (() => {
+                  const cw = volumeWeeks.find(w => w.isCurrent);
+                  const pct = cw.target > 0 ? Math.round((cw.actual / cw.target) * 100) : 0;
+                  return <Text style={styles.volumeSummary}>This week: {cw.actual} of {cw.target} mi target ({pct}%)</Text>;
+                })()}
+              </View>
+            ) : (
+              <Text style={styles.noDataText}>No season plan configured for this athlete's group.</Text>
+            )}
+          </TouchableOpacity>
+
+          {expandedSection === 'volume' && volumeWeeks.length > 0 && (
+            <View style={styles.detail}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.volumeChartScroll}>
+                {volumeWeeks.map((w, i) => {
+                  const maxTarget = Math.max(...volumeWeeks.map(wk => Math.max(wk.target, wk.actual || 0)), 1);
+                  const targetH = (w.target / maxTarget) * 100;
+                  const actualH = w.actual != null ? (w.actual / maxTarget) * 100 : 0;
+                  const pctOfTarget = w.target > 0 && w.actual != null ? w.actual / w.target : null;
+                  const barColor = w.actual == null ? NEUTRAL.border
+                    : pctOfTarget >= 0.9 && pctOfTarget <= 1.1 ? STATUS.success
+                    : pctOfTarget < 0.9 ? STATUS.warning : STATUS.error;
+                  return (
+                    <View key={w.monday} style={[styles.volumeBar, w.isCurrent && styles.volumeBarCurrent]}>
+                      <View style={styles.volumeBarInner}>
+                        <View style={[styles.volumeTarget, { height: targetH + '%' }]} />
+                        {w.actual != null && <View style={[styles.volumeActual, { height: actualH + '%', backgroundColor: barColor }]} />}
+                      </View>
+                      <Text style={[styles.volumeWeekLabel, w.isCurrent && { color: BRAND, fontWeight: FONT_WEIGHT.bold }]}>
+                        {w.isCurrent ? 'Now' : `W${i + 1}`}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+              <View style={styles.volumeLegend}>
+                <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: NEUTRAL.border }]} /><Text style={styles.legendText}>Target</Text></View>
+                <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: STATUS.success }]} /><Text style={styles.legendText}>On track</Text></View>
+                <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: STATUS.warning }]} /><Text style={styles.legendText}>Under</Text></View>
+                <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: STATUS.error }]} /><Text style={styles.legendText}>Over</Text></View>
+              </View>
+            </View>
+          )}
+
+          {/* ── 2. Pace Compliance (coach only) ── */}
+          {!parentMode && (<>
+          <TouchableOpacity style={styles.section} onPress={() => toggle('quality')} activeOpacity={0.8}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionNum}>2</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionTitle}>Pace Compliance</Text>
+                <Text style={styles.sectionSub}>Last 30 days — 80/20 compliance & effort</Text>
+              </View>
+              <Ionicons name={expandedSection === 'quality' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />
+            </View>
+
+            {displayEighty20 ? (
+              <View>
+                <View style={styles.heroGauge}>
+                  <Text style={[styles.heroGaugeNum, {
+                    color: displayEighty20.easyPct >= 78 ? STATUS.success : displayEighty20.easyPct >= 70 ? STATUS.warning : STATUS.error,
+                  }]}>{displayEighty20.easyPct}%</Text>
+                  <Text style={styles.heroGaugeSub}>{usePace ? 'Easy running (pace)' : 'Z1+Z2 (easy running)'}</Text>
+                  {!usePace && hasStreamData && <Text style={styles.streamBadge}>Precise</Text>}
+                </View>
+                <View style={styles.trendRow}>
+                  {displayWeekTrend.map((pct, i) => (
+                    <View key={i} style={styles.trendItem}>
+                      <View style={[styles.trendDot, {
+                        backgroundColor: pct == null ? NEUTRAL.border : pct >= 78 ? STATUS.success : pct >= 70 ? STATUS.warning : STATUS.error,
+                      }]} />
+                      <Text style={styles.trendLabel}>{pct != null ? `${pct}%` : '—'}</Text>
+                    </View>
+                  ))}
+                  <Text style={styles.trendArrow}>← 4 wk ago</Text>
+                </View>
+              </View>
+            ) : (
+              <Text style={styles.noDataText}>{trainingPaces ? 'Not enough pace data yet.' : 'No training paces set. Not enough HR or effort data.'}</Text>
+            )}
+          </TouchableOpacity>
+
+          {expandedSection === 'quality' && (
+            <View style={styles.detail}>
+              {usePace && paceZoneBreakdown && (
+                <View style={styles.zoneSection}>
+                  <View style={styles.zoneStackedBar}>
+                    {paceZoneBreakdown.map(z => (
+                      <View key={z.key} style={[styles.zoneBarSegment, { flex: z.pct, backgroundColor: z.color }]} />
+                    ))}
+                  </View>
+                  {paceZoneBreakdown.map(z => (
+                    <View key={z.key} style={styles.zoneRow}>
+                      <View style={[styles.zoneDot, { backgroundColor: z.color }]} />
+                      <Text style={styles.zoneLabel}>{z.short} {z.name}</Text>
+                      <Text style={styles.zonePct}>{z.pct}%</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {!usePace && zoneBreakdown && (
+                <View style={styles.zoneSection}>
+                  <View style={styles.zoneStackedBar}>
+                    {zoneBreakdown.map(z => (
+                      <View key={z.zone} style={[styles.zoneBarSegment, { flex: z.pct, backgroundColor: ZONE_META[z.zone]?.color || '#ccc' }]} />
+                    ))}
+                  </View>
+                  {zoneBreakdown.map(z => (
+                    <View key={z.zone} style={styles.zoneRow}>
+                      <View style={[styles.zoneDot, { backgroundColor: ZONE_META[z.zone]?.color }]} />
+                      <Text style={styles.zoneLabel}>{ZONE_META[z.zone]?.name || `Z${z.zone}`}</Text>
+                      <Text style={styles.zonePct}>{z.pct}%</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              <Text style={styles.detailSectionLabel}>Effort distribution</Text>
+              <Text style={styles.detailHint}>Peaks at 3-4 and 8-9 = polarized (good). Clustered at 5-7 = junk miles.</Text>
+              <View style={styles.effortChart}>
+                {[1,2,3,4,5,6,7,8,9,10].map(n => (
+                  <View key={n} style={styles.effortBarWrap}>
+                    <View style={[styles.effortBar, { height: Math.max((effortDist[n] / maxEffortCount) * 60, 2), backgroundColor: EFFORT_COLORS?.[n] || NEUTRAL.border }]} />
+                    <Text style={styles.effortBarLabel}>{n}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+          </>)}
+
+          {/* ── 3. Readiness & Recovery (coach only) ── */}
           {!parentMode && (<>
           <TouchableOpacity style={styles.section} onPress={() => toggle('readiness')} activeOpacity={0.8}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionNum}>1</Text>
+              <Text style={styles.sectionNum}>3</Text>
               <View style={{ flex: 1 }}>
                 <Text style={styles.sectionTitle}>Readiness & Recovery</Text>
                 <Text style={styles.sectionSub}>Based on last 7 days of check-ins & training</Text>
@@ -571,166 +726,7 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
               )}
             </View>
           )}
-
           </>)}
-
-          {/* ── 2. Training Quality (coach only) ── */}
-          {!parentMode && (<>
-          <TouchableOpacity style={styles.section} onPress={() => toggle('quality')} activeOpacity={0.8}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionNum}>2</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.sectionTitle}>Training Quality</Text>
-                <Text style={styles.sectionSub}>Last 30 days — 80/20 compliance & effort</Text>
-              </View>
-              <Ionicons name={expandedSection === 'quality' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />
-            </View>
-
-            {displayEighty20 ? (
-              <View>
-                <View style={styles.heroGauge}>
-                  <Text style={[styles.heroGaugeNum, {
-                    color: displayEighty20.easyPct >= 78 ? STATUS.success : displayEighty20.easyPct >= 70 ? STATUS.warning : STATUS.error,
-                  }]}>{displayEighty20.easyPct}%</Text>
-                  <Text style={styles.heroGaugeSub}>{usePace ? 'Easy running (pace)' : 'Z1+Z2 (easy running)'}</Text>
-                  {!usePace && hasStreamData && <Text style={styles.streamBadge}>Precise</Text>}
-                </View>
-                <View style={styles.trendRow}>
-                  {displayWeekTrend.map((pct, i) => (
-                    <View key={i} style={styles.trendItem}>
-                      <View style={[styles.trendDot, {
-                        backgroundColor: pct == null ? NEUTRAL.border : pct >= 78 ? STATUS.success : pct >= 70 ? STATUS.warning : STATUS.error,
-                      }]} />
-                      <Text style={styles.trendLabel}>{pct != null ? `${pct}%` : '—'}</Text>
-                    </View>
-                  ))}
-                  <Text style={styles.trendArrow}>← 4 wk ago</Text>
-                </View>
-              </View>
-            ) : (
-              <Text style={styles.noDataText}>{trainingPaces ? 'Not enough pace data yet.' : 'No training paces set. Not enough HR or effort data.'}</Text>
-            )}
-          </TouchableOpacity>
-
-          {expandedSection === 'quality' && (
-            <View style={styles.detail}>
-              {/* Pace zone breakdown (primary when VDOT set) */}
-              {usePace && paceZoneBreakdown && (
-                <View style={styles.zoneSection}>
-                  <View style={styles.zoneStackedBar}>
-                    {paceZoneBreakdown.map(z => (
-                      <View key={z.key} style={[styles.zoneBarSegment, { flex: z.pct, backgroundColor: z.color }]} />
-                    ))}
-                  </View>
-                  {paceZoneBreakdown.map(z => (
-                    <View key={z.key} style={styles.zoneRow}>
-                      <View style={[styles.zoneDot, { backgroundColor: z.color }]} />
-                      <Text style={styles.zoneLabel}>{z.short} {z.name}</Text>
-                      <Text style={styles.zonePct}>{z.pct}%</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {/* HR zone breakdown (fallback when no VDOT, or secondary collapsible when pace is primary) */}
-              {!usePace && zoneBreakdown && (
-                <View style={styles.zoneSection}>
-                  <View style={styles.zoneStackedBar}>
-                    {zoneBreakdown.map(z => (
-                      <View key={z.zone} style={[styles.zoneBarSegment, { flex: z.pct, backgroundColor: ZONE_META[z.zone]?.color || '#ccc' }]} />
-                    ))}
-                  </View>
-                  {zoneBreakdown.map(z => (
-                    <View key={z.zone} style={styles.zoneRow}>
-                      <View style={[styles.zoneDot, { backgroundColor: ZONE_META[z.zone]?.color }]} />
-                      <Text style={styles.zoneLabel}>{ZONE_META[z.zone]?.name || `Z${z.zone}`}</Text>
-                      <Text style={styles.zonePct}>{z.pct}%</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              <Text style={styles.detailSectionLabel}>Effort distribution</Text>
-              <Text style={styles.detailHint}>Peaks at 3-4 and 8-9 = polarized (good). Clustered at 5-7 = junk miles.</Text>
-              <View style={styles.effortChart}>
-                {[1,2,3,4,5,6,7,8,9,10].map(n => (
-                  <View key={n} style={styles.effortBarWrap}>
-                    <View style={[styles.effortBar, { height: Math.max((effortDist[n] / maxEffortCount) * 60, 2), backgroundColor: EFFORT_COLORS?.[n] || NEUTRAL.border }]} />
-                    <Text style={styles.effortBarLabel}>{n}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          )}
-
-          </>)}
-
-          {/* ── 3. Season Volume Arc ── */}
-          <TouchableOpacity style={styles.section} onPress={() => toggle('volume')} activeOpacity={0.8}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionNum}>{parentMode ? '1' : '3'}</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.sectionTitle}>Season Volume Arc</Text>
-                <Text style={styles.sectionSub}>
-                  {phaseInfo.weekNum ? `Week ${phaseInfo.weekNum}${totalWeeks ? ` of ${totalWeeks}` : ''} · ${phaseInfo.name}` : 'No active season'}
-                  {phaseInfo.daysToChamp != null && phaseInfo.daysToChamp > 0 ? ` · ${phaseInfo.daysToChamp}d to championship` : ''}
-                </Text>
-              </View>
-              <Ionicons name={expandedSection === 'volume' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />
-            </View>
-
-            {volumeWeeks.length > 0 ? (
-              <View>
-                <View style={styles.phaseStrip}>
-                  {(phaseInfo.phases || []).map((p, i) => (
-                    <View key={i} style={[styles.phaseChip, p.name === phaseInfo.name && { backgroundColor: p.color, borderColor: p.color }]}>
-                      <Text style={[styles.phaseChipText, p.name === phaseInfo.name && { color: '#fff' }]}>{p.name.replace('Pre-Season ', 'Pre-')}</Text>
-                    </View>
-                  ))}
-                </View>
-                {volumeWeeks.find(w => w.isCurrent) && (() => {
-                  const cw = volumeWeeks.find(w => w.isCurrent);
-                  const pct = cw.target > 0 ? Math.round((cw.actual / cw.target) * 100) : 0;
-                  return <Text style={styles.volumeSummary}>This week: {cw.actual} of {cw.target} mi target ({pct}%)</Text>;
-                })()}
-              </View>
-            ) : (
-              <Text style={styles.noDataText}>No season plan configured for this athlete's group.</Text>
-            )}
-          </TouchableOpacity>
-
-          {expandedSection === 'volume' && volumeWeeks.length > 0 && (
-            <View style={styles.detail}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.volumeChartScroll}>
-                {volumeWeeks.map((w, i) => {
-                  const maxTarget = Math.max(...volumeWeeks.map(wk => Math.max(wk.target, wk.actual || 0)), 1);
-                  const targetH = (w.target / maxTarget) * 100;
-                  const actualH = w.actual != null ? (w.actual / maxTarget) * 100 : 0;
-                  const pctOfTarget = w.target > 0 && w.actual != null ? w.actual / w.target : null;
-                  const barColor = w.actual == null ? NEUTRAL.border
-                    : pctOfTarget >= 0.9 && pctOfTarget <= 1.1 ? STATUS.success
-                    : pctOfTarget < 0.9 ? STATUS.warning : STATUS.error;
-                  return (
-                    <View key={w.monday} style={[styles.volumeBar, w.isCurrent && styles.volumeBarCurrent]}>
-                      <View style={styles.volumeBarInner}>
-                        <View style={[styles.volumeTarget, { height: targetH + '%' }]} />
-                        {w.actual != null && <View style={[styles.volumeActual, { height: actualH + '%', backgroundColor: barColor }]} />}
-                      </View>
-                      <Text style={[styles.volumeWeekLabel, w.isCurrent && { color: BRAND, fontWeight: FONT_WEIGHT.bold }]}>
-                        {w.isCurrent ? 'Now' : `W${i + 1}`}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </ScrollView>
-              <View style={styles.volumeLegend}>
-                <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: NEUTRAL.border }]} /><Text style={styles.legendText}>Target</Text></View>
-                <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: STATUS.success }]} /><Text style={styles.legendText}>On track</Text></View>
-                <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: STATUS.warning }]} /><Text style={styles.legendText}>Under</Text></View>
-                <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: STATUS.error }]} /><Text style={styles.legendText}>Over</Text></View>
-              </View>
-            </View>
-          )}
 
           {/* ── 4. Race Performance ── */}
           <TouchableOpacity style={styles.section} onPress={() => toggle('races')} activeOpacity={0.8}>
@@ -793,90 +789,10 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
             </View>
           )}
 
-          {/* ── 5. Fitness Fingerprint (coach only) ── */}
-          {!parentMode && (<>
-          <TouchableOpacity style={styles.section} onPress={() => toggle('fitness')} activeOpacity={0.8}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionNum}>5</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.sectionTitle}>Fitness Fingerprint</Text>
-                <Text style={styles.sectionSub}>Pace trends & aerobic efficiency</Text>
-              </View>
-              <Ionicons name={expandedSection === 'fitness' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />
-            </View>
-
-            {efficiencyNow && efficiency4wk ? (
-              <View style={styles.efficiencyRow}>
-                <View style={styles.efficiencyBlock}>
-                  <Text style={styles.efficiencyLabel}>4 wk ago</Text>
-                  <Text style={styles.efficiencyPace}>{formatPaceFromSeconds(efficiency4wk.pace)}/mi</Text>
-                  <Text style={styles.efficiencyHR}>@ {efficiency4wk.hr} bpm</Text>
-                </View>
-                <Ionicons name="arrow-forward" size={18} color={NEUTRAL.muted} />
-                <View style={styles.efficiencyBlock}>
-                  <Text style={styles.efficiencyLabel}>This week</Text>
-                  <Text style={[styles.efficiencyPace, { color: efficiencyNow.pace < efficiency4wk.pace ? STATUS.success : STATUS.error }]}>
-                    {formatPaceFromSeconds(efficiencyNow.pace)}/mi
-                  </Text>
-                  <Text style={styles.efficiencyHR}>@ {efficiencyNow.hr} bpm</Text>
-                </View>
-              </View>
-            ) : easyPaceWeeks.some(w => w != null) ? (
-              <Text style={styles.noDataHint}>Easy pace trending — expand for details</Text>
-            ) : (
-              <Text style={styles.noDataText}>Not enough easy run data with duration to track trends.</Text>
-            )}
-          </TouchableOpacity>
-
-          {expandedSection === 'fitness' && (
-            <View style={styles.detail}>
-              <Text style={styles.detailSectionLabel}>Easy run pace (last 8 weeks)</Text>
-              <Text style={styles.detailHint}>Shorter bars = faster. Downward trend = improving fitness.</Text>
-              <View style={styles.paceChart}>
-                {easyPaceWeeks.map((w, i) => {
-                  const maxPace = Math.max(...easyPaceWeeks.filter(x => x).map(x => x.pace), 1);
-                  const minPace = Math.min(...easyPaceWeeks.filter(x => x).map(x => x.pace), maxPace);
-                  const range = maxPace - minPace || 60;
-                  const h = w ? Math.max(((w.pace - minPace + 30) / (range + 60)) * 80, 8) : 0;
-                  return (
-                    <View key={i} style={styles.paceBarWrap}>
-                      {w ? (
-                        <>
-                          <Text style={styles.paceBarValue}>{formatPaceFromSeconds(w.pace)}</Text>
-                          <View style={[styles.paceBar, { height: h, backgroundColor: i === 7 ? BRAND : BRAND_ACCENT }]} />
-                        </>
-                      ) : (
-                        <View style={[styles.paceBar, { height: 4, backgroundColor: NEUTRAL.border }]} />
-                      )}
-                      <Text style={[styles.paceBarLabel, i === 7 && { fontWeight: FONT_WEIGHT.bold, color: BRAND }]}>
-                        {i === 7 ? 'Now' : `W${i + 1}`}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
-
-              {Object.keys(personalBests).length > 0 && (
-                <>
-                  <Text style={[styles.detailSectionLabel, { marginTop: SPACE.xl }]}>Personal bests (by pace)</Text>
-                  {Object.entries(personalBests).map(([cat, pb]) => (
-                    <View key={cat} style={styles.pbRow}>
-                      <Text style={styles.pbCat}>{cat === 'easy' ? 'Easy run' : cat === 'tempo' ? 'Tempo' : 'Workout'}</Text>
-                      <Text style={styles.pbPace}>{formatPaceFromSeconds(pb.pace)}/mi</Text>
-                      <Text style={styles.pbDate}>{pb.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</Text>
-                    </View>
-                  ))}
-                </>
-              )}
-            </View>
-          )}
-
-          </>)}
-
-          {/* ── 6. Run History ── */}
+          {/* ── 5. Run History ── */}
           <TouchableOpacity style={styles.section} onPress={() => toggle('runs')} activeOpacity={0.8}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionNum}>{parentMode ? '3' : '6'}</Text>
+              <Text style={styles.sectionNum}>{parentMode ? '3' : '5'}</Text>
               <View style={{ flex: 1 }}>
                 <Text style={styles.sectionTitle}>Run History</Text>
                 <Text style={styles.sectionSub}>{allRuns.length} run{allRuns.length !== 1 ? 's' : ''} logged</Text>

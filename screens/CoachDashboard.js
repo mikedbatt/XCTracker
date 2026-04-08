@@ -327,7 +327,7 @@ export default function CoachDashboard({ userData }) {
   const [teamPulse,           setTeamPulse]           = useState({ checkinCount: 0, totalAthletes: 0, teamAvgMood: null, inactiveCount: 0 });
   const [complianceExpanded,  setComplianceExpanded]  = useState(false);
   const [paceComplianceExpanded, setPaceComplianceExpanded] = useState(false);
-  const [paceComplianceData, setPaceComplianceData] = useState({ runningEasy: [], tooHard: [], noPaces: 0 });
+  const [paceComplianceData, setPaceComplianceData] = useState({ runningEasy: [], tooHard: [], noPaces: 0, noPacesAthletes: [] });
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -487,9 +487,9 @@ export default function CoachDashboard({ userData }) {
       setComplianceData(compliance);
 
       // ── Pace compliance computation ──
-      const paceComp = { runningEasy: [], tooHard: [], noPaces: 0 };
+      const paceComp = { runningEasy: [], tooHard: [], noPaces: 0, noPacesAthletes: [] };
       for (const a of approvedAthletes) {
-        if (!a.trainingPaces) { paceComp.noPaces++; continue; }
+        if (!a.trainingPaces) { paceComp.noPaces++; paceComp.noPacesAthletes.push(a); continue; }
         const easyPct = paceEasyPctMap[a.id];
         if (easyPct == null) continue;
         const entry = { ...a, easyPct };
@@ -1028,24 +1028,15 @@ export default function CoachDashboard({ userData }) {
           </View>
         )}
 
-        {/* ── Pace setup indicator ── */}
-        {paceComplianceData.noPaces > 0 && (
-          <View style={styles.paceSetupNote}>
-            <Ionicons name="alert-circle-outline" size={16} color={STATUS.warning} />
-            <Text style={styles.paceSetupNoteText}>
-              {paceComplianceData.noPaces} athlete{paceComplianceData.noPaces !== 1 ? 's' : ''} need training paces
-            </Text>
-          </View>
-        )}
-
         {/* ── Pace Compliance card (expandable) ── */}
-        {(paceComplianceData.tooHard.length > 0 || paceComplianceData.runningEasy.length > 0) && (
+        {(paceComplianceData.tooHard.length > 0 || paceComplianceData.runningEasy.length > 0 || paceComplianceData.noPaces > 0) && (
           <View style={styles.complianceCard}>
             <TouchableOpacity style={styles.complianceHeader} onPress={() => setPaceComplianceExpanded(prev => !prev)}>
               <Ionicons name="speedometer-outline" size={20} color={BRAND} />
               <Text style={styles.complianceTitle}>
                 Pace Compliance — {paceComplianceData.runningEasy.length} running easy
                 {paceComplianceData.tooHard.length > 0 ? `, ${paceComplianceData.tooHard.length} too hard` : ''}
+                {paceComplianceData.noPaces > 0 ? `, ${paceComplianceData.noPaces} need paces` : ''}
               </Text>
               <Ionicons name={paceComplianceExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={NEUTRAL.muted} />
             </TouchableOpacity>
@@ -1075,6 +1066,20 @@ export default function CoachDashboard({ userData }) {
                         </View>
                         <Text style={styles.complianceRowName}>{a.firstName} {a.lastName}</Text>
                         <Text style={[styles.complianceTarget, { color: STATUS.success }]}>Easy: {a.easyPct}%</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+                {paceComplianceData.noPacesAthletes && paceComplianceData.noPacesAthletes.length > 0 && (
+                  <View style={{ marginBottom: SPACE.sm }}>
+                    <Text style={[styles.complianceGroupLabel, { color: STATUS.warning }]}>Need training paces</Text>
+                    {paceComplianceData.noPacesAthletes.map(a => (
+                      <TouchableOpacity key={a.id} style={styles.complianceRow} onPress={() => setSelectedAthlete(a)}>
+                        <View style={[styles.avatar, { backgroundColor: a.avatarColor || BRAND, width: 28, height: 28 }]}>
+                          <Text style={[styles.avatarText, { fontSize: 10 }]}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
+                        </View>
+                        <Text style={styles.complianceRowName}>{a.firstName} {a.lastName}</Text>
+                        <Text style={[styles.complianceTarget, { color: NEUTRAL.muted, fontStyle: 'italic' }]}>No paces set</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
