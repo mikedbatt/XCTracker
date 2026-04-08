@@ -225,6 +225,7 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
   const [libraryDayIdx, setLibraryDayIdx] = useState(null);
   const [weekStatus, setWeekStatus] = useState('empty'); // 'empty' | 'draft' | 'published'
   const [draftDirty, setDraftDirty] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
 
   const mondayISO = weekStart.toISOString().split('T')[0];
   const phase = activeSeason ? getPhaseForSeason(activeSeason) : null;
@@ -485,31 +486,10 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
             {daySlots.some(s => s.type) && (
               <TouchableOpacity
                 style={styles.loadTemplateBtn}
-                onPress={() => {
-                  Alert.alert(
-                    'Load Template',
-                    'This will replace your current week plan. Choose a template:',
-                    [
-                      ...Object.entries(WEEK_TEMPLATES)
-                        .sort(([, a], [, b]) => {
-                          const aMatch = phase && a.phases.includes(phase.name) ? 0 : 1;
-                          const bMatch = phase && b.phases.includes(phase.name) ? 0 : 1;
-                          return aMatch - bMatch;
-                        })
-                        .map(([key, tmpl]) => ({
-                          text: `${tmpl.label}${phase && tmpl.phases.includes(phase.name) ? ' ★' : ''}`,
-                          onPress: () => {
-                            const plan = generateWeekPlan(key, weekTargets, groups);
-                            if (plan) { setDaySlots(plan); setDraftDirty(true); setWeekStatus('draft'); }
-                          },
-                        })),
-                      { text: 'Cancel', style: 'cancel' },
-                    ]
-                  );
-                }}
+                onPress={() => setShowTemplates(prev => !prev)}
               >
-                <Ionicons name="refresh-outline" size={14} color={BRAND} />
-                <Text style={styles.loadTemplateBtnText}>Load Template</Text>
+                <Ionicons name={showTemplates ? 'close-outline' : 'refresh-outline'} size={14} color={BRAND} />
+                <Text style={styles.loadTemplateBtnText}>{showTemplates ? 'Cancel' : 'Load Template'}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -517,6 +497,40 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
             <Ionicons name="chevron-forward" size={20} color={BRAND} />
           </TouchableOpacity>
         </View>
+
+        {/* Template picker (shown when Load Template tapped on existing plan) */}
+        {showTemplates && (
+          <View style={styles.generateSection}>
+            <Text style={styles.generateHint}>Choose a template to replace your current plan.</Text>
+            <View style={styles.templateGrid}>
+              {Object.entries(WEEK_TEMPLATES)
+                .sort(([, a], [, b]) => {
+                  const aMatch = phase && a.phases.includes(phase.name) ? 0 : 1;
+                  const bMatch = phase && b.phases.includes(phase.name) ? 0 : 1;
+                  return aMatch - bMatch;
+                })
+                .map(([key, tmpl]) => {
+                  const isRecommended = phase && tmpl.phases.includes(phase.name);
+                  const daySummary = tmpl.days.map((d, di) => d ? `${DAYS[di].slice(0, 3)} ${d.type}` : `${DAYS[di].slice(0, 3)} Off`).join(' · ');
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      style={[styles.templateCard, isRecommended && { borderColor: BRAND, borderWidth: 1.5 }]}
+                      onPress={() => {
+                        const plan = generateWeekPlan(key, weekTargets, groups);
+                        if (plan) { setDaySlots(plan); setDraftDirty(true); setWeekStatus('draft'); setShowTemplates(false); }
+                      }}
+                    >
+                      {isRecommended && <Text style={styles.templateRecommended}>Recommended</Text>}
+                      <Text style={styles.templateName}>{tmpl.label}</Text>
+                      <Text style={styles.templateDesc}>{tmpl.desc}</Text>
+                      <Text style={styles.templateDays}>{daySummary}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+            </View>
+          </View>
+        )}
 
         {/* Generate week button (shown when empty) */}
         {weekStatus === 'empty' && daySlots.every(s => !s.type) && (
@@ -531,6 +545,7 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
                 })
                 .map(([key, tmpl]) => {
                   const isRecommended = phase && tmpl.phases.includes(phase.name);
+                  const daySummary = tmpl.days.map((d, di) => d ? `${DAYS[di].slice(0, 3)} ${d.type}` : `${DAYS[di].slice(0, 3)} Off`).join(' · ');
                   return (
                     <TouchableOpacity
                       key={key}
@@ -543,6 +558,7 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
                       {isRecommended && <Text style={styles.templateRecommended}>Recommended</Text>}
                       <Text style={styles.templateName}>{tmpl.label}</Text>
                       <Text style={styles.templateDesc}>{tmpl.desc}</Text>
+                      <Text style={styles.templateDays}>{daySummary}</Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -895,6 +911,7 @@ const styles = StyleSheet.create({
   templateRecommended: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, color: BRAND, marginBottom: SPACE.xs },
   templateName:      { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
   templateDesc:      { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: 2 },
+  templateDays:      { fontSize: 10, color: NEUTRAL.muted, marginTop: SPACE.xs, lineHeight: 14 },
   intensityBar:      { marginHorizontal: SPACE.lg, marginBottom: SPACE.md },
   intensityBarTrack: { flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', gap: 2 },
   intensitySegment:  { height: '100%', borderRadius: 4 },
