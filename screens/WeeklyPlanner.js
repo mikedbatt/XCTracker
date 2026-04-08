@@ -709,7 +709,7 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
       {/* Running totals + push button (sticky bottom) */}
       <View style={styles.bottomBar}>
         {groups.length > 0 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.totalsRow} contentContainerStyle={{ gap: SPACE.sm }}>
+          <View style={styles.totalsRow}>
             {groups.map(g => {
               const gt = groupTotals[g.id] || { planned: 0, target: 0, pct: 0 };
               const statusColor = gt.pct > 110 ? STATUS.error : gt.pct >= 90 ? STATUS.success : gt.pct >= 80 ? STATUS.warning : STATUS.error;
@@ -722,7 +722,7 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
                 </View>
               );
             })}
-          </ScrollView>
+          </View>
         ) : (
           <Text style={styles.totalVal}>Total: {totalBase} mi</Text>
         )}
@@ -863,7 +863,7 @@ const styles = StyleSheet.create({
   suggestionsTitle:  { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND },
   suggestionText:  { fontSize: FONT_SIZE.sm, color: BRAND_DARK, lineHeight: 20, marginBottom: SPACE.xs },
   bottomBar:       { backgroundColor: NEUTRAL.card, borderTopWidth: 1, borderTopColor: NEUTRAL.border, padding: SPACE.lg, paddingBottom: Platform.OS === 'ios' ? SPACE['3xl'] : SPACE.lg },
-  totalsRow:       { marginBottom: SPACE.sm, flexGrow: 0 },
+  totalsRow:       { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.xs, marginBottom: SPACE.sm },
   totalChip:       { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: NEUTRAL.bg, borderRadius: RADIUS.full, paddingHorizontal: SPACE.sm, paddingVertical: SPACE.xs },
   totalChipName:   { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, color: BRAND_DARK },
   totalChipVal:    { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
