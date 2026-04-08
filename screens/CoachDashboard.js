@@ -908,7 +908,7 @@ export default function CoachDashboard({ userData }) {
           const formatWhen = (d) => {
             if (!d) return '';
             if (d >= todayStart) return 'today';
-            const daysAgo = Math.round((todayStart - d) / 86400000);
+            const daysAgo = Math.ceil((todayStart - d) / 86400000);
             return daysAgo === 1 ? 'yesterday' : `${daysAgo}d ago`;
           };
           return (
@@ -1487,9 +1487,9 @@ const styles = StyleSheet.create({
   injuryAlertTitle:     { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: STATUS.error, flex: 1 },
   injuryAlertRow:       { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, paddingVertical: SPACE.md, borderTopWidth: 1, borderTopColor: STATUS.error + '20' },
   injuryAlertName:      { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  injuryAlertDetail:    { fontSize: FONT_SIZE.sm, color: NEUTRAL.label, marginTop: 2 },
+  injuryAlertDetail:    { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginTop: 2 },
   injuryAlertRec:       { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, marginTop: SPACE.xs },
-  injuryAlertWhen:      { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium, color: NEUTRAL.muted },
+  injuryAlertWhen:      { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium, color: NEUTRAL.body },
   alertSection:         { marginTop: SPACE.sm },
   alertSectionTitle:    { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: STATUS.error, marginBottom: SPACE.md },
   alertCard:            { backgroundColor: STATUS.errorBg, borderRadius: RADIUS.lg, padding: SPACE.lg - 2, marginBottom: SPACE.md, borderLeftWidth: 4, borderLeftColor: STATUS.error },
