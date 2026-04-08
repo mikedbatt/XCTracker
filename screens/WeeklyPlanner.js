@@ -189,6 +189,17 @@ function generateWeekPlan(templateKey, weekTargets, groups) {
   return template.days.map((day, i) => {
     if (!day) return EMPTY_SLOT();
     const baseMiles = day.pct > 0 ? String(Math.round(maxTarget * day.pct)) : '';
+    // Pre-calculate each group's miles directly from their own target
+    // to avoid double-rounding (base round + scale round)
+    const overrides = {};
+    if (day.pct > 0) {
+      groups.forEach((g, gi) => {
+        const groupTarget = targets[gi];
+        if (groupTarget > 0) {
+          overrides[g.id] = String(Math.round(groupTarget * day.pct));
+        }
+      });
+    }
     return {
       type: day.type,
       baseMiles,
@@ -196,7 +207,7 @@ function generateWeekPlan(templateKey, weekTargets, groups) {
       description: '',
       time: '',
       location: '',
-      groupMilesOverrides: {},
+      groupMilesOverrides: overrides,
     };
   });
 }
