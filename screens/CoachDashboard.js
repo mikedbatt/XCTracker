@@ -171,18 +171,6 @@ async function checkOvertraining(athleteId) {
     const highEffortDays = thisWeekRuns.filter(r => (r.effort || 0) >= 8).length;
     if (highEffortDays >= 4) signals.push({ text: `Effort 8+ on ${highEffortDays} of last 7 days` });
 
-    // HR trend: this week vs last week
-    const lastMonday = new Date(thisMonday);
-    lastMonday.setDate(thisMonday.getDate() - 7);
-    const lastWeekRuns = allRuns.filter(r => { const d = getRunDate(r); return d >= lastMonday && d < thisMonday; });
-    const hrRuns     = thisWeekRuns.filter(r => r.heartRate && r.miles);
-    const prevHRRuns = lastWeekRuns.filter(r => r.heartRate && r.miles);
-    if (hrRuns.length >= 2 && prevHRRuns.length >= 2) {
-      const avgHR     = hrRuns.reduce((s, r) => s + r.heartRate, 0) / hrRuns.length;
-      const prevAvgHR = prevHRRuns.reduce((s, r) => s + r.heartRate, 0) / prevHRRuns.length;
-      if (avgHR > prevAvgHR * 1.05) signals.push({ text: `HR trending ${Math.round(((avgHR - prevAvgHR) / prevAvgHR) * 100)}% higher` });
-    }
-
     if (checkins.length >= 3) {
       const recentAvgMood  = checkins.slice(0, 3).reduce((s, c) => s + (c.mood || 3), 0) / 3;
       const olderAvgMood   = checkins.slice(-3).reduce((s, c) => s + (c.mood || 3), 0) / 3;
@@ -941,7 +929,10 @@ export default function CoachDashboard({ userData }) {
                       <Text style={styles.injuryAlertName}>{athlete.firstName} {athlete.lastName}{when ? <Text style={styles.injuryAlertWhen}> — reported {when}</Text> : ''}</Text>
                       {inj && (
                         <Text style={styles.injuryAlertDetail}>
-                          🩹 {inj.locations?.map(l => l.charAt(0).toUpperCase() + l.slice(1)).join(', ')} — <Text style={{ color: sevColor, fontWeight: FONT_WEIGHT.bold }}>{inj.severity}</Text>{inj.note ? ` — "${inj.note}"` : ''}
+                          🩹 {inj.perLocation
+                            ? inj.perLocation.map(p => `${p.location.charAt(0).toUpperCase() + p.location.slice(1)} (${p.severity})`).join(', ')
+                            : `${inj.locations?.map(l => l.charAt(0).toUpperCase() + l.slice(1)).join(', ')} — ${inj.severity}`
+                          }{inj.note ? ` — "${inj.note}"` : ''}
                         </Text>
                       )}
                       {ill && (

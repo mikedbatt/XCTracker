@@ -133,9 +133,9 @@ export default function WellnessCheckIn({ visible, onComplete, onSkip, onClose, 
   // Gateway question
   const [hasIssue, setHasIssue] = useState(null);
 
-  // Injury fields
+  // Injury fields — per-location severity
   const [injuryLocations, setInjuryLocations] = useState([]);
-  const [injurySeverity, setInjurySeverity] = useState(null);
+  const [injurySeverityMap, setInjurySeverityMap] = useState({});
   const [injuryNote, setInjuryNote] = useState('');
 
   // Illness fields
@@ -144,9 +144,17 @@ export default function WellnessCheckIn({ visible, onComplete, onSkip, onClose, 
   const [illnessSeverity, setIllnessSeverity] = useState(null);
 
   const toggleInjuryLocation = (key) => {
-    setInjuryLocations(prev =>
-      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
-    );
+    setInjuryLocations(prev => {
+      if (prev.includes(key)) {
+        setInjurySeverityMap(m => { const next = { ...m }; delete next[key]; return next; });
+        return prev.filter(k => k !== key);
+      }
+      return [...prev, key];
+    });
+  };
+
+  const setLocationSeverity = (loc, sev) => {
+    setInjurySeverityMap(prev => ({ ...prev, [loc]: sev }));
   };
 
   const toggleIllnessSymptom = (key) => {
@@ -164,7 +172,7 @@ export default function WellnessCheckIn({ visible, onComplete, onSkip, onClose, 
   let canContinue = wellnessComplete && gatewayAnswered;
   if (hasIssue) {
     const hasAnyReport = hasInjuryData || hasIllnessData;
-    const injuryValid = !hasInjuryData || injurySeverity !== null;
+    const injuryValid = !hasInjuryData || injuryLocations.every(loc => injurySeverityMap[loc]);
     const illnessValid = !hasIllnessData || (illnessSymptoms.length > 0 && illnessSeverity !== null);
     canContinue = canContinue && hasAnyReport && injuryValid && illnessValid;
   }
@@ -172,13 +180,20 @@ export default function WellnessCheckIn({ visible, onComplete, onSkip, onClose, 
   const resetAll = () => {
     setSleep(null); setLegs(null); setMood(null);
     setHasIssue(null);
-    setInjuryLocations([]); setInjurySeverity(null); setInjuryNote('');
+    setInjuryLocations([]); setInjurySeverityMap({}); setInjuryNote('');
     setIllnessFlagged(false); setIllnessSymptoms([]); setIllnessSeverity(null);
   };
 
   const handleDone = () => {
     const injury = hasIssue && hasInjuryData
-      ? { locations: injuryLocations, severity: injurySeverity, ...(injuryNote.trim() ? { note: injuryNote.trim() } : {}) }
+      ? {
+          locations: injuryLocations,
+          // Worst severity across all locations (backward compatible)
+          severity: ['severe', 'moderate', 'mild'].find(s => injuryLocations.some(loc => injurySeverityMap[loc] === s)) || 'mild',
+          // Per-location detail
+          perLocation: injuryLocations.map(loc => ({ location: loc, severity: injurySeverityMap[loc] || 'mild' })),
+          ...(injuryNote.trim() ? { note: injuryNote.trim() } : {}),
+        }
       : null;
     const illness = hasIssue && hasIllnessData
       ? { symptoms: illnessSymptoms, severity: illnessSeverity }
@@ -236,7 +251,7 @@ export default function WellnessCheckIn({ visible, onComplete, onSkip, onClose, 
                   ]}
                   onPress={() => {
                     setHasIssue(false);
-                    setInjuryLocations([]); setInjurySeverity(null); setInjuryNote('');
+                    setInjuryLocations([]); setInjurySeverityMap({}); setInjuryNote('');
                     setIllnessFlagged(false); setIllnessSymptoms([]); setIllnessSeverity(null);
                   }}
                 >
@@ -276,8 +291,25 @@ export default function WellnessCheckIn({ visible, onComplete, onSkip, onClose, 
 
                 {hasInjuryData && (
                   <>
-                    <Text style={styles.subLabel}>How bad?</Text>
-                    <OptionRow options={SEVERITY_OPTIONS} selected={injurySeverity} onSelect={setInjurySeverity} />
+                    {injuryLocations.map(loc => {
+                      const locLabel = INJURY_LOCATIONS.find(l => l.key === loc)?.label || loc;
+                      return (
+                        <View key={loc} style={styles.perLocationRow}>
+                          <Text style={styles.perLocationLabel}>{locLabel}</Text>
+                          <View style={styles.perLocationSeverity}>
+                            {SEVERITY_OPTIONS.map(opt => (
+                              <TouchableOpacity
+                                key={opt.value}
+                                style={[styles.sevChip, injurySeverityMap[loc] === opt.value && { backgroundColor: BRAND, borderColor: BRAND }]}
+                                onPress={() => setLocationSeverity(loc, opt.value)}
+                              >
+                                <Text style={[styles.sevChipText, injurySeverityMap[loc] === opt.value && { color: '#fff' }]}>{opt.emoji} {opt.label}</Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        </View>
+                      );
+                    })}
 
                     <TextInput
                       style={styles.noteInput}
@@ -432,6 +464,11 @@ const styles = StyleSheet.create({
   sickToggleText: { fontSize: FONT_SIZE.base, color: NEUTRAL.body, fontWeight: FONT_WEIGHT.medium },
 
   // ── Note input ──
+  perLocationRow: { marginTop: SPACE.md, paddingVertical: SPACE.sm, borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
+  perLocationLabel: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: BRAND_DARK, marginBottom: SPACE.xs },
+  perLocationSeverity: { flexDirection: 'row', gap: SPACE.xs },
+  sevChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACE.sm, paddingVertical: 4, borderRadius: RADIUS.full, borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.bg },
+  sevChipText: { fontSize: FONT_SIZE.xs, color: NEUTRAL.body },
   noteInput: {
     marginTop: SPACE.md, padding: SPACE.md, borderRadius: RADIUS.md,
     backgroundColor: NEUTRAL.bg, borderWidth: 1, borderColor: NEUTRAL.border,

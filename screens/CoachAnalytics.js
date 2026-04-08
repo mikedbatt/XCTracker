@@ -138,10 +138,26 @@ export default function CoachAnalytics({
       allCheckins.forEach(c => {
         const d = c.date?.toDate?.() || (c.date instanceof Date ? c.date : null);
         if (c.injury?.locations?.length > 0) {
-          if (!athleteInjuryMap[c.userId]) athleteInjuryMap[c.userId] = { days: 0, locations: new Set(), lastDate: null, severity: 'mild' };
+          if (!athleteInjuryMap[c.userId]) athleteInjuryMap[c.userId] = { days: 0, locations: new Set(), locationSeverity: {}, lastDate: null, severity: 'mild' };
           const entry = athleteInjuryMap[c.userId];
           entry.days++;
-          c.injury.locations.forEach(loc => entry.locations.add(loc));
+          // Use perLocation detail when available, fall back to uniform severity
+          if (c.injury.perLocation) {
+            c.injury.perLocation.forEach(p => {
+              entry.locations.add(p.location);
+              const prev = entry.locationSeverity[p.location];
+              if (!prev || p.severity === 'severe' || (p.severity === 'moderate' && prev !== 'severe')) {
+                entry.locationSeverity[p.location] = p.severity;
+              }
+            });
+          } else {
+            c.injury.locations.forEach(loc => {
+              entry.locations.add(loc);
+              if (!entry.locationSeverity[loc] || c.injury.severity === 'severe' || (c.injury.severity === 'moderate' && entry.locationSeverity[loc] !== 'severe')) {
+                entry.locationSeverity[loc] = c.injury.severity;
+              }
+            });
+          }
           if (d && (!entry.lastDate || d > entry.lastDate)) entry.lastDate = d;
           if (c.injury.severity === 'severe' || (c.injury.severity === 'moderate' && entry.severity !== 'severe')) entry.severity = c.injury.severity;
         }
@@ -170,6 +186,7 @@ export default function CoachAnalytics({
             initials: a ? `${a.firstName?.[0] || ''}${a.lastName?.[0] || ''}` : '?',
             avatarColor: a?.avatarColor,
             locations: [...data.locations],
+            locationSeverity: data.locationSeverity,
             days: data.days,
             severity: data.severity,
             lastReported: formatLastReported(data.lastDate),
@@ -660,8 +677,10 @@ export default function CoachAnalytics({
                         <View style={{ flex: 1 }}>
                           <Text style={styles.activeInjuryLabel}>{inj.name}</Text>
                           <Text style={styles.activeInjuryNames}>
-                            {inj.locations.map(l => l.charAt(0).toUpperCase() + l.slice(1)).join(', ')}
-                            {inj.severity !== 'mild' ? ` · ${inj.severity}` : ''}
+                            {inj.locationSeverity
+                              ? inj.locations.map(l => `${l.charAt(0).toUpperCase() + l.slice(1)} (${inj.locationSeverity[l] || 'mild'})`).join(', ')
+                              : `${inj.locations.map(l => l.charAt(0).toUpperCase() + l.slice(1)).join(', ')}${inj.severity !== 'mild' ? ` · ${inj.severity}` : ''}`
+                            }
                           </Text>
                         </View>
                         <View style={{ alignItems: 'flex-end' }}>
