@@ -362,15 +362,12 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
               ) : selectedItems.map(item => {
                 const itemMiles = item.baseMiles || null;
                 return (
-                  <TouchableOpacity key={item.id} style={styles.itemCard} onPress={() => { setDetailItem(item); setDetailVisible(true); }}>
-                    <View style={[styles.itemBar, { backgroundColor: getColor(item) }]} />
-                    <View style={styles.itemContent}>
-                      <View style={styles.itemBadgeRow}>
-                        <View style={[styles.typeBadge, { backgroundColor: getColor(item) }]}>
-                          <Text style={styles.typeBadgeText}>{item.type}</Text>
-                        </View>
-                      </View>
-                      <Text style={styles.itemTitle}>{item.title}{itemMiles ? ` — ${itemMiles} mi` : ''}</Text>
+                  <TouchableOpacity key={item.id} style={styles.workoutCard} onPress={() => { setDetailItem(item); setDetailVisible(true); }}>
+                    <View style={[styles.workoutBadge, { backgroundColor: getColor(item) }]}>
+                      <Text style={styles.workoutBadgeText}>{item.type}</Text>
+                    </View>
+                    <View style={styles.workoutInfo}>
+                      <Text style={styles.workoutTitle}>{item.title}{itemMiles ? ` — ${itemMiles} mi` : ''}</Text>
                       {trainingPaces && WORKOUT_PACE_ZONE[item.type] && (() => {
                         const zone = WORKOUT_PACE_ZONE[item.type];
                         const tp = trainingPaces;
@@ -378,10 +375,11 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
                           : zone === 'threshold' ? `${formatPace(tp.t)}/mi`
                           : zone === 'interval' ? `${formatPace(tp.i)}/mi`
                           : zone === 'repetition' ? `${formatPace(tp.r)}/mi` : null;
-                        return paceText ? <Text style={styles.itemPace}>Target: {paceText}</Text> : null;
+                        return paceText ? <Text style={styles.workoutPace}>Target: {paceText}</Text> : null;
                       })()}
-                      {item.description && <Text style={styles.itemDesc} numberOfLines={1}>{item.description}</Text>}
+                      {item.description && <Text style={styles.workoutDesc} numberOfLines={1}>{item.description}</Text>}
                     </View>
+                    <Text style={styles.chevron}>›</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -418,22 +416,32 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
               <View style={styles.emptyCard}>
                 <Text style={styles.emptyText}>{isCoach ? 'No upcoming items. Tap + Add to create one!' : 'Nothing upcoming yet.'}</Text>
               </View>
-            ) : upcomingItems.map(item => (
-              <TouchableOpacity key={item.id} style={styles.upcomingCard}
-                onPress={() => { setDetailItem(item); setDetailVisible(true); }}>
-                <View style={[styles.upcomingDot, { backgroundColor: getColor(item) }]} />
-                <View style={styles.upcomingInfo}>
-                  <Text style={styles.upcomingTitle}>{item.title}</Text>
-                  <Text style={styles.upcomingMeta}>
-                    {item.date?.toDate?.()?.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                    {item.location ? ` · ${item.location}` : ''}
-                  </Text>
-                </View>
-                <View style={[styles.upcomingBadge, { backgroundColor: `${getColor(item)}20` }]}>
-                  <Text style={[styles.upcomingBadgeText, { color: getColor(item) }]}>{item.type}</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
+            ) : upcomingItems.map(item => {
+              const itemMiles = item.baseMiles || null;
+              return (
+                <TouchableOpacity key={item.id} style={styles.workoutCard}
+                  onPress={() => { setDetailItem(item); setDetailVisible(true); }}>
+                  <View style={[styles.workoutBadge, { backgroundColor: getColor(item) }]}>
+                    <Text style={styles.workoutBadgeText}>{item.type}</Text>
+                  </View>
+                  <View style={styles.workoutInfo}>
+                    <Text style={styles.workoutTitle}>{item.title}{itemMiles ? ` — ${itemMiles} mi` : ''}</Text>
+                    {trainingPaces && WORKOUT_PACE_ZONE[item.type] && (() => {
+                      const zone = WORKOUT_PACE_ZONE[item.type];
+                      const tp = trainingPaces;
+                      const paceText = zone === 'easy' ? `${formatPace(tp.eLow)}–${formatPace(tp.eHigh)}/mi`
+                        : zone === 'threshold' ? `${formatPace(tp.t)}/mi`
+                        : zone === 'interval' ? `${formatPace(tp.i)}/mi`
+                        : zone === 'repetition' ? `${formatPace(tp.r)}/mi` : null;
+                      return paceText ? <Text style={styles.workoutPace}>Target: {paceText}</Text> : null;
+                    })()}
+                    {item.description && <Text style={styles.workoutDesc} numberOfLines={1}>{item.description}</Text>}
+                    <Text style={styles.workoutDate}>{item.date?.toDate?.()?.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</Text>
+                  </View>
+                  <Text style={styles.chevron}>›</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </ScrollView>
       )}
@@ -670,19 +678,15 @@ const styles = StyleSheet.create({
   emptyText: { color: '#999', fontSize: 14, textAlign: 'center' },
   addDayBtn: { borderWidth: 1.5, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8 },
   addDayBtnText: { fontSize: 14, fontWeight: '600' },
-  itemCard: { backgroundColor: '#fff', borderRadius: 12, marginBottom: 12, flexDirection: 'row', overflow: 'hidden' },
-  itemBar: { width: 6 },
-  itemContent: { flex: 1, padding: 14 },
-  itemBadgeRow: { flexDirection: 'row', gap: 6, marginBottom: 8 },
-  catBadge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-  catBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
-  typeBadge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-  typeBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
-  itemTitle: { fontSize: 16, fontWeight: '700', color: '#333', marginBottom: 4 },
-  itemMeta: { fontSize: 13, color: '#666', marginBottom: 4 },
-  itemPace: { fontSize: 12, color: BRAND, fontWeight: '600', marginBottom: 2 },
-  itemDesc: { fontSize: 13, color: NEUTRAL.body, marginBottom: 6 },
-  tapHint: { fontSize: 11, color: '#bbb', textAlign: 'right' },
+  workoutCard:    { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg - 2, marginBottom: SPACE.md, flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
+  workoutBadge:   { borderRadius: RADIUS.sm, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm, alignSelf: 'flex-start' },
+  workoutBadgeText: { color: '#fff', fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
+  workoutInfo:    { flex: 1 },
+  workoutTitle:   { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  workoutPace:    { fontSize: FONT_SIZE.xs, color: BRAND, fontWeight: FONT_WEIGHT.semibold, marginTop: 2 },
+  workoutDesc:    { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginTop: 2 },
+  workoutDate:    { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: SPACE.xs },
+  chevron:        { fontSize: 20, color: NEUTRAL.muted },
   runsDaySection: { marginTop: 12 },
   runsDayTitle: { fontSize: 13, fontWeight: '700', color: '#9e9e9e', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
   runDayCard: { backgroundColor: '#f5f5f5', borderRadius: 10, padding: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: '#e0e0e0' },
