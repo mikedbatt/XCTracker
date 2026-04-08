@@ -94,6 +94,11 @@ export function stravaActivityToRun(activity, userId, schoolId) {
   const secs = totalSeconds % 60;
   const duration = `${mins}:${secs.toString().padStart(2, '0')}`;
 
+  // Calculate average pace from speed (sec/mile)
+  const averagePace = activity.average_speed > 0
+    ? Math.round(1609.344 / activity.average_speed)
+    : null;
+
   return {
     userId,
     schoolId: schoolId || null,
@@ -102,6 +107,7 @@ export function stravaActivityToRun(activity, userId, schoolId) {
     heartRate: activity.average_heartrate ? Math.round(activity.average_heartrate) : null,
     maxHeartRate: activity.max_heartrate ? Math.round(activity.max_heartrate) : null,
     elevationGain: activity.total_elevation_gain ? Math.round(activity.total_elevation_gain * 3.281) : null, // meters to feet
+    averagePace,
     effort: null,   // athlete fills this in after import
     notes: activity.name !== 'Morning Run' && activity.name !== 'Afternoon Run' && activity.name !== 'Evening Run'
       ? activity.name : null,
@@ -111,32 +117,55 @@ export function stravaActivityToRun(activity, userId, schoolId) {
   };
 }
 
-// ── Fetch HR stream for a single activity ────────────────────────────────────
-// Returns array of { hr, seconds } — one entry per second of the activity
-// This gives accurate zone time instead of just the average HR
-export async function fetchStravaHRStream(accessToken, activityId) {
-  const url = `https://www.strava.com/api/v3/activities/${activityId}/streams?keys=heartrate,time&key_by_type=true`;
+// ── Fetch activity streams (HR + velocity) ───────────────────────────────────
+// Returns { hrStream, paceStream } where each is an array of { value, seconds }
+// hrStream entries: { hr, seconds }
+// paceStream entries: { pace (sec/mile), seconds }
+export async function fetchStravaStreams(accessToken, activityId) {
+  const url = `https://www.strava.com/api/v3/activities/${activityId}/streams?keys=heartrate,time,velocity_smooth&key_by_type=true`;
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  if (!response.ok) return null; // Activity may not have HR data
+  if (!response.ok) return { hrStream: null, paceStream: null };
   const data = await response.json();
-  if (!data.heartrate || !data.time) return null;
 
-  const hrData   = data.heartrate.data;  // array of HR values (bpm)
-  const timeData = data.time.data;       // array of seconds from start
+  const timeData = data.time?.data;
+  if (!timeData) return { hrStream: null, paceStream: null };
 
-  // Convert to { hr, seconds } pairs where seconds = duration of that HR reading
-  const stream = [];
-  for (let i = 0; i < hrData.length; i++) {
-    const duration = i < hrData.length - 1
-      ? timeData[i + 1] - timeData[i]  // seconds until next reading
-      : 1;                               // last reading gets 1 second
-    if (hrData[i] > 0) {
-      stream.push({ hr: hrData[i], seconds: duration });
+  // Build HR stream
+  let hrStream = null;
+  if (data.heartrate?.data) {
+    const hrData = data.heartrate.data;
+    const stream = [];
+    for (let i = 0; i < hrData.length; i++) {
+      const duration = i < hrData.length - 1 ? timeData[i + 1] - timeData[i] : 1;
+      if (hrData[i] > 0) stream.push({ hr: hrData[i], seconds: duration });
     }
+    hrStream = stream.length > 0 ? stream : null;
   }
-  return stream.length > 0 ? stream : null;
+
+  // Build pace stream (velocity m/s → sec/mile)
+  let paceStream = null;
+  if (data.velocity_smooth?.data) {
+    const velData = data.velocity_smooth.data;
+    const stream = [];
+    for (let i = 0; i < velData.length; i++) {
+      const duration = i < velData.length - 1 ? timeData[i + 1] - timeData[i] : 1;
+      if (velData[i] > 0.5) { // Skip near-zero velocity (stopped/walking very slow)
+        const paceSecPerMile = 1609.344 / velData[i];
+        stream.push({ pace: Math.round(paceSecPerMile), seconds: duration });
+      }
+    }
+    paceStream = stream.length > 0 ? stream : null;
+  }
+
+  return { hrStream, paceStream };
+}
+
+// Legacy alias for backward compatibility
+export async function fetchStravaHRStream(accessToken, activityId) {
+  const { hrStream } = await fetchStravaStreams(accessToken, activityId);
+  return hrStream;
 }
 
 // ── Enhanced activity converter with stream data ──────────────────────────────
@@ -247,25 +276,36 @@ export async function autoSyncStrava(userId, userData, teamZoneSettings) {
       const run = stravaActivityToRun(activity, userId, userData?.schoolId);
       if (!run) continue;
 
-      // Fetch HR stream for accurate zone data if the activity has HR
+      // Fetch streams (HR + velocity) for zone data
       let zoneSeconds = null;
       let rawHRStream = null;
-      if (activity.average_heartrate && activity.has_heartrate) {
-        try {
-          const stream = await fetchStravaHRStream(accessToken, activity.id);
-          if (stream) {
-            rawHRStream = stream;
-            const breakdown = calcZoneBreakdownFromStream(stream, maxHR, boundaries);
-            if (breakdown) {
-              zoneSeconds = {};
-              breakdown.forEach(z => { zoneSeconds[`z${z.zone}`] = z.seconds; });
-            }
+      let rawPaceStream = null;
+      let paceZoneSeconds = null;
+      try {
+        const { hrStream, paceStream } = await fetchStravaStreams(accessToken, activity.id);
+
+        // HR zones
+        if (hrStream && maxHR) {
+          rawHRStream = hrStream;
+          const breakdown = calcZoneBreakdownFromStream(hrStream, maxHR, boundaries);
+          if (breakdown) {
+            zoneSeconds = {};
+            breakdown.forEach(z => { zoneSeconds[`z${z.zone}`] = z.seconds; });
           }
-          // Small delay to avoid hitting Strava rate limits
-          await new Promise(r => setTimeout(r, 200));
-        } catch (e) {
-          console.log('Auto-sync HR stream fetch:', e);
         }
+
+        // Pace zones (if athlete has VDOT set)
+        if (paceStream) {
+          rawPaceStream = paceStream;
+          if (userData?.trainingPaces) {
+            const { calcPaceZoneBreakdown } = await import('./utils/vdotUtils.js');
+            paceZoneSeconds = calcPaceZoneBreakdown(paceStream, userData.trainingPaces);
+          }
+        }
+
+        await new Promise(r => setTimeout(r, 200));
+      } catch (e) {
+        console.log('Auto-sync stream fetch:', e);
       }
 
       // Write the run to Firestore
@@ -273,6 +313,8 @@ export async function autoSyncStrava(userId, userData, teamZoneSettings) {
         ...run,
         ...(zoneSeconds ? { zoneSeconds, hasStreamData: true } : { hasStreamData: false }),
         ...(rawHRStream ? { rawHRStream } : {}),
+        ...(rawPaceStream ? { rawPaceStream, hasPaceData: true } : { hasPaceData: false }),
+        ...(paceZoneSeconds ? { paceZoneSeconds } : {}),
       });
 
       totalMilesImported += run.miles;

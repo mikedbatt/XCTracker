@@ -23,6 +23,7 @@ import {
   AVATAR_COLORS, BRAND, BRAND_DARK, BRAND_LIGHT,
   FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS, STRAVA_ORANGE,
 } from '../constants/design';
+import { calcVDOT, getTrainingPaces, formatPace, parseTimeToSeconds, RACE_DISTANCES } from '../utils/vdotUtils';
 import StravaConnect from './StravaConnect';
 
 export default function AthleteProfile({ userData, school, coachDisabledHR = false, onClose, onUpdated }) {
@@ -40,6 +41,11 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
   const [hrZoneLoaded,  setHrZoneLoaded]  = useState(false);
   const [avatarColor,   setAvatarColor]   = useState(userData.avatarColor || BRAND);
   const [linkedParents, setLinkedParents] = useState([]);
+  const [vdotDistance, setVdotDistance] = useState(userData.vdotDistance || '5K');
+  const [vdotTimeStr, setVdotTimeStr] = useState(userData.vdotTime || '');
+  const [vdotScore, setVdotScore] = useState(userData.vdot || null);
+  const [vdotPaces, setVdotPaces] = useState(userData.vdot ? getTrainingPaces(userData.vdot) : null);
+  const [savingVdot, setSavingVdot] = useState(false);
 
   useEffect(() => {
     loadMessages();
@@ -135,6 +141,36 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
     try {
       await updateDoc(doc(db, 'users', auth.currentUser.uid), { showHRZones: value });
     } catch (e) { console.warn('Failed to save HR zone preference:', e); }
+  };
+
+  const handleVdotCalculate = () => {
+    const timeSec = parseTimeToSeconds(vdotTimeStr);
+    if (!timeSec || timeSec <= 0) { Alert.alert('Invalid time', 'Enter a valid time in MM:SS or HH:MM:SS format.'); return; }
+    const dist = RACE_DISTANCES[vdotDistance];
+    if (!dist) return;
+    const score = calcVDOT(dist, timeSec);
+    if (!score) { Alert.alert('Error', 'Could not calculate VDOT from that time.'); return; }
+    setVdotScore(score);
+    setVdotPaces(getTrainingPaces(score));
+  };
+
+  const handleVdotSave = async () => {
+    if (!vdotScore || !vdotPaces) { Alert.alert('Calculate first', 'Enter a race time and tap Calculate before saving.'); return; }
+    setSavingVdot(true);
+    try {
+      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+        vdotDistance,
+        vdotTime: vdotTimeStr,
+        vdot: vdotScore,
+        trainingPaces: vdotPaces,
+      });
+      Alert.alert('Saved!', 'Your training paces have been updated.');
+      onUpdated && onUpdated({ vdot: vdotScore, trainingPaces: vdotPaces });
+    } catch (e) {
+      console.warn('Failed to save VDOT:', e);
+      Alert.alert('Error', 'Could not save. Please try again.');
+    }
+    setSavingVdot(false);
   };
 
   const loadLinkedParents = async () => {
@@ -353,6 +389,75 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
               )}
             </View>
 
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Training paces (VDOT)</Text>
+              <Text style={styles.fieldHint}>Enter a recent race time to calculate your personalized training paces.</Text>
+
+              <Text style={styles.fieldLabel}>Race distance</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: SPACE.sm }}>
+                {Object.keys(RACE_DISTANCES).map(d => (
+                  <TouchableOpacity
+                    key={d}
+                    style={[styles.genderBtn, { flex: 0, paddingHorizontal: SPACE.lg - 2, marginRight: SPACE.sm }, vdotDistance === d && { backgroundColor: BRAND, borderColor: BRAND }]}
+                    onPress={() => { setVdotDistance(d); setVdotScore(null); setVdotPaces(null); }}
+                  >
+                    <Text style={[styles.genderBtnText, vdotDistance === d && { color: '#fff' }]}>{d}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <Text style={styles.fieldLabel}>Finish time</Text>
+              <TextInput
+                style={styles.input}
+                value={vdotTimeStr}
+                onChangeText={setVdotTimeStr}
+                placeholder={vdotDistance === 'Mile' || vdotDistance === '1500m' ? 'e.g. 5:30' : 'e.g. 20:00'}
+                placeholderTextColor="#999"
+                keyboardType="numbers-and-punctuation"
+              />
+
+              <Button
+                label="Calculate"
+                variant="secondary"
+                onPress={handleVdotCalculate}
+                style={{ marginTop: SPACE.xs }}
+              />
+
+              {vdotPaces && (
+                <View style={{ marginTop: SPACE.lg }}>
+                  <Text style={[styles.fieldLabel, { marginTop: 0 }]}>VDOT: {vdotScore} — Your training paces</Text>
+                  <View style={styles.paceGrid}>
+                    <View style={[styles.paceRow, { backgroundColor: '#4caf50' + '18' }]}>
+                      <Text style={[styles.paceZoneLabel, { color: '#4caf50' }]}>Easy</Text>
+                      <Text style={styles.paceValue}>{formatPace(vdotPaces.eLow)} – {formatPace(vdotPaces.eHigh)} /mi</Text>
+                    </View>
+                    <View style={[styles.paceRow, { backgroundColor: '#2196f3' + '18' }]}>
+                      <Text style={[styles.paceZoneLabel, { color: '#2196f3' }]}>Marathon</Text>
+                      <Text style={styles.paceValue}>{formatPace(vdotPaces.m)} /mi</Text>
+                    </View>
+                    <View style={[styles.paceRow, { backgroundColor: '#ff9800' + '18' }]}>
+                      <Text style={[styles.paceZoneLabel, { color: '#ff9800' }]}>Threshold</Text>
+                      <Text style={styles.paceValue}>{formatPace(vdotPaces.t)} /mi</Text>
+                    </View>
+                    <View style={[styles.paceRow, { backgroundColor: '#e91e63' + '18' }]}>
+                      <Text style={[styles.paceZoneLabel, { color: '#e91e63' }]}>Interval</Text>
+                      <Text style={styles.paceValue}>{formatPace(vdotPaces.i)} /mi</Text>
+                    </View>
+                    <View style={[styles.paceRow, { backgroundColor: '#9c27b0' + '18' }]}>
+                      <Text style={[styles.paceZoneLabel, { color: '#9c27b0' }]}>Repetition</Text>
+                      <Text style={styles.paceValue}>{formatPace(vdotPaces.r)} /mi</Text>
+                    </View>
+                  </View>
+                  <Button
+                    label="Save training paces"
+                    onPress={handleVdotSave}
+                    loading={savingVdot}
+                    style={{ marginTop: SPACE.md }}
+                  />
+                </View>
+              )}
+            </View>
+
             <View style={styles.infoCard}>
               <Text style={styles.infoCardTitle}>Account info</Text>
               <Text style={styles.infoRow}>🏫  {school?.name || 'School not set'}</Text>
@@ -547,6 +652,10 @@ const styles = StyleSheet.create({
   connectionInfo:     { flex: 1 },
   connectionName:     { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
   connectionStatus:   { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: 2 },
+  paceGrid:           { gap: SPACE.xs, marginTop: SPACE.sm },
+  paceRow:            { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: RADIUS.md, paddingVertical: SPACE.sm + 2, paddingHorizontal: SPACE.md },
+  paceZoneLabel:      { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold },
+  paceValue:          { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: BRAND_DARK },
   connectionBtn:      { borderRadius: RADIUS.sm, borderWidth: 1.5, paddingHorizontal: SPACE.lg - 2, paddingVertical: SPACE.sm },
   connectionBtnText:  { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold },
 });
