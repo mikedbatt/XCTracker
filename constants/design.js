@@ -14,9 +14,9 @@ export const NEUTRAL = {
   card:   '#FFFFFF',   // card / surface background
   border: '#E5E7EB',   // borders, dividers
   input:  '#D1D5DB',   // input borders, inactive controls
-  muted:  '#9CA3AF',   // placeholder text, tertiary labels
-  body:   '#6B7280',   // body / secondary text
-  label:  '#4B5563',   // labels, captions
+  muted:  '#6B7280',   // placeholder text, tertiary labels (darkened from #9CA3AF)
+  body:   '#4B5563',   // body / secondary text (darkened from #6B7280)
+  label:  '#374151',   // labels, captions (darkened from #4B5563)
   text:   '#1F2937',   // standard text (when brand-dark is too strong)
 };
 

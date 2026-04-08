@@ -10,8 +10,9 @@ import {
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 import {
-  BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE,
+  BRAND, BRAND_ACCENT, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE,
 } from '../constants/design';
+import { formatPace } from '../utils/vdotUtils';
 
 export default function ManageGroups({ schoolId, athletes, onClose }) {
   const [groups, setGroups] = useState([]);
@@ -19,6 +20,7 @@ export default function ManageGroups({ schoolId, athletes, onClose }) {
   const [newGroupName, setNewGroupName] = useState('');
   const [athleteStats, setAthleteStats] = useState({});
   const [activeTab, setActiveTab] = useState('groups');
+  const [sortBy, setSortBy] = useState('volume');
 
   useEffect(() => {
     loadGroups();
@@ -160,9 +162,14 @@ export default function ManageGroups({ schoolId, athletes, onClose }) {
     return groups.find(g => g.id === groupId)?.name || 'Unassigned';
   };
 
-  const sortedAthletes = [...athletes].sort((a, b) =>
-    (athleteStats[b.id]?.avg3wk || 0) - (athleteStats[a.id]?.avg3wk || 0)
-  );
+  const sortedAthletes = [...athletes].sort((a, b) => {
+    if (sortBy === 'vdot') {
+      const aV = a.vdot || 0;
+      const bV = b.vdot || 0;
+      if (aV !== bV) return bV - aV;
+    }
+    return (athleteStats[b.id]?.avg3wk || 0) - (athleteStats[a.id]?.avg3wk || 0);
+  });
 
   if (loading) {
     return (
@@ -228,6 +235,12 @@ export default function ManageGroups({ schoolId, athletes, onClose }) {
               const groupAvg = count > 0
                 ? Math.round(inGroup.reduce((s, a) => s + (athleteStats[a.id]?.avg3wk || 0), 0) / count * 10) / 10
                 : 0;
+              const vdotAthletes = inGroup.filter(a => a.vdot);
+              const vdotMin = vdotAthletes.length > 0 ? Math.round(Math.min(...vdotAthletes.map(a => a.vdot)) * 10) / 10 : null;
+              const vdotMax = vdotAthletes.length > 0 ? Math.round(Math.max(...vdotAthletes.map(a => a.vdot)) * 10) / 10 : null;
+              const vdotLabel = vdotMin != null
+                ? vdotMin === vdotMax ? `VDOT ${vdotMin}` : `VDOT ${vdotMin}–${vdotMax}`
+                : null;
               return (
                 <View key={group.id} style={styles.groupCard}>
                   <View style={styles.groupCardTop}>
@@ -238,7 +251,7 @@ export default function ManageGroups({ schoolId, athletes, onClose }) {
                         onChangeText={(text) => setGroups(prev => prev.map(g => g.id === group.id ? { ...g, name: text } : g))}
                         onBlur={() => handleUpdateGroup(group.id, { name: group.name })}
                       />
-                      <Text style={styles.groupCount}>{count} athlete{count !== 1 ? 's' : ''}  ·  avg {groupAvg} mi/wk</Text>
+                      <Text style={styles.groupCount}>{count} athlete{count !== 1 ? 's' : ''}  ·  avg {groupAvg} mi/wk{vdotLabel ? `  ·  ${vdotLabel}` : ''}</Text>
                     </View>
                     <TouchableOpacity onPress={() => handleDeleteGroup(group)} style={styles.deleteBtn}>
                       <Text style={styles.deleteBtnText}>✕</Text>
@@ -253,12 +266,28 @@ export default function ManageGroups({ schoolId, athletes, onClose }) {
         {activeTab === 'assign' && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Assign Athletes</Text>
-            <Text style={styles.sectionHint}>Sorted by 3-week average miles. Tap an athlete to assign.</Text>
+            <Text style={styles.sectionHint}>Tap an athlete to assign to a group.</Text>
+
+            <View style={styles.sortRow}>
+              {[{ key: 'volume', label: 'By volume' }, { key: 'vdot', label: 'By VDOT' }].map(opt => (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={[styles.sortBtn, sortBy === opt.key && { backgroundColor: BRAND, borderColor: BRAND }]}
+                  onPress={() => setSortBy(opt.key)}
+                >
+                  <Text style={[styles.sortBtnText, sortBy === opt.key && { color: '#fff' }]}>{opt.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
             {sortedAthletes.map(athlete => {
               const stats = athleteStats[athlete.id] || { avg3wk: 0, last30: 0 };
               const groupName = getGroupName(athlete.groupId);
               const isAssigned = !!athlete.groupId;
+              const hasVdot = !!athlete.vdot && !!athlete.trainingPaces;
+              const easyRange = hasVdot
+                ? `Easy ${formatPace(athlete.trainingPaces.eLow)}–${formatPace(athlete.trainingPaces.eHigh)}/mi`
+                : 'No paces set';
 
               return (
                 <TouchableOpacity
@@ -267,9 +296,12 @@ export default function ManageGroups({ schoolId, athletes, onClose }) {
                   onPress={() => handleAssignAthlete(athlete)}
                 >
                   <View style={styles.athleteInfo}>
-                    <Text style={styles.athleteName}>{athlete.firstName} {athlete.lastName}</Text>
+                    <View style={styles.athleteNameRow}>
+                      <Text style={styles.athleteName}>{athlete.firstName} {athlete.lastName}</Text>
+                      {hasVdot && <Text style={styles.vdotBadge}>VDOT {Math.round(athlete.vdot * 10) / 10}</Text>}
+                    </View>
                     <Text style={styles.athleteStats}>
-                      {stats.avg3wk} mi/wk avg  ·  {stats.last30} mi last 30d
+                      {stats.avg3wk} mi/wk avg  ·  {easyRange}
                     </Text>
                   </View>
                   <View style={[styles.groupBadge, isAssigned && { backgroundColor: BRAND + '15', borderColor: BRAND }]}>
@@ -299,7 +331,7 @@ const styles = StyleSheet.create({
   scroll:         { flex: 1 },
   section:        { padding: SPACE.lg },
   sectionTitle:   { fontSize: 17, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: 10 },
-  sectionHint:    { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginBottom: 12 },
+  sectionHint:    { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginBottom: 12 },
   emptyText:      { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted, textAlign: 'center', paddingVertical: 20 },
   addRow:         { flexDirection: 'row', gap: 10, marginBottom: 14 },
   addInput:       { flex: 1, backgroundColor: '#fff', borderRadius: RADIUS.md, padding: 12, fontSize: 15, borderWidth: 1, borderColor: NEUTRAL.border, color: BRAND_DARK },
@@ -309,13 +341,18 @@ const styles = StyleSheet.create({
   groupCardTop:   { flexDirection: 'row', alignItems: 'center', gap: 10 },
   groupInfo:      { flex: 1 },
   groupNameInput: { fontSize: 15, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, padding: 0 },
-  groupCount:     { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 2 },
+  groupCount:     { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: 2 },
   deleteBtn:      { padding: 8 },
   deleteBtnText:  { fontSize: 16, color: '#dc2626', fontWeight: '600' },
   athleteRow:     { backgroundColor: '#fff', borderRadius: RADIUS.md, padding: 12, marginBottom: 6, flexDirection: 'row', alignItems: 'center', gap: 10 },
   athleteInfo:    { flex: 1 },
   athleteName:    { fontSize: FONT_SIZE.sm, fontWeight: '600', color: BRAND_DARK },
-  athleteStats:   { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 2 },
+  athleteNameRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
+  athleteStats:   { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: 2 },
+  vdotBadge:      { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, color: BRAND_ACCENT, backgroundColor: BRAND + '10', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  sortRow:        { flexDirection: 'row', gap: SPACE.sm, marginBottom: SPACE.md },
+  sortBtn:        { paddingHorizontal: SPACE.md, paddingVertical: SPACE.xs + 2, borderRadius: RADIUS.full, borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.card },
+  sortBtnText:    { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.body },
   groupBadge:     { borderRadius: 8, borderWidth: 1, borderColor: NEUTRAL.border, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: '#f9f9f9' },
-  groupBadgeText: { fontSize: FONT_SIZE.xs, fontWeight: '600', color: NEUTRAL.muted },
+  groupBadgeText: { fontSize: FONT_SIZE.xs, fontWeight: '600', color: NEUTRAL.body },
 });
