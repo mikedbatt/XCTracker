@@ -1317,6 +1317,7 @@ export default function CoachDashboard({ userData }) {
             athlete3WeekAvg={athlete3WeekAvg}
             athleteWeeklyBreakdown={athleteWeeklyBreakdown}
             athleteZonePct={athleteZonePct}
+            athletePaceEasyPct={athletePaceEasyPct}
             overtTrainingAlerts={overtTrainingAlerts}
             athleteMiles={athleteMiles}
             groups={groups}

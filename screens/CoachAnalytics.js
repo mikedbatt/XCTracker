@@ -20,7 +20,7 @@ import { getAthleteWeeklyTarget, getWeekStatus, computeVolumeCompliance } from '
 
 export default function CoachAnalytics({
   athletes, athleteWeeklyMiles, athlete3WeekAvg, athleteWeeklyBreakdown = {},
-  athleteZonePct, overtTrainingAlerts, athleteMiles, groups, school, schoolId, onClose,
+  athleteZonePct, athletePaceEasyPct = {}, overtTrainingAlerts, athleteMiles, groups, school, schoolId, onClose,
 }) {
   const [analyticsTab, setAnalyticsTab] = useState('training');
   const [expandedSection, setExpandedSection] = useState(null);
@@ -175,14 +175,35 @@ export default function CoachAnalytics({
     athletes, groups, athlete3WeekAvg, athleteWeeklyBreakdown
   );
 
-  // ── Metric 2: Intensity Distribution ──
-  const athletesWithZones = athletes.filter(a => athleteZonePct[a.id] !== undefined && athleteZonePct[a.id] !== null);
-  const teamAvgZone = athletesWithZones.length > 0
-    ? Math.round(athletesWithZones.reduce((s, a) => s + athleteZonePct[a.id], 0) / athletesWithZones.length)
+  // ── Metric 2: Pace Compliance ──
+  // Use pace easy% as primary, fall back to HR zone% when athlete has no pace data
+  const getEasyPct = (a) => {
+    const pace = athletePaceEasyPct[a.id];
+    if (pace !== undefined && pace !== null) return pace;
+    const hr = athleteZonePct[a.id];
+    return (hr !== undefined && hr !== null) ? hr : null;
+  };
+  const paceOnTarget = [];
+  const paceCaution = [];
+  const paceTooHard = [];
+  const paceNoPaces = [];
+  athletes.forEach(a => {
+    const pct = getEasyPct(a);
+    if (pct === null) {
+      if (!a.trainingPaces) paceNoPaces.push(a);
+      return;
+    }
+    const entry = { ...a, easyPct: pct, hasPaceData: athletePaceEasyPct[a.id] != null };
+    if (pct >= 78) paceOnTarget.push(entry);
+    else if (pct >= 68) paceCaution.push(entry);
+    else paceTooHard.push(entry);
+  });
+  paceTooHard.sort((a, b) => a.easyPct - b.easyPct);
+  paceCaution.sort((a, b) => a.easyPct - b.easyPct);
+  const athletesWithData = [...paceOnTarget, ...paceCaution, ...paceTooHard];
+  const teamAvgEasy = athletesWithData.length > 0
+    ? Math.round(athletesWithData.reduce((s, a) => s + a.easyPct, 0) / athletesWithData.length)
     : null;
-  const violators = athletesWithZones
-    .filter(a => athleteZonePct[a.id] < 80)
-    .sort((a, b) => athleteZonePct[a.id] - athleteZonePct[b.id]);
 
   // ── Metric 3: Load Progression (last week vs avg of 2 weeks before) ──
   const loadRisks = athletes.map(a => {
@@ -345,43 +366,104 @@ export default function CoachAnalytics({
           </View>
         )}
 
-        {/* ── 2. Intensity Distribution ── */}
+        {/* ── 2. Pace Compliance ── */}
         <TouchableOpacity style={styles.section} onPress={() => toggle('intensity')} activeOpacity={0.8}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionNum}>2</Text>
             <View style={{ flex: 1 }}>
-              <Text style={styles.sectionTitle}>Training Intensity</Text>
+              <Text style={styles.sectionTitle}>Pace Compliance</Text>
               <Text style={styles.sectionSub}>Is the team running easy enough?</Text>
             </View>
             <Ionicons name={expandedSection === 'intensity' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />
           </View>
           <View style={styles.intensityRow}>
-            <Text style={[styles.intensityNum, { color: teamAvgZone === null ? NEUTRAL.muted : teamAvgZone >= 80 ? STATUS.success : teamAvgZone >= 70 ? STATUS.warning : STATUS.error }]}>
-              {teamAvgZone !== null ? teamAvgZone + '%' : '—'}
+            <Text style={[styles.intensityNum, { color: teamAvgEasy === null ? NEUTRAL.muted : teamAvgEasy >= 78 ? STATUS.success : teamAvgEasy >= 68 ? STATUS.warning : STATUS.error }]}>
+              {teamAvgEasy !== null ? teamAvgEasy + '%' : '—'}
             </Text>
             <View style={{ flex: 1 }}>
-              <Text style={styles.intensityLabel}>Team avg Z1+Z2</Text>
-              <Text style={styles.intensitySub}>{violators.length > 0 ? `${violators.length} athlete${violators.length > 1 ? 's' : ''} below 80%` : 'All meeting 80/20 target'}</Text>
+              <Text style={styles.intensityLabel}>Team avg easy %</Text>
+              <Text style={styles.intensitySub}>
+                {paceOnTarget.length > 0 ? `${paceOnTarget.length} on target` : ''}
+                {paceCaution.length > 0 ? `${paceOnTarget.length > 0 ? ', ' : ''}${paceCaution.length} caution` : ''}
+                {paceTooHard.length > 0 ? `${paceOnTarget.length + paceCaution.length > 0 ? ', ' : ''}${paceTooHard.length} too hard` : ''}
+                {paceNoPaces.length > 0 ? `${athletesWithData.length > 0 ? ', ' : ''}${paceNoPaces.length} need paces` : ''}
+                {athletesWithData.length === 0 && paceNoPaces.length === 0 ? 'No data yet' : ''}
+              </Text>
             </View>
           </View>
         </TouchableOpacity>
         {expandedSection === 'intensity' && (
           <View style={styles.detail}>
-            {violators.length === 0 ? (
-              <Text style={styles.detailEmpty}>All athletes with HR data are meeting the 80/20 target.</Text>
-            ) : violators.map(a => (
-              <View key={a.id} style={styles.detailRow}>
-                <View style={[styles.detailAvatar, { backgroundColor: a.avatarColor || BRAND }]}>
-                  <Text style={styles.detailAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.detailName}>{a.firstName} {a.lastName}</Text>
-                  <Text style={styles.detailSub}>Z1+Z2: {athleteZonePct[a.id]}% (target: 80%)</Text>
-                </View>
-                <Text style={[styles.pctBadge, { color: athleteZonePct[a.id] < 70 ? STATUS.error : STATUS.warning }]}>{athleteZonePct[a.id]}%</Text>
+            {paceTooHard.length > 0 && (
+              <View style={{ marginBottom: SPACE.md }}>
+                <Text style={[styles.detailGroupLabel, { color: STATUS.error }]}>Too hard (easy &lt; 68%)</Text>
+                {paceTooHard.map(a => (
+                  <View key={a.id} style={styles.detailRow}>
+                    <View style={[styles.detailAvatar, { backgroundColor: a.avatarColor || BRAND }]}>
+                      <Text style={styles.detailAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.detailName}>{a.firstName} {a.lastName}</Text>
+                      <Text style={styles.detailSub}>Easy: {a.easyPct}% (target: 80%)</Text>
+                    </View>
+                    <Text style={[styles.pctBadge, { color: STATUS.error }]}>{a.easyPct}%</Text>
+                  </View>
+                ))}
               </View>
-            ))}
-            {athletesWithZones.length === 0 && <Text style={styles.detailEmpty}>No HR zone data available. Athletes need Strava with a heart rate monitor.</Text>}
+            )}
+            {paceCaution.length > 0 && (
+              <View style={{ marginBottom: SPACE.md }}>
+                <Text style={[styles.detailGroupLabel, { color: STATUS.warning }]}>Caution (68–77%)</Text>
+                {paceCaution.map(a => (
+                  <View key={a.id} style={styles.detailRow}>
+                    <View style={[styles.detailAvatar, { backgroundColor: a.avatarColor || BRAND }]}>
+                      <Text style={styles.detailAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.detailName}>{a.firstName} {a.lastName}</Text>
+                      <Text style={styles.detailSub}>Easy: {a.easyPct}% (target: 80%)</Text>
+                    </View>
+                    <Text style={[styles.pctBadge, { color: STATUS.warning }]}>{a.easyPct}%</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+            {paceOnTarget.length > 0 && (
+              <View style={{ marginBottom: SPACE.md }}>
+                <Text style={[styles.detailGroupLabel, { color: STATUS.success }]}>On target (≥ 78%)</Text>
+                {paceOnTarget.map(a => (
+                  <View key={a.id} style={styles.detailRow}>
+                    <View style={[styles.detailAvatar, { backgroundColor: a.avatarColor || BRAND }]}>
+                      <Text style={styles.detailAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.detailName}>{a.firstName} {a.lastName}</Text>
+                      <Text style={styles.detailSub}>Easy: {a.easyPct}%</Text>
+                    </View>
+                    <Text style={[styles.pctBadge, { color: STATUS.success }]}>{a.easyPct}%</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+            {paceNoPaces.length > 0 && (
+              <View style={{ marginBottom: SPACE.md }}>
+                <Text style={[styles.detailGroupLabel, { color: NEUTRAL.muted }]}>Need training paces</Text>
+                {paceNoPaces.map(a => (
+                  <View key={a.id} style={styles.detailRow}>
+                    <View style={[styles.detailAvatar, { backgroundColor: a.avatarColor || BRAND }]}>
+                      <Text style={styles.detailAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.detailName}>{a.firstName} {a.lastName}</Text>
+                      <Text style={[styles.detailSub, { fontStyle: 'italic' }]}>No paces set</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+            {athletesWithData.length === 0 && paceNoPaces.length === 0 && (
+              <Text style={styles.detailEmpty}>No pace data yet. Athletes need to set training paces in their profile.</Text>
+            )}
           </View>
         )}
 
@@ -782,6 +864,7 @@ const styles = StyleSheet.create({
   detailRow:       { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, paddingVertical: SPACE.sm, borderBottomWidth: 1, borderBottomColor: NEUTRAL.bg },
   detailAvatar:    { width: 32, height: 32, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center' },
   detailAvatarText:{ color: '#fff', fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
+  detailGroupLabel:{ fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, marginBottom: SPACE.xs, letterSpacing: 0.5 },
   detailName:      { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: BRAND_DARK },
   detailSub:       { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 1 },
   detailEmpty:     { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted, textAlign: 'center', paddingVertical: SPACE.md },
