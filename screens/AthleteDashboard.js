@@ -41,10 +41,10 @@ import {
   formatMinutes,
   parseBirthdate,
 } from '../zoneConfig';
-import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
+import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020, formatPace } from '../utils/vdotUtils';
 import AthleteProfile from './AthleteProfile';
 import CalendarScreen from './CalendarScreen';
-import { TYPE_COLORS } from '../constants/training';
+import { TYPE_COLORS, WORKOUT_PACE_ZONE } from '../constants/training';
 import DatePickerField from './DatePickerField';
 import RunDetailModal from './RunDetailModal';
 import { getActiveSeason } from './SeasonPlanner';
@@ -816,6 +816,15 @@ export default function AthleteDashboard({ userData: userDataProp }) {
                   <View style={[styles.workoutBadge, { backgroundColor: TYPE_COLORS[workout.type] || BRAND }]}><Text style={styles.workoutBadgeText}>{workout.type}</Text></View>
                   <View style={styles.workoutInfo}>
                     <Text style={styles.workoutTitle}>{workout.title}{wkMiles ? ` — ${wkMiles} mi` : ''}</Text>
+                    {userData.trainingPaces && WORKOUT_PACE_ZONE[workout.type] && (() => {
+                      const zone = WORKOUT_PACE_ZONE[workout.type];
+                      const tp = userData.trainingPaces;
+                      const paceText = zone === 'easy' ? `${formatPace(tp.eLow)}–${formatPace(tp.eHigh)}/mi`
+                        : zone === 'threshold' ? `${formatPace(tp.t)}/mi`
+                        : zone === 'interval' ? `${formatPace(tp.i)}/mi`
+                        : zone === 'repetition' ? `${formatPace(tp.r)}/mi` : null;
+                      return paceText ? <Text style={styles.workoutPace}>Target: {paceText}</Text> : null;
+                    })()}
                     {workout.description && <Text style={styles.workoutDesc} numberOfLines={1}>{workout.description}</Text>}
                     <Text style={styles.workoutDate}>{workout.date?.toDate?.()?.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</Text>
                   </View>
@@ -1155,6 +1164,7 @@ const styles = StyleSheet.create({
   workoutBadgeText:    { color: '#fff', fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
   workoutInfo:         { flex: 1 },
   workoutTitle:        { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  workoutPace:         { fontSize: FONT_SIZE.xs, color: BRAND_ACCENT, fontWeight: FONT_WEIGHT.semibold, marginTop: 2 },
   workoutDesc:         { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginTop: 2 },
   workoutDate:         { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: SPACE.xs },
   chevron:             { fontSize: 22, color: NEUTRAL.input },

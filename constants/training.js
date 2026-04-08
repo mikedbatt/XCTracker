@@ -23,3 +23,17 @@ export const TYPE_COLORS = {
   Weights: '#795548', Recovery: '#607d8b', 'Time Trial': '#ff5722',
   Race: '#dc2626', 'Team Meeting': '#0284c7', 'Team Party': '#f59e0b',
 };
+
+// Workout intensity classification for 80/20 planning
+export const WORKOUT_INTENSITY = {
+  Easy: 'easy', Recovery: 'easy', 'Long Run': 'easy', 'Cross Train': 'easy',
+  Tempo: 'hard', Intervals: 'hard', Speed: 'hard', 'Time Trial': 'hard',
+  Weights: 'neutral', Race: 'hard',
+};
+
+// Map workout type to VDOT pace zone for athlete-facing pace targets
+export const WORKOUT_PACE_ZONE = {
+  Easy: 'easy', Recovery: 'easy', 'Long Run': 'easy',
+  Tempo: 'threshold', Intervals: 'interval', Speed: 'repetition',
+  'Time Trial': 'threshold',
+};

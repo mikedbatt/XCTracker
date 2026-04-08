@@ -13,7 +13,7 @@ import {
   BRAND, BRAND_ACCENT, BRAND_DARK, BRAND_LIGHT,
   FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
 } from '../constants/design';
-import { CATEGORIES, TYPE_COLORS } from '../constants/training';
+import { CATEGORIES, TYPE_COLORS, WORKOUT_INTENSITY } from '../constants/training';
 import { generateVolumeCurve, getPhaseForSeason } from './SeasonPlanner';
 import WorkoutLibrary from './WorkoutLibrary';
 
@@ -28,44 +28,180 @@ function getMonday(d) {
   return date;
 }
 
-function getWeekSuggestions(phase, daySlots) {
+function getWeekSuggestions(phase, daySlots, groupTotals, weekTargets) {
   if (!phase) return [];
   const suggestions = [];
-  const filled = daySlots.filter(d => d.type);
-  const qualityCount = filled.filter(d => ['Tempo', 'Intervals', 'Speed', 'Time Trial'].includes(d.type)).length;
+  const filled = daySlots.map((d, i) => ({ ...d, dayIdx: i })).filter(d => d.type);
+  const hardTypes = ['Tempo', 'Intervals', 'Speed', 'Time Trial'];
+  const qualityCount = filled.filter(d => hardTypes.includes(d.type)).length;
   const hasLongRun = filled.some(d => d.type === 'Long Run');
   const restDays = 7 - filled.length;
+  const hasRace = daySlots.some(d => d.type === 'Race');
 
+  // Hard day spacing check
+  const hardDays = filled.filter(d => WORKOUT_INTENSITY[d.type] === 'hard');
+  if (hardDays.length >= 2) {
+    for (let h = 0; h < hardDays.length - 1; h++) {
+      const gap = hardDays[h + 1].dayIdx - hardDays[h].dayIdx;
+      if (gap === 1) {
+        suggestions.push({ type: 'warning', text: `Back-to-back hard days (${DAYS[hardDays[h].dayIdx].slice(0, 3)} & ${DAYS[hardDays[h + 1].dayIdx].slice(0, 3)}) — consider an easy day between` });
+        break;
+      }
+    }
+  }
+
+  // Rest day check
+  if (filled.length > 0 && restDays < 1) {
+    suggestions.push({ type: 'warning', text: 'No rest day this week — consider adding one' });
+  }
+
+  // Race week detection
+  if (hasRace) {
+    suggestions.push({ type: 'info', text: 'Race week — consider reducing volume 15-20% and limiting hard sessions' });
+  }
+
+  // Volume vs target check
+  if (groupTotals && weekTargets) {
+    const overGroups = Object.entries(groupTotals).filter(([, gt]) => gt.pct > 110);
+    if (overGroups.length > 0) {
+      suggestions.push({ type: 'warning', text: `Planned volume exceeds target by 10%+ for ${overGroups.length} group${overGroups.length > 1 ? 's' : ''} — consider trimming` });
+    }
+  }
+
+  // Long run check
+  if (!hasLongRun && filled.length >= 3 && !hasRace) {
+    suggestions.push({ type: 'info', text: 'No long run — consider adding one on the weekend (20-25% of weekly miles)' });
+  }
+
+  // Long run placement (mid-week)
+  const longRunDay = daySlots.findIndex(d => d.type === 'Long Run');
+  if (longRunDay >= 0 && longRunDay <= 3) {
+    suggestions.push({ type: 'info', text: 'Long run scheduled mid-week — weekends give athletes more time to recover' });
+  }
+
+  // Phase-specific
   switch (phase.name) {
     case 'Summer Base':
     case 'Pre-Season Base':
     case 'Base':
-      if (qualityCount > 0) suggestions.push('Base phase: consider all easy runs — save quality for Build phase');
-      if (!hasLongRun && filled.length > 0) suggestions.push('Add a long run (Sat or Sun) — aim for 20-25% of weekly volume');
-      if (restDays < 1) suggestions.push('Include at least 1 rest day');
+      if (qualityCount > 0) suggestions.push({ type: 'info', text: 'Base phase — consider all easy runs to build aerobic foundation' });
       break;
     case 'Build':
-      if (qualityCount === 0 && filled.length > 0) suggestions.push('Build phase: add 1 quality session (tempo or intervals)');
-      if (qualityCount > 2) suggestions.push('1-2 quality sessions is enough — keep easy days easy');
-      if (!hasLongRun && filled.length > 0) suggestions.push('Keep the weekly long run');
+      if (qualityCount === 0 && filled.length > 0) suggestions.push({ type: 'info', text: 'Build phase — add 1-2 quality sessions (tempo or intervals)' });
+      if (qualityCount > 2) suggestions.push({ type: 'warning', text: '1-2 quality sessions is enough — keep easy days easy' });
       break;
     case 'Competition':
-      if (qualityCount === 0 && filled.length > 0) suggestions.push('Add 1 race-pace workout');
-      if (qualityCount > 2) suggestions.push('Quality over quantity — 1-2 hard sessions max');
+      if (qualityCount > 2) suggestions.push({ type: 'warning', text: 'Competition phase — quality over quantity, 1-2 hard sessions max' });
       break;
     case 'Peak':
-      if (qualityCount > 1) suggestions.push('Peak week: only 1 quality session. Short and sharp.');
-      if (filled.length > 5) suggestions.push('Consider fewer running days this week');
+      if (qualityCount > 1) suggestions.push({ type: 'warning', text: 'Peak week — only 1 short, sharp quality session' });
+      if (filled.length > 5) suggestions.push({ type: 'info', text: 'Consider fewer running days this week' });
       break;
     case 'Taper':
-      if (qualityCount > 0) suggestions.push('Taper week: easy runs + strides only. No hard workouts.');
-      if (filled.length > 4) suggestions.push('Taper: 3-4 easy runs maximum');
+      if (qualityCount > 0) suggestions.push({ type: 'warning', text: 'Taper week — easy runs + strides only, no hard workouts' });
+      if (filled.length > 4) suggestions.push({ type: 'info', text: 'Championship week — 3-4 easy runs maximum' });
       break;
   }
+
   return suggestions.slice(0, 3);
 }
 
-const EMPTY_SLOT = () => ({ type: null, baseMiles: '', title: '', description: '', time: '', location: '' });
+// ── Week templates with mileage distribution ──────────────────────────────────
+// Each day has type + pctOfWeek (% of weekly target for base miles)
+const WEEK_TEMPLATES = {
+  base: {
+    label: 'Base Week',
+    desc: '6 easy days + long run, build aerobic foundation',
+    phases: ['Summer Base', 'Pre-Season Base', 'Base'],
+    days: [
+      { type: 'Easy', pct: 0.15 },
+      { type: 'Easy', pct: 0.15 },
+      null, // Off
+      { type: 'Easy', pct: 0.15 },
+      { type: 'Easy', pct: 0.15 },
+      { type: 'Long Run', pct: 0.25 },
+      { type: 'Easy', pct: 0.15 },
+    ],
+  },
+  build: {
+    label: 'Build Week',
+    desc: '2 quality sessions + long run, easy between',
+    phases: ['Build'],
+    days: [
+      { type: 'Easy', pct: 0.15 },
+      { type: 'Tempo', pct: 0.15 },
+      { type: 'Easy', pct: 0.12 },
+      { type: 'Intervals', pct: 0.12 },
+      { type: 'Easy', pct: 0.12 },
+      { type: 'Long Run', pct: 0.22 },
+      null,
+    ],
+  },
+  competition: {
+    label: 'Competition Week',
+    desc: '1 quality session + long run, race recovery focus',
+    phases: ['Competition'],
+    days: [
+      { type: 'Easy', pct: 0.15 },
+      { type: 'Tempo', pct: 0.15 },
+      { type: 'Easy', pct: 0.12 },
+      null,
+      { type: 'Easy', pct: 0.10 },
+      { type: 'Long Run', pct: 0.20 },
+      null,
+    ],
+  },
+  race: {
+    label: 'Race Week',
+    desc: 'Reduced volume, short quality, race day ready',
+    phases: ['Competition', 'Peak'],
+    days: [
+      { type: 'Easy', pct: 0.12 },
+      { type: 'Tempo', pct: 0.10 },
+      { type: 'Easy', pct: 0.10 },
+      null,
+      { type: 'Easy', pct: 0.08 },
+      { type: 'Race', pct: 0 },
+      null,
+    ],
+  },
+  recovery: {
+    label: 'Recovery Week',
+    desc: 'Low volume, all easy, active recovery',
+    phases: ['Taper'],
+    days: [
+      null,
+      { type: 'Easy', pct: 0.15 },
+      { type: 'Cross Train', pct: 0 },
+      { type: 'Easy', pct: 0.15 },
+      null,
+      { type: 'Easy', pct: 0.20 },
+      null,
+    ],
+  },
+};
+
+function generateWeekPlan(templateKey, weekTargets, groups) {
+  const template = WEEK_TEMPLATES[templateKey];
+  if (!template) return null;
+  const targets = groups.map(g => parseFloat(weekTargets[g.id]) || 0);
+  const maxTarget = Math.max(...targets, 1);
+  return template.days.map((day, i) => {
+    if (!day) return EMPTY_SLOT();
+    const baseMiles = day.pct > 0 ? String(Math.round(maxTarget * day.pct)) : '';
+    return {
+      type: day.type,
+      baseMiles,
+      title: `${DAYS[i]} ${day.type}`,
+      description: '',
+      time: '',
+      location: '',
+      groupMilesOverrides: {},
+    };
+  });
+}
+
+const EMPTY_SLOT = () => ({ type: null, baseMiles: '', title: '', description: '', time: '', location: '', groupMilesOverrides: {} });
 
 export default function WeeklyPlanner({ schoolId, userData, school, groups, activeSeason, onClose }) {
   const [weekStart, setWeekStart] = useState(() => getMonday(new Date()));
@@ -152,6 +288,7 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
             description: ev.description || '',
             time: ev.time || '',
             location: ev.location || '',
+            groupMilesOverrides: {},
           };
         });
         setDaySlots(newSlots);
@@ -199,17 +336,21 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
     setDraftDirty(true);
   };
 
-  // Auto-calculate group miles proportionally based on relative group targets
-  const calcGroupMiles = (baseMiles) => {
+  // Auto-calculate group miles proportionally, with manual override support
+  const calcGroupMiles = (baseMiles, overrides = {}) => {
     const base = parseFloat(baseMiles);
     if (!base || groups.length === 0) return {};
     const targets = groups.map(g => parseFloat(weekTargets[g.id]) || 0);
     const maxTarget = Math.max(...targets, 1);
     const result = {};
     groups.forEach((g, i) => {
-      const t = targets[i];
-      // Scale base miles by each group's target as a fraction of the highest group
-      result[g.id] = t > 0 ? Math.round(base * (t / maxTarget)) : Math.round(base);
+      // Use override if set, otherwise auto-calculate
+      if (overrides[g.id] !== undefined && overrides[g.id] !== '') {
+        result[g.id] = parseFloat(overrides[g.id]) || 0;
+      } else {
+        const t = targets[i];
+        result[g.id] = t > 0 ? Math.round(base * (t / maxTarget)) : Math.round(base);
+      }
     });
     return result;
   };
@@ -220,7 +361,7 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
   groups.forEach(g => {
     const target = parseFloat(weekTargets[g.id]) || 0;
     const planned = daySlots.reduce((s, d) => {
-      const gm = calcGroupMiles(d.baseMiles);
+      const gm = calcGroupMiles(d.baseMiles, d.groupMilesOverrides || {});
       return s + (gm[g.id] || 0);
     }, 0);
     groupTotals[g.id] = {
@@ -252,7 +393,7 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
             const eventDate = new Date(weekStart);
             eventDate.setDate(eventDate.getDate() + slot.dayIdx);
 
-            const groupMiles = calcGroupMiles(slot.baseMiles);
+            const groupMiles = calcGroupMiles(slot.baseMiles, slot.groupMilesOverrides || {});
 
             await addDoc(collection(db, 'events'), {
               schoolId,
@@ -300,7 +441,7 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
   };
 
   const weekLabel = `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${new Date(weekStart.getTime() + 6 * 86400000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
-  const suggestions = getWeekSuggestions(phase, daySlots);
+  const suggestions = getWeekSuggestions(phase, daySlots, groupTotals, weekTargets);
 
   return (
     <View style={styles.container}>
@@ -335,6 +476,67 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
             <Ionicons name="chevron-forward" size={20} color={BRAND} />
           </TouchableOpacity>
         </View>
+
+        {/* Generate week button (shown when empty) */}
+        {weekStatus === 'empty' && daySlots.every(s => !s.type) && (
+          <View style={styles.generateSection}>
+            <Text style={styles.generateHint}>Start by generating a week plan based on your season phase.</Text>
+            <View style={styles.templateGrid}>
+              {Object.entries(WEEK_TEMPLATES)
+                .sort(([, a], [, b]) => {
+                  const aMatch = phase && a.phases.includes(phase.name) ? 0 : 1;
+                  const bMatch = phase && b.phases.includes(phase.name) ? 0 : 1;
+                  return aMatch - bMatch;
+                })
+                .map(([key, tmpl]) => {
+                  const isRecommended = phase && tmpl.phases.includes(phase.name);
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      style={[styles.templateCard, isRecommended && { borderColor: BRAND, borderWidth: 1.5 }]}
+                      onPress={() => {
+                        const plan = generateWeekPlan(key, weekTargets, groups);
+                        if (plan) { setDaySlots(plan); setDraftDirty(true); setWeekStatus('draft'); }
+                      }}
+                    >
+                      {isRecommended && <Text style={styles.templateRecommended}>Recommended</Text>}
+                      <Text style={styles.templateName}>{tmpl.label}</Text>
+                      <Text style={styles.templateDesc}>{tmpl.desc}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+            </View>
+          </View>
+        )}
+
+        {/* Intensity distribution bar */}
+        {(() => {
+          const filled = daySlots.filter(s => s.type);
+          if (filled.length === 0) return null;
+          const easyCount = filled.filter(s => WORKOUT_INTENSITY[s.type] === 'easy').length;
+          const hardCount = filled.filter(s => WORKOUT_INTENSITY[s.type] === 'hard').length;
+          const offCount = 7 - filled.length;
+          const total = easyCount + hardCount;
+          const easyPct = total > 0 ? Math.round((easyCount / total) * 100) : 0;
+          const balanced = total > 0 && easyPct >= 75;
+          return (
+            <View style={styles.intensityBar}>
+              <View style={styles.intensityBarTrack}>
+                {easyCount > 0 && <View style={[styles.intensitySegment, { flex: easyCount, backgroundColor: STATUS.success }]} />}
+                {hardCount > 0 && <View style={[styles.intensitySegment, { flex: hardCount, backgroundColor: STATUS.error }]} />}
+                {offCount > 0 && <View style={[styles.intensitySegment, { flex: offCount, backgroundColor: NEUTRAL.border }]} />}
+              </View>
+              <View style={styles.intensityLabels}>
+                <Text style={styles.intensityLabel}>Easy {easyCount} · Hard {hardCount} · Off {offCount}</Text>
+                {total > 0 && (
+                  <Text style={[styles.intensityBadge, { color: balanced ? STATUS.success : STATUS.warning }]}>
+                    {balanced ? '✓' : '⚠'} {easyPct}% easy
+                  </Text>
+                )}
+              </View>
+            </View>
+          );
+        })()}
 
         {/* Day slots */}
         {DAYS.map((day, i) => {
@@ -420,11 +622,24 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
                   {groups.length > 0 && slot.baseMiles && (
                     <View style={styles.autoGroupMiles}>
                       {groups.map(g => {
-                        const gm = calcGroupMiles(slot.baseMiles);
+                        const autoVal = calcGroupMiles(slot.baseMiles)[g.id] || 0;
+                        const override = slot.groupMilesOverrides?.[g.id];
+                        const displayVal = override !== undefined && override !== '' ? override : String(autoVal);
+                        const isOverridden = override !== undefined && override !== '';
                         return (
                           <View key={g.id} style={styles.autoGroupRow}>
                             <Text style={styles.autoGroupName}>{g.name}:</Text>
-                            <Text style={styles.autoGroupVal}>{gm[g.id] || '—'} mi</Text>
+                            <TextInput
+                              style={[styles.groupMilesInput, isOverridden && { borderColor: BRAND, color: BRAND }]}
+                              value={String(displayVal)}
+                              onChangeText={(text) => {
+                                const val = text === '' || text === String(autoVal) ? undefined : text;
+                                updateSlot(i, 'groupMilesOverrides', { ...(slot.groupMilesOverrides || {}), [g.id]: val });
+                              }}
+                              keyboardType="decimal-pad"
+                              maxLength={4}
+                            />
+                            <Text style={styles.autoGroupUnit}>mi</Text>
                           </View>
                         );
                       })}
@@ -482,7 +697,9 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
               <Text style={styles.suggestionsTitle}>Coaching tips</Text>
             </View>
             {suggestions.map((s, i) => (
-              <Text key={i} style={styles.suggestionText}>• {s}</Text>
+              <Text key={i} style={[styles.suggestionText, s.type === 'warning' && { color: STATUS.warning }]}>
+                {s.type === 'warning' ? '⚠ ' : s.type === 'success' ? '✓ ' : '💡 '}{s.text}
+              </Text>
             ))}
           </View>
         )}
@@ -492,21 +709,20 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
       {/* Running totals + push button (sticky bottom) */}
       <View style={styles.bottomBar}>
         {groups.length > 0 ? (
-          <View style={styles.totalsSection}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.totalsRow} contentContainerStyle={{ gap: SPACE.sm }}>
             {groups.map(g => {
               const gt = groupTotals[g.id] || { planned: 0, target: 0, pct: 0 };
-              const barColor = gt.pct > 110 ? STATUS.error : gt.pct >= 80 ? BRAND : STATUS.warning;
+              const statusColor = gt.pct > 110 ? STATUS.error : gt.pct >= 90 ? STATUS.success : gt.pct >= 80 ? STATUS.warning : STATUS.error;
+              const statusIcon = gt.pct > 110 ? 'alert-circle' : gt.pct >= 90 ? 'checkmark-circle' : 'alert-circle';
               return (
-                <View key={g.id} style={styles.totalRow}>
-                  <Text style={styles.totalName}>{g.name}</Text>
-                  <View style={styles.totalBarBg}>
-                    <View style={[styles.totalBarFill, { width: Math.min(gt.pct, 100) + '%', backgroundColor: barColor }]} />
-                  </View>
-                  <Text style={[styles.totalVal, { color: barColor }]}>{gt.planned}/{gt.target}</Text>
+                <View key={g.id} style={styles.totalChip}>
+                  <Text style={styles.totalChipName}>{g.name}</Text>
+                  <Text style={[styles.totalChipVal, { color: statusColor }]}>{gt.planned}/{gt.target}</Text>
+                  <Ionicons name={statusIcon} size={14} color={statusColor} />
                 </View>
               );
             })}
-          </View>
+          </ScrollView>
         ) : (
           <Text style={styles.totalVal}>Total: {totalBase} mi</Text>
         )}
@@ -619,26 +835,39 @@ const styles = StyleSheet.create({
   textInput:       { backgroundColor: NEUTRAL.bg, borderRadius: RADIUS.md, padding: SPACE.md, fontSize: FONT_SIZE.sm, color: BRAND_DARK, borderWidth: 1, borderColor: NEUTRAL.border, marginBottom: SPACE.sm },
   milesInput:      { width: 80, backgroundColor: NEUTRAL.bg, borderRadius: RADIUS.md, padding: SPACE.md, fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, borderWidth: 1, borderColor: NEUTRAL.border, marginBottom: SPACE.sm },
   autoGroupMiles:  { backgroundColor: NEUTRAL.bg, borderRadius: RADIUS.sm, padding: SPACE.md, marginBottom: SPACE.sm },
-  autoGroupRow:    { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 },
-  autoGroupName:   { fontSize: FONT_SIZE.xs, color: NEUTRAL.body },
-  autoGroupVal:    { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  autoGroupRow:    { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginBottom: 2 },
+  autoGroupName:   { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, width: 60 },
+  groupMilesInput: { width: 44, fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, textAlign: 'center', borderWidth: 1, borderColor: NEUTRAL.border, borderRadius: RADIUS.sm, paddingVertical: 2, paddingHorizontal: 4, backgroundColor: NEUTRAL.card },
+  autoGroupUnit:   { fontSize: FONT_SIZE.xs, color: NEUTRAL.body },
   editActions:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: SPACE.sm },
   browseLibraryBtn:{ flexDirection: 'row', alignItems: 'center', gap: SPACE.xs, backgroundColor: BRAND_LIGHT, borderRadius: RADIUS.sm, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm },
   browseLibraryText:{ fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, color: BRAND },
   libraryBtn:      { backgroundColor: BRAND_LIGHT, borderRadius: RADIUS.sm, padding: SPACE.sm },
   doneEditBtn:     { paddingVertical: SPACE.sm, paddingHorizontal: SPACE.lg },
   doneEditText:    { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND },
+  generateSection:   { margin: SPACE.lg },
+  generateHint:      { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginBottom: SPACE.md, textAlign: 'center' },
+  templateGrid:      { gap: SPACE.sm },
+  templateCard:      { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, borderWidth: 1, borderColor: NEUTRAL.border, ...SHADOW.sm },
+  templateRecommended: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, color: BRAND, marginBottom: SPACE.xs },
+  templateName:      { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  templateDesc:      { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: 2 },
+  intensityBar:      { marginHorizontal: SPACE.lg, marginBottom: SPACE.md },
+  intensityBarTrack: { flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', gap: 2 },
+  intensitySegment:  { height: '100%', borderRadius: 4 },
+  intensityLabels:   { flexDirection: 'row', justifyContent: 'space-between', marginTop: SPACE.xs },
+  intensityLabel:    { fontSize: FONT_SIZE.xs, color: NEUTRAL.body },
+  intensityBadge:    { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
   suggestionsCard: { margin: SPACE.lg, backgroundColor: BRAND_LIGHT, borderRadius: RADIUS.lg, padding: SPACE.lg },
   suggestionsHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginBottom: SPACE.sm },
   suggestionsTitle:  { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND },
   suggestionText:  { fontSize: FONT_SIZE.sm, color: BRAND_DARK, lineHeight: 20, marginBottom: SPACE.xs },
   bottomBar:       { backgroundColor: NEUTRAL.card, borderTopWidth: 1, borderTopColor: NEUTRAL.border, padding: SPACE.lg, paddingBottom: Platform.OS === 'ios' ? SPACE['3xl'] : SPACE.lg },
-  totalsSection:   { marginBottom: SPACE.md },
-  totalRow:        { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginBottom: SPACE.xs },
-  totalName:       { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, width: 60 },
-  totalBarBg:      { flex: 1, height: 6, backgroundColor: NEUTRAL.bg, borderRadius: 3, overflow: 'hidden' },
-  totalBarFill:    { height: '100%', borderRadius: 3 },
-  totalVal:        { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, width: 50, textAlign: 'right' },
+  totalsRow:       { marginBottom: SPACE.sm, flexGrow: 0 },
+  totalChip:       { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: NEUTRAL.bg, borderRadius: RADIUS.full, paddingHorizontal: SPACE.sm, paddingVertical: SPACE.xs },
+  totalChipName:   { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, color: BRAND_DARK },
+  totalChipVal:    { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
+  totalVal:        { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.sm },
   bottomActions:   { gap: SPACE.sm },
   saveDraftBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm, borderWidth: 1.5, borderColor: BRAND, borderRadius: RADIUS.md, paddingVertical: SPACE.sm },
   saveDraftText:   { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND },
