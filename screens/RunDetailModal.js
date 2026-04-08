@@ -21,6 +21,7 @@ import {
   calcZoneBreakdownFromStream,
   formatMinutes,
 } from '../zoneConfig';
+import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020, formatPace } from '../utils/vdotUtils';
 import DatePickerField from './DatePickerField';
 
 const EFFORT_LABELS = ['', 'Very Easy', 'Easy', 'Moderate', 'Moderate', 'Medium',
@@ -38,6 +39,80 @@ const EFFORT_COLORS = ['', '#4caf50', '#4caf50', '#8bc34a', '#8bc34a', '#ffeb3b'
 //   Tier 1 — rawHRStream → recalculate with current coach boundaries (most accurate)
 //   Tier 2 — stored zoneSeconds → sync-time boundaries (fallback)
 //   Tier 3 — avg HR + duration → estimate (least accurate, covers manual runs)
+function RunPaceBreakdown({ run, trainingPaces }) {
+  if (!trainingPaces || (!run.rawPaceStream && !run.paceZoneSeconds)) return null;
+
+  let paceZones = null;
+  let hasPaceStream = false;
+
+  // Tier 1: recalculate from raw pace stream with current training paces
+  if (run.rawPaceStream?.length > 0) {
+    paceZones = calcPaceZoneBreakdown(run.rawPaceStream, trainingPaces);
+    hasPaceStream = true;
+  }
+
+  // Tier 2: use stored paceZoneSeconds
+  if (!paceZones && run.paceZoneSeconds) {
+    paceZones = run.paceZoneSeconds;
+    hasPaceStream = run.hasPaceData;
+  }
+
+  if (!paceZones) return null;
+
+  const total = paceZones.e + paceZones.m + paceZones.t + paceZones.i + paceZones.r;
+  if (total === 0) return null;
+
+  const eighty20 = calcPace8020(paceZones);
+  const zonesArr = PACE_ZONES.map(z => ({
+    ...z,
+    seconds: paceZones[z.key] || 0,
+    minutes: Math.round((paceZones[z.key] || 0) / 60),
+    pct: Math.round(((paceZones[z.key] || 0) / total) * 100),
+  })).filter(z => z.seconds > 0);
+
+  const totalMins = Math.round(total / 60);
+
+  return (
+    <View style={zoneStyles.section}>
+      <View style={zoneStyles.titleRow}>
+        <Text style={zoneStyles.sectionTitle}>Pace zones</Text>
+        {hasPaceStream
+          ? <View style={zoneStyles.preciseBadge}><Text style={zoneStyles.preciseBadgeText}>GPS ✓</Text></View>
+          : <Text style={zoneStyles.estimatedText}>from avg pace</Text>
+        }
+      </View>
+
+      {/* Stacked bar */}
+      <View style={zoneStyles.stackedBar}>
+        {zonesArr.map(z => (
+          <View key={z.key} style={[zoneStyles.stackedSegment, { flex: z.minutes || 1, backgroundColor: z.color }]} />
+        ))}
+      </View>
+
+      {/* Zone rows */}
+      {zonesArr.map(z => (
+        <View key={z.key} style={zoneStyles.zoneRow}>
+          <View style={[zoneStyles.zoneDot, { backgroundColor: z.color }]} />
+          <Text style={zoneStyles.zoneName}>{z.short} {z.name}</Text>
+          <View style={zoneStyles.zoneBarBg}>
+            <View style={[zoneStyles.zoneBarFill, { width: z.pct + '%', backgroundColor: z.color }]} />
+          </View>
+          <Text style={zoneStyles.zoneTime}>{formatMinutes(z.minutes)}</Text>
+        </View>
+      ))}
+
+      {eighty20 && (
+        <Text style={[zoneStyles.totalTime, { color: eighty20.easyPct >= 78 ? STATUS.success : eighty20.easyPct >= 68 ? STATUS.warning : STATUS.error }]}>
+          Easy: {eighty20.easyPct}% · Hard: {eighty20.hardPct}%
+        </Text>
+      )}
+      <Text style={zoneStyles.totalTime}>
+        {formatMinutes(totalMins)} total · {hasPaceStream ? 'second-by-second GPS data' : 'from stored pace zones'}
+      </Text>
+    </View>
+  );
+}
+
 function RunZoneBreakdown({ run, athleteAge, zoneSettings, primaryColor }) {
   // Need at least some HR data to show anything
   if (!run.heartRate && !run.zoneSeconds && !run.rawHRStream) return null;
@@ -146,7 +221,7 @@ const zoneStyles = StyleSheet.create({
 
 export default function RunDetailModal({
   run, visible, onClose, onDeleted, onUpdated,
-  primaryColor = '#213f96', athleteAge = 16, zoneSettings = null, showHRZones = true,
+  primaryColor = '#213f96', athleteAge = 16, zoneSettings = null, showHRZones = true, trainingPaces = null,
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [saving,    setSaving]    = useState(false);
@@ -381,7 +456,10 @@ export default function RunDetailModal({
               </View>
             </View>
 
-            {/* Zone breakdown — uses coach-configured boundaries via zoneSettings prop */}
+            {/* Pace zone breakdown — primary effort display */}
+            <RunPaceBreakdown run={run} trainingPaces={trainingPaces} />
+
+            {/* HR zone breakdown — secondary, shown if HR data exists */}
             {showHRZones && (
               <RunZoneBreakdown
                 run={run}

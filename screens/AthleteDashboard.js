@@ -41,6 +41,7 @@ import {
   formatMinutes,
   parseBirthdate,
 } from '../zoneConfig';
+import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
 import AthleteProfile from './AthleteProfile';
 import CalendarScreen from './CalendarScreen';
 import { TYPE_COLORS } from '../constants/training';
@@ -504,9 +505,35 @@ export default function AthleteDashboard({ userData }) {
   const analysis = breakdown ? calc8020(breakdown) : null;
   const totalZoneMins = breakdown ? breakdown.reduce((s, z) => s + z.minutes, 0) : 0;
 
+  // Pace zones — compute from runs that have rawPaceStream data
+  const trainingPaces = userData.trainingPaces || null;
+  let paceBreakdown = null;
+  let paceAnalysis = null;
+  if (trainingPaces) {
+    const combined = { e: 0, m: 0, t: 0, i: 0, r: 0 };
+    for (const r of recentRuns) {
+      if (r.rawPaceStream?.length > 0) {
+        const zones = calcPaceZoneBreakdown(r.rawPaceStream, trainingPaces);
+        Object.keys(zones).forEach(k => { combined[k] += zones[k]; });
+      } else if (r.paceZoneSeconds) {
+        Object.keys(r.paceZoneSeconds).forEach(k => { combined[k] += (r.paceZoneSeconds[k] || 0); });
+      }
+    }
+    const total = Object.values(combined).reduce((s, v) => s + v, 0);
+    if (total > 0) {
+      paceBreakdown = PACE_ZONES.map(z => ({
+        ...z,
+        seconds: combined[z.key],
+        minutes: Math.round(combined[z.key] / 60),
+        pct: Math.round((combined[z.key] / total) * 100),
+      })).filter(z => z.seconds > 0);
+      paceAnalysis = calcPace8020(combined);
+    }
+  }
+
   // Show HR zones if explicitly enabled, or auto-show when preference not yet set and HR data exists
   const coachDisabledHR = teamZoneSettings?.hrZonesDisabled === true;
-  const showHRZones = !coachDisabledHR && (hrZonePref === true || (hrZonePref !== false && breakdown !== null));
+  const showHRZones = !coachDisabledHR && !paceBreakdown && (hrZonePref === true || (hrZonePref !== false && breakdown !== null));
 
   const avatarColor = localAvatarColor;
   // No interpolation needed — just multiply by 100 for percentage display
@@ -594,7 +621,42 @@ export default function AthleteDashboard({ userData }) {
             </View>
           </View>
 
-          {/* HR zone dropdown inside hero card */}
+          {/* Pace zone dropdown (primary — shown when VDOT is set and pace data exists) */}
+          {paceBreakdown && selectedTimeframe.key === 'week' && (
+            <>
+              <TouchableOpacity style={styles.zoneToggle} onPress={() => setZoneExpanded(e => !e)} activeOpacity={0.7}>
+                <View style={styles.zoneToggleLeft}>
+                  <View style={styles.zoneStackedBarSmall}>
+                    {paceBreakdown.map(z => <View key={z.key} style={[styles.zoneStackedSegment, { flex: z.minutes || 1, backgroundColor: z.color }]} />)}
+                  </View>
+                  <Text style={styles.zoneToggleText}>Pace zones</Text>
+                  <View style={styles.streamBadge}><Text style={styles.streamBadgeText}>GPS</Text></View>
+                </View>
+                <Ionicons name={zoneExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={NEUTRAL.muted} />
+              </TouchableOpacity>
+              {zoneExpanded && (
+                <View style={styles.zoneDropdown}>
+                  {paceBreakdown.map(z => (
+                    <View key={z.key} style={styles.zoneRow}>
+                      <View style={[styles.zoneDot, { backgroundColor: z.color }]} />
+                      <Text style={styles.zoneName}>{z.short} {z.name}</Text>
+                      <View style={styles.zoneBarBg}><View style={[styles.zoneBarFill, { width: z.pct + '%', backgroundColor: z.color }]} /></View>
+                      <Text style={styles.zoneTime}>{formatMinutes(z.minutes)}</Text>
+                    </View>
+                  ))}
+                  {paceAnalysis && (
+                    <View style={[styles.analysis8020, { backgroundColor: paceAnalysis.status === 'great' ? '#e8f5e9' : paceAnalysis.status === 'good' ? '#fff8e1' : '#fce4ec' }]}>
+                      <Text style={[styles.analysis8020Text, { color: paceAnalysis.status === 'great' ? BRAND : paceAnalysis.status === 'good' ? '#f57f17' : '#c62828' }]}>
+                        Easy: {paceAnalysis.easyPct}% · Hard: {paceAnalysis.hardPct}% {paceAnalysis.status === 'great' ? '— Great balance!' : paceAnalysis.status === 'good' ? '— Good, aim for more easy' : '— Too hard, slow down easy days'}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              )}
+            </>
+          )}
+
+          {/* HR zone dropdown (fallback — shown when no pace data) */}
           {showHRZones && selectedTimeframe.key === 'week' && breakdown && (
             <>
               <TouchableOpacity style={styles.zoneToggle} onPress={() => setZoneExpanded(e => !e)} activeOpacity={0.7}>
@@ -602,7 +664,7 @@ export default function AthleteDashboard({ userData }) {
                   <View style={styles.zoneStackedBarSmall}>
                     {breakdown.map(z => <View key={z.zone} style={[styles.zoneStackedSegment, { flex: z.minutes, backgroundColor: ZONE_META[z.zone].color }]} />)}
                   </View>
-                  <Text style={styles.zoneToggleText}>Training zones</Text>
+                  <Text style={styles.zoneToggleText}>HR zones</Text>
                   {hasStreamData && <View style={styles.streamBadge}><Text style={styles.streamBadgeText}>Precise</Text></View>}
                 </View>
                 <Ionicons name={zoneExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={NEUTRAL.muted} />
@@ -683,7 +745,41 @@ export default function AthleteDashboard({ userData }) {
               <Text style={styles.periodMilesLabel}>miles — {selectedTimeframe.label?.toLowerCase() || 'selected period'}</Text>
             </View>
 
-            {/* HR zone dropdown inside period card */}
+            {/* Pace zone dropdown inside period card (primary) */}
+            {paceBreakdown && (
+              <>
+                <TouchableOpacity style={styles.zoneToggle} onPress={() => setZoneExpanded(e => !e)} activeOpacity={0.7}>
+                  <View style={styles.zoneToggleLeft}>
+                    <View style={styles.zoneStackedBarSmall}>
+                      {paceBreakdown.map(z => <View key={z.key} style={[styles.zoneStackedSegment, { flex: z.minutes || 1, backgroundColor: z.color }]} />)}
+                    </View>
+                    <Text style={styles.zoneToggleText}>Pace zones</Text>
+                  </View>
+                  <Ionicons name={zoneExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={NEUTRAL.muted} />
+                </TouchableOpacity>
+                {zoneExpanded && (
+                  <View style={styles.zoneDropdown}>
+                    {paceBreakdown.map(z => (
+                      <View key={z.key} style={styles.zoneRow}>
+                        <View style={[styles.zoneDot, { backgroundColor: z.color }]} />
+                        <Text style={styles.zoneName}>{z.short} {z.name}</Text>
+                        <View style={styles.zoneBarBg}><View style={[styles.zoneBarFill, { width: z.pct + '%', backgroundColor: z.color }]} /></View>
+                        <Text style={styles.zoneTime}>{formatMinutes(z.minutes)}</Text>
+                      </View>
+                    ))}
+                    {paceAnalysis && (
+                      <View style={[styles.analysis8020, { backgroundColor: paceAnalysis.status === 'great' ? '#e8f5e9' : paceAnalysis.status === 'good' ? '#fff8e1' : '#fce4ec' }]}>
+                        <Text style={[styles.analysis8020Text, { color: paceAnalysis.status === 'great' ? BRAND : paceAnalysis.status === 'good' ? '#f57f17' : '#c62828' }]}>
+                          Easy: {paceAnalysis.easyPct}% · Hard: {paceAnalysis.hardPct}%
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+              </>
+            )}
+
+            {/* HR zone dropdown inside period card (fallback) */}
             {showHRZones && breakdown && (
               <>
                 <TouchableOpacity style={styles.zoneToggle} onPress={() => setZoneExpanded(e => !e)} activeOpacity={0.7}>
@@ -691,8 +787,7 @@ export default function AthleteDashboard({ userData }) {
                     <View style={styles.zoneStackedBarSmall}>
                       {breakdown.map(z => <View key={z.zone} style={[styles.zoneStackedSegment, { flex: z.minutes, backgroundColor: ZONE_META[z.zone].color }]} />)}
                     </View>
-                    <Text style={styles.zoneToggleText}>Training zones</Text>
-                    {hasStreamData && <View style={styles.streamBadge}><Text style={styles.streamBadgeText}>Precise</Text></View>}
+                    <Text style={styles.zoneToggleText}>HR zones</Text>
                   </View>
                   <Ionicons name={zoneExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={NEUTRAL.muted} />
                 </TouchableOpacity>
@@ -706,12 +801,6 @@ export default function AthleteDashboard({ userData }) {
                         <Text style={styles.zoneTime}>{formatMinutes(z.minutes)}</Text>
                       </View>
                     ))}
-                    {analysis && (
-                      <View style={[styles.analysis8020, { backgroundColor: analysis.status === 'great' ? '#e8f5e9' : analysis.status === 'good' ? '#fff8e1' : '#fce4ec' }]}>
-                        <Text style={[styles.analysis8020Text, { color: analysis.status === 'great' ? BRAND : analysis.status === 'good' ? '#f57f17' : '#c62828' }]}>{analysis.message}</Text>
-                      </View>
-                    )}
-                    <Text style={styles.zoneTotalTime}>{formatMinutes(totalZoneMins)} total · {hasStreamData ? 'second-by-second HR data' : 'estimated from avg HR'}</Text>
                   </View>
                 )}
               </>
@@ -864,7 +953,7 @@ export default function AthleteDashboard({ userData }) {
         athleteMiles={selectedWorkout && myGroup ? (selectedWorkout.groupMiles?.[myGroup.id] || selectedWorkout.baseMiles || null) : (selectedWorkout?.baseMiles || null)}
         groupName={myGroup?.name}
       />
-      <RunDetailModal run={selectedRun} visible={runDetailVisible} primaryColor={primaryColor} athleteAge={athleteAge} zoneSettings={teamZoneSettings} showHRZones={showHRZones} onClose={() => { setRunDetailVisible(false); setSelectedRun(null); }} onDeleted={() => { setRunDetailVisible(false); setSelectedRun(null); loadDashboard(); }} onUpdated={() => { setSelectedRun(null); loadDashboard(); }} />
+      <RunDetailModal run={selectedRun} visible={runDetailVisible} primaryColor={primaryColor} athleteAge={athleteAge} zoneSettings={teamZoneSettings} showHRZones={showHRZones} trainingPaces={userData.trainingPaces || null} onClose={() => { setRunDetailVisible(false); setSelectedRun(null); }} onDeleted={() => { setRunDetailVisible(false); setSelectedRun(null); loadDashboard(); }} onUpdated={() => { setSelectedRun(null); loadDashboard(); }} />
 
       <Modal visible={logModalVisible} animationType="slide" presentationStyle="pageSheet">
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>

@@ -860,6 +860,7 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
         primaryColor={primaryColor}
         athleteAge={athleteAge}
         zoneSettings={{ boundaries }}
+        trainingPaces={athlete.trainingPaces || null}
       />
     </View>
   );
