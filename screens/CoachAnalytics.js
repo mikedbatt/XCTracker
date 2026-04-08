@@ -126,41 +126,71 @@ export default function CoachAnalytics({
       const injuryRate = allCheckins.length > 0 ? Math.round((allCheckins.filter(c => c.injury).length / allCheckins.length) * 100) : 0;
       const illnessRate = allCheckins.length > 0 ? Math.round((allCheckins.filter(c => c.illness).length / allCheckins.length) * 100) : 0;
 
-      // Active injuries grouped by body location — include athlete names
-      const activeInjuryMap = {};
+      // Active injuries & illnesses grouped by athlete
       const athleteNameMap = {};
-      athletes.forEach(a => { athleteNameMap[a.id] = `${a.firstName} ${a.lastName}`; });
-      allCheckins.forEach(c => {
-        if (!c.injury?.locations) return;
-        c.injury.locations.forEach(loc => {
-          if (!activeInjuryMap[loc]) activeInjuryMap[loc] = new Set();
-          activeInjuryMap[loc].add(c.userId);
-        });
-      });
-      const activeInjuries = Object.entries(activeInjuryMap)
-        .map(([loc, ids]) => ({
-          location: loc,
-          count: ids.size,
-          athleteNames: [...ids].map(id => athleteNameMap[id] || 'Unknown').sort(),
-        }))
-        .sort((a, b) => b.count - a.count);
+      const athleteColorMap = {};
+      athletes.forEach(a => { athleteNameMap[a.id] = a; athleteColorMap[a.id] = a.avatarColor; });
 
-      // Active illnesses grouped by symptom — include athlete names
-      const activeIllnessMap = {};
+      const athleteInjuryMap = {};
+      const athleteIllnessMap = {};
+      const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+
       allCheckins.forEach(c => {
-        if (!c.illness?.symptoms) return;
-        c.illness.symptoms.forEach(sym => {
-          if (!activeIllnessMap[sym]) activeIllnessMap[sym] = new Set();
-          activeIllnessMap[sym].add(c.userId);
-        });
+        const d = c.date?.toDate?.() || (c.date instanceof Date ? c.date : null);
+        if (c.injury?.locations?.length > 0) {
+          if (!athleteInjuryMap[c.userId]) athleteInjuryMap[c.userId] = { days: 0, locations: new Set(), lastDate: null, severity: 'mild' };
+          const entry = athleteInjuryMap[c.userId];
+          entry.days++;
+          c.injury.locations.forEach(loc => entry.locations.add(loc));
+          if (d && (!entry.lastDate || d > entry.lastDate)) entry.lastDate = d;
+          if (c.injury.severity === 'severe' || (c.injury.severity === 'moderate' && entry.severity !== 'severe')) entry.severity = c.injury.severity;
+        }
+        if (c.illness?.symptoms?.length > 0) {
+          if (!athleteIllnessMap[c.userId]) athleteIllnessMap[c.userId] = { days: 0, symptoms: new Set(), lastDate: null };
+          const entry = athleteIllnessMap[c.userId];
+          entry.days++;
+          c.illness.symptoms.forEach(sym => entry.symptoms.add(sym));
+          if (d && (!entry.lastDate || d > entry.lastDate)) entry.lastDate = d;
+        }
       });
-      const activeIllnesses = Object.entries(activeIllnessMap)
-        .map(([sym, ids]) => ({
-          symptom: sym,
-          count: ids.size,
-          athleteNames: [...ids].map(id => athleteNameMap[id] || 'Unknown').sort(),
-        }))
-        .sort((a, b) => b.count - a.count);
+
+      const formatLastReported = (d) => {
+        if (!d) return '';
+        if (d >= todayStart) return 'last reported today';
+        const daysAgo = Math.ceil((todayStart - d) / 86400000);
+        return daysAgo === 1 ? 'last reported yesterday' : `last reported ${daysAgo}d ago`;
+      };
+
+      const activeInjuries = Object.entries(athleteInjuryMap)
+        .map(([uid, data]) => {
+          const a = athleteNameMap[uid];
+          return {
+            id: uid,
+            name: a ? `${a.firstName} ${a.lastName}` : 'Unknown',
+            initials: a ? `${a.firstName?.[0] || ''}${a.lastName?.[0] || ''}` : '?',
+            avatarColor: a?.avatarColor,
+            locations: [...data.locations],
+            days: data.days,
+            severity: data.severity,
+            lastReported: formatLastReported(data.lastDate),
+          };
+        })
+        .sort((a, b) => b.days - a.days);
+
+      const activeIllnesses = Object.entries(athleteIllnessMap)
+        .map(([uid, data]) => {
+          const a = athleteNameMap[uid];
+          return {
+            id: uid,
+            name: a ? `${a.firstName} ${a.lastName}` : 'Unknown',
+            initials: a ? `${a.firstName?.[0] || ''}${a.lastName?.[0] || ''}` : '?',
+            avatarColor: a?.avatarColor,
+            symptoms: [...data.symptoms],
+            days: data.days,
+            lastReported: formatLastReported(data.lastDate),
+          };
+        })
+        .sort((a, b) => b.days - a.days);
 
       setWellnessData({ athleteAvgs, teamAvgSleep, teamAvgLegs, teamAvgMood, totalCheckins: allCheckins.length, injuryRate, illnessRate, activeInjuries, activeIllnesses });
     } catch (e) {
@@ -608,33 +638,56 @@ export default function CoachAnalytics({
         </TouchableOpacity>
         {expandedSection === 'wellness' && (
           <View style={styles.detail}>
-            {/* Active injuries & illness breakdown */}
+            {/* Active injuries grouped by athlete */}
             {wellnessData?.activeInjuries?.length > 0 && (
               <View style={styles.activeInjurySection}>
                 <Text style={styles.activeInjurySectionTitle}>🩹 Active injuries this week</Text>
-                {wellnessData.activeInjuries.map(inj => (
-                  <View key={inj.location} style={styles.activeInjuryChip}>
-                    <Text style={styles.activeInjuryLabel}>
-                      {inj.location.charAt(0).toUpperCase() + inj.location.slice(1)}
-                    </Text>
-                    <Text style={styles.activeInjuryNames}>
-                      {inj.athleteNames?.join(', ')}
-                    </Text>
-                  </View>
-                ))}
+                {wellnessData.activeInjuries.map(inj => {
+                  const sevColor = inj.severity === 'severe' ? STATUS.error : inj.severity === 'moderate' ? STATUS.warning : NEUTRAL.body;
+                  return (
+                    <View key={inj.id} style={styles.activeInjuryChip}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
+                        <View style={[styles.detailAvatar, { backgroundColor: inj.avatarColor || BRAND }]}>
+                          <Text style={styles.detailAvatarText}>{inj.initials}</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.activeInjuryLabel}>{inj.name}</Text>
+                          <Text style={styles.activeInjuryNames}>
+                            {inj.locations.map(l => l.charAt(0).toUpperCase() + l.slice(1)).join(', ')}
+                            {inj.severity !== 'mild' ? ` · ${inj.severity}` : ''}
+                          </Text>
+                        </View>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={[styles.activeInjuryDays, { color: sevColor }]}>{inj.days} of 7d</Text>
+                          <Text style={styles.activeInjuryWhen}>{inj.lastReported}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })}
               </View>
             )}
+            {/* Active illnesses grouped by athlete */}
             {wellnessData?.activeIllnesses?.length > 0 && (
               <View style={styles.activeInjurySection}>
                 <Text style={styles.activeInjurySectionTitle}>🤒 Active illness this week</Text>
                 {wellnessData.activeIllnesses.map(ill => (
-                  <View key={ill.symptom} style={[styles.activeInjuryChip, { borderLeftColor: STATUS.warning }]}>
-                    <Text style={styles.activeInjuryLabel}>
-                      {ill.symptom.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase())}
-                    </Text>
-                    <Text style={styles.activeInjuryNames}>
-                      {ill.athleteNames?.join(', ')}
-                    </Text>
+                  <View key={ill.id} style={[styles.activeInjuryChip, { borderLeftColor: STATUS.warning }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
+                      <View style={[styles.detailAvatar, { backgroundColor: ill.avatarColor || BRAND }]}>
+                        <Text style={styles.detailAvatarText}>{ill.initials}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.activeInjuryLabel}>{ill.name}</Text>
+                        <Text style={styles.activeInjuryNames}>
+                          {ill.symptoms.map(s => s.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase())).join(', ')}
+                        </Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={[styles.activeInjuryDays, { color: STATUS.warning }]}>{ill.days} of 7d</Text>
+                        <Text style={styles.activeInjuryWhen}>{ill.lastReported}</Text>
+                      </View>
+                    </View>
                   </View>
                 ))}
               </View>
@@ -871,6 +924,8 @@ const styles = StyleSheet.create({
   activeInjuryChip:         { backgroundColor: STATUS.errorBg, borderRadius: RADIUS.md, padding: SPACE.md, marginBottom: SPACE.sm, borderLeftWidth: 3, borderLeftColor: STATUS.error },
   activeInjuryLabel:        { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
   activeInjuryNames:        { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginTop: 2 },
+  activeInjuryDays:         { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold },
+  activeInjuryWhen:         { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: 1 },
   wellnessConcernHint: { fontSize: FONT_SIZE.xs, color: STATUS.warning, fontWeight: FONT_WEIGHT.semibold, marginTop: SPACE.md },
   wellnessScores:  { flexDirection: 'row', gap: SPACE.sm },
   wellnessScore:   { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
