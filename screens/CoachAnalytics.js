@@ -175,25 +175,18 @@ export default function CoachAnalytics({
     athletes, groups, athlete3WeekAvg, athleteWeeklyBreakdown
   );
 
-  // ── Metric 2: Pace Compliance ──
-  // Use pace easy% as primary, fall back to HR zone% when athlete has no pace data
-  const getEasyPct = (a) => {
-    const pace = athletePaceEasyPct[a.id];
-    if (pace !== undefined && pace !== null) return pace;
-    const hr = athleteZonePct[a.id];
-    return (hr !== undefined && hr !== null) ? hr : null;
-  };
+  // ── Metric 2: Pace Compliance (pace-only, no HR fallback) ──
   const paceOnTarget = [];
   const paceCaution = [];
   const paceTooHard = [];
   const paceNoPaces = [];
   athletes.forEach(a => {
-    const pct = getEasyPct(a);
-    if (pct === null) {
+    const pct = athletePaceEasyPct[a.id];
+    if (pct === undefined || pct === null) {
       if (!a.trainingPaces) paceNoPaces.push(a);
       return;
     }
-    const entry = { ...a, easyPct: pct, hasPaceData: athletePaceEasyPct[a.id] != null };
+    const entry = { ...a, easyPct: pct };
     if (pct >= 78) paceOnTarget.push(entry);
     else if (pct >= 68) paceCaution.push(entry);
     else paceTooHard.push(entry);
