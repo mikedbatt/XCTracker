@@ -235,9 +235,10 @@ export default function CoachAnalytics({
     const priorAvg = (wb.w2 + wb.w3) / 2; // average of 2 weeks before
     const pctChange = priorAvg > 0 ? Math.round(((lastWeek - priorAvg) / priorAvg) * 100) : 0;
     const alert = overtTrainingAlerts[a.id];
-    return { ...a, lastWeek, priorAvg: Math.round(priorAvg * 10) / 10, pctChange, alert: alert?.alert, signals: alert?.signals || [] };
-  }).filter(a => a.pctChange > 15 || a.alert)
-    .sort((a, b) => (b.signals.length + (b.pctChange > 15 ? 1 : 0)) - (a.signals.length + (a.pctChange > 15 ? 1 : 0)));
+    return { ...a, lastWeek, priorAvg: Math.round(priorAvg * 10) / 10, pctChange, alert: alert?.alert, signals: alert?.signals || [], hasInjury: !!alert?.todayInjury, hasIllness: !!alert?.todayIllness };
+  }).filter(a => a.pctChange > 15 || a.alert || a.hasInjury || a.hasIllness)
+    .sort((a, b) => (b.signals.length + (b.pctChange > 15 ? 1 : 0) + (b.hasInjury ? 1 : 0) + (b.hasIllness ? 1 : 0))
+      - (a.signals.length + (a.pctChange > 15 ? 1 : 0) + (a.hasInjury ? 1 : 0) + (a.hasIllness ? 1 : 0)));
 
   // ── Metric 4: Pack Compression (boys + girls, top 5 + top 10) ──
   const [packGender, setPackGender] = useState('boys');
@@ -522,6 +523,12 @@ export default function CoachAnalytics({
                   {a.signals.map((sig, i) => (
                     <Text key={i} style={styles.signalText}>• {sig}</Text>
                   ))}
+                  {a.hasInjury && !a.signals.some(s => s.includes('injury')) && (
+                    <Text style={styles.signalText}>• Reported injury this week</Text>
+                  )}
+                  {a.hasIllness && !a.signals.some(s => s.includes('illness')) && (
+                    <Text style={styles.signalText}>• Reported illness this week</Text>
+                  )}
                 </View>
               </View>
             ))}
