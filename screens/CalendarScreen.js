@@ -20,6 +20,7 @@ import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SPACE } fro
 import { CATEGORIES, TYPE_COLORS } from '../constants/training';
 import DatePickerField from './DatePickerField';
 import RunDetailModal from './RunDetailModal';
+import WorkoutDetailModal from './WorkoutDetailModal';
 
 // Re-export so existing imports from CalendarScreen keep working
 export { CATEGORIES, TYPE_COLORS };
@@ -438,82 +439,15 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
       />
 
       {/* Detail Modal */}
-      <Modal visible={detailVisible} animationType="slide" presentationStyle="pageSheet">
-        {detailItem && (
-          <View style={styles.detailContainer}>
-            <View style={[styles.detailHeader, { backgroundColor: getColor(detailItem) }]}>
-              <TouchableOpacity onPress={() => setDetailVisible(false)}>
-                <Text style={styles.detailClose}>✕ Close</Text>
-              </TouchableOpacity>
-              <View style={styles.detailBadgeRow}>
-                <View style={[styles.detailCatBadge]}>
-                  <Text style={styles.detailCatBadgeText}>{detailItem.category?.toUpperCase()} · {detailItem.type?.toUpperCase()}</Text>
-                </View>
-              </View>
-              <Text style={styles.detailTitle}>{detailItem.title}</Text>
-              <Text style={styles.detailDate}>
-                {formatDate(detailItem)}
-                {detailItem.isMultiDay && detailItem.endDate && ` – ${detailItem.endDate?.toDate?.()?.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}`}
-              </Text>
-            </View>
-            <ScrollView style={styles.detailScroll}>
-              {detailItem.location && (
-                <View style={styles.detailSection}>
-                  <Text style={styles.detailLabel}>LOCATION</Text>
-                  <Text style={styles.detailValue}>📍 {detailItem.location}</Text>
-                </View>
-              )}
-              {detailItem.description && (
-                <View style={styles.detailSection}>
-                  <Text style={styles.detailLabel}>DETAILS</Text>
-                  <Text style={styles.detailValue}>{detailItem.description}</Text>
-                </View>
-              )}
-              {(detailItem.groupMiles || detailItem.baseMiles) && groups.length > 0 && (
-                <View style={styles.detailSection}>
-                  <Text style={styles.detailLabel}>MILEAGE BY GROUP</Text>
-                  {groups.map(g => {
-                    const mi = detailItem.groupMiles?.[g.id] ?? detailItem.baseMiles ?? '—';
-                    return (
-                      <View key={g.id} style={styles.detailMileageRow}>
-                        <Text style={styles.detailValue}>{g.name}</Text>
-                        <Text style={styles.detailMileageVal}>{mi} mi</Text>
-                      </View>
-                    );
-                  })}
-                </View>
-              )}
-              {detailItem.notes && (
-                <View style={styles.detailSection}>
-                  <Text style={styles.detailLabel}>NOTES</Text>
-                  <Text style={styles.detailValue}>{detailItem.notes}</Text>
-                </View>
-              )}
-              {detailItem.postedByName && (
-                <View style={styles.detailSection}>
-                  <Text style={styles.detailLabel}>POSTED BY</Text>
-                  <Text style={styles.detailValue}>Coach {detailItem.postedByName}</Text>
-                </View>
-              )}
-              {!detailItem.location && !detailItem.description && !detailItem.notes && (
-                <View style={[styles.emptyCard, { margin: 16 }]}>
-                  <Text style={styles.emptyText}>No additional details.</Text>
-                </View>
-              )}
-              {isCoach && (
-                <View style={styles.detailActions}>
-                  <TouchableOpacity style={[styles.editActionBtn, { borderColor: getColor(detailItem) }]} onPress={() => openEdit(detailItem)}>
-                    <Text style={[styles.editActionBtnText, { color: getColor(detailItem) }]}>Edit</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.deleteActionBtn} onPress={() => handleDelete(detailItem)}>
-                    <Text style={styles.deleteActionBtnText}>Delete</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </ScrollView>
-          </View>
-        )}
-      </Modal>
+      <WorkoutDetailModal
+        item={detailItem}
+        visible={detailVisible}
+        onClose={() => setDetailVisible(false)}
+        primaryColor={primaryColor}
+        groups={groups}
+        onEdit={isCoach ? (item) => { setDetailVisible(false); openEdit(item); } : null}
+        onDelete={isCoach ? (item) => { handleDelete(item); } : null}
+      />
 
       {/* Add / Edit Modal */}
       <Modal visible={addModalVisible} animationType="slide" presentationStyle="pageSheet">

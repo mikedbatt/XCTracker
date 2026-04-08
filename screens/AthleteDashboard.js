@@ -957,6 +957,7 @@ export default function AthleteDashboard({ userData: userDataProp }) {
         primaryColor={primaryColor}
         athleteMiles={selectedWorkout && myGroup ? (selectedWorkout.groupMiles?.[myGroup.id] || selectedWorkout.baseMiles || null) : (selectedWorkout?.baseMiles || null)}
         groupName={myGroup?.name}
+        trainingPaces={userData.trainingPaces || null}
       />
       <RunDetailModal run={selectedRun} visible={runDetailVisible} primaryColor={primaryColor} athleteAge={athleteAge} zoneSettings={teamZoneSettings} showHRZones={showHRZones} trainingPaces={userData.trainingPaces || null} onClose={() => { setRunDetailVisible(false); setSelectedRun(null); }} onDeleted={() => { setRunDetailVisible(false); setSelectedRun(null); loadDashboard(); }} onUpdated={() => { setSelectedRun(null); loadDashboard(); }} />
 

@@ -8,10 +8,11 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { BRAND, BRAND_DARK } from '../constants/design';
-import { TYPE_COLORS } from '../constants/training';
+import { BRAND, BRAND_ACCENT, BRAND_DARK, BRAND_LIGHT, NEUTRAL } from '../constants/design';
+import { TYPE_COLORS, WORKOUT_PACE_ZONE } from '../constants/training';
+import { formatPace } from '../utils/vdotUtils';
 
-export default function WorkoutDetailModal({ item, visible, onClose, primaryColor = '#213f96', athleteMiles = null, groupName = null }) {
+export default function WorkoutDetailModal({ item, visible, onClose, primaryColor = '#213f96', athleteMiles = null, groupName = null, trainingPaces = null, onEdit = null, onDelete = null, groups = null }) {
   if (!item) return null;
 
   const color = TYPE_COLORS[item.type] || primaryColor;
@@ -49,6 +50,30 @@ export default function WorkoutDetailModal({ item, visible, onClose, primaryColo
               <Text style={[styles.mileageValue, { color: BRAND }]}>{athleteMiles} miles</Text>
             </View>
           )}
+          {trainingPaces && WORKOUT_PACE_ZONE[item.type] && (() => {
+            const zone = WORKOUT_PACE_ZONE[item.type];
+            const tp = trainingPaces;
+            let paceLabel, paceValue;
+            if (zone === 'easy') {
+              paceLabel = 'EASY PACE RANGE';
+              paceValue = `${formatPace(tp.eLow)} – ${formatPace(tp.eHigh)} /mi`;
+            } else if (zone === 'threshold') {
+              paceLabel = 'THRESHOLD PACE';
+              paceValue = `${formatPace(tp.t)} /mi`;
+            } else if (zone === 'interval') {
+              paceLabel = 'INTERVAL PACE';
+              paceValue = `${formatPace(tp.i)} /mi`;
+            } else if (zone === 'repetition') {
+              paceLabel = 'REPETITION PACE';
+              paceValue = `${formatPace(tp.r)} /mi`;
+            }
+            return paceValue ? (
+              <View style={[styles.section, { backgroundColor: BRAND_LIGHT }]}>
+                <Text style={[styles.sectionLabel, { color: BRAND_ACCENT }]}>{paceLabel}</Text>
+                <Text style={[styles.mileageValue, { color: BRAND, fontSize: 20 }]}>{paceValue}</Text>
+              </View>
+            ) : null;
+          })()}
           {item.location && (
             <View style={styles.section}>
               <Text style={styles.sectionLabel}>LOCATION</Text>
@@ -75,9 +100,37 @@ export default function WorkoutDetailModal({ item, visible, onClose, primaryColo
               <Text style={styles.sectionValue}>Coach {item.postedByName}</Text>
             </View>
           )}
+          {groups && groups.length > 0 && (item.groupMiles || item.baseMiles) && (
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>MILEAGE BY GROUP</Text>
+              {groups.map(g => {
+                const mi = item.groupMiles?.[g.id] ?? item.baseMiles ?? '—';
+                return (
+                  <View key={g.id} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
+                    <Text style={styles.sectionValue}>{g.name}</Text>
+                    <Text style={[styles.sectionValue, { fontWeight: 'bold' }]}>{mi} mi</Text>
+                  </View>
+                );
+              })}
+            </View>
+          )}
           {!item.location && !item.description && !item.notes && (
             <View style={styles.emptyCard}>
               <Text style={styles.emptyText}>No additional details for this item.</Text>
+            </View>
+          )}
+          {(onEdit || onDelete) && (
+            <View style={styles.actionRow}>
+              {onEdit && (
+                <TouchableOpacity style={styles.editBtn} onPress={() => { onClose(); onEdit(item); }}>
+                  <Text style={[styles.editBtnText, { color: color }]}>Edit</Text>
+                </TouchableOpacity>
+              )}
+              {onDelete && (
+                <TouchableOpacity style={styles.deleteBtn} onPress={() => onDelete(item)}>
+                  <Text style={styles.deleteBtnText}>Delete</Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
         </ScrollView>
@@ -103,4 +156,9 @@ const styles = StyleSheet.create({
   mileageValue: { fontSize: 24, fontWeight: 'bold' },
   emptyCard: { backgroundColor: '#fff', borderRadius: 12, padding: 20, margin: 4, alignItems: 'center' },
   emptyText: { color: '#9CA3AF', fontSize: 14 },
+  actionRow: { flexDirection: 'row', gap: 12, marginTop: 8, marginBottom: 24 },
+  editBtn: { flex: 1, borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+  editBtnText: { fontSize: 15, fontWeight: '600' },
+  deleteBtn: { flex: 1, borderWidth: 1.5, borderColor: '#fecaca', borderRadius: 10, paddingVertical: 12, alignItems: 'center', backgroundColor: '#fef2f2' },
+  deleteBtnText: { fontSize: 15, fontWeight: '600', color: '#dc2626' },
 });

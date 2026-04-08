@@ -26,12 +26,12 @@ import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPA
 // ── Built-in workout library organized by phase ───────────────────────────────
 export const BUILTIN_WORKOUTS = {
   'Summer Base': [
-    { name: 'Easy long run', type: 'Long Run', duration: '60-75 min', description: 'Conversational pace the entire run. Zone 1-2 only. No watch-checking — run by feel.', phase: 'Summer Base' },
+    { name: 'Easy long run', type: 'Long Run', duration: '60-75 min', description: 'Conversational pace the entire run. Easy pace only. No watch-checking — run by feel.', phase: 'Summer Base' },
     { name: 'Team group run', type: 'Easy', duration: '40-50 min', description: 'All athletes run together at the slowest athlete\'s pace. Culture run — conversation required.', phase: 'Summer Base' },
     { name: 'Strides workout', type: 'Easy', duration: '35 min + strides', description: '30 min easy, then 6x20-second strides at 5K effort with 90 sec walk recovery. Keeps turnover sharp.', phase: 'Summer Base' },
   ],
   'Pre-Season Base': [
-    { name: 'Aerobic base run', type: 'Easy', duration: '45-55 min', description: 'Zone 2 the entire run. HR should stay under 75% max. Talk test — you should be able to speak in sentences.', phase: 'Pre-Season Base' },
+    { name: 'Aerobic base run', type: 'Easy', duration: '45-55 min', description: 'Easy pace the entire run. Conversational effort — you should be able to speak in full sentences. Run by feel, not the watch.', phase: 'Pre-Season Base' },
     { name: 'Hill repeats (easy)', type: 'Hills', duration: '50 min', description: '20 min warmup, 8x60-sec hill at controlled effort, jog back down recovery, 15 min cooldown. Strength without speed.', phase: 'Pre-Season Base' },
     { name: 'Long run', type: 'Long Run', duration: '70-85 min', description: 'Season\'s first long run. Easy effort throughout. Build to this distance over 2-3 weeks.', phase: 'Pre-Season Base' },
     { name: 'Time trial 2 mile', type: 'Race Effort', duration: '35 min total', description: '15 min warmup, 2-mile time trial at honest effort, 10 min cooldown. Baseline fitness assessment.', phase: 'Pre-Season Base' },
