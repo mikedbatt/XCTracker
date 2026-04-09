@@ -166,7 +166,7 @@ export default function AthleteDashboard({ userData: userDataProp }) {
   const [leaderPaceExpanded,   setLeaderPaceExpanded]   = useState(false);
   const [seasonReviewVisible,  setSeasonReviewVisible]  = useState(false);
   const [seasonReviewSeason,   setSeasonReviewSeason]   = useState(null);
-  const [reviewDismissed,      setReviewDismissed]      = useState({});
+  const [reviewDismissed,      setReviewDismissed]      = useState(userData.reviewedSeasons || {});
   const [todayCheckinDone,     setTodayCheckinDone]     = useState(true); // default true to avoid flash
   const [wellnessCardDismissed, setWellnessCardDismissed] = useState(false);
   const [zoneExpanded, setZoneExpanded] = useState(false);
@@ -704,7 +704,11 @@ export default function AthleteDashboard({ userData: userDataProp }) {
                     <Text style={styles.stravaCardDesc}>Your {sportDef[unreviewedSeason.sport] || 'season'} season is in the books. See your recap.</Text>
                   </View>
                 </View>
-                <TouchableOpacity onPress={() => setReviewDismissed(prev => ({ ...prev, [`${unreviewedSeason.sport}_${unreviewedSeason.championshipDate}`]: true }))} style={styles.stravaCloseBtn}>
+                <TouchableOpacity onPress={async () => {
+                  const key = `${unreviewedSeason.sport}_${unreviewedSeason.championshipDate}`;
+                  setReviewDismissed(prev => ({ ...prev, [key]: true }));
+                  try { await updateDoc(doc(db, 'users', auth.currentUser.uid), { [`reviewedSeasons.${key}`]: true }); } catch (e) { console.warn('Save review dismiss:', e); }
+                }} style={styles.stravaCloseBtn}>
                   <Ionicons name="close" size={18} color={NEUTRAL.muted} />
                 </TouchableOpacity>
               </View>

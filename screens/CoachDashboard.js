@@ -315,7 +315,7 @@ export default function CoachDashboard({ userData }) {
   const [todayWorkoutDetail,  setTodayWorkoutDetail]  = useState(null);
   const [seasonReviewVisible, setSeasonReviewVisible] = useState(false);
   const [seasonReviewSeason,  setSeasonReviewSeason]  = useState(null);
-  const [reviewDismissed,     setReviewDismissed]     = useState({});
+  const [reviewDismissed,     setReviewDismissed]     = useState(userData.reviewedSeasons || {});
   const [paceComplianceExpanded, setPaceComplianceExpanded] = useState(false);
   const [paceComplianceData, setPaceComplianceData] = useState({ runningEasy: [], tooHard: [], noPaces: 0, noPacesAthletes: [] });
 
@@ -964,7 +964,12 @@ export default function CoachDashboard({ userData }) {
                 <Text style={[styles.complianceTitle, { color: STATUS.success }]}>
                   {unreviewedSeason.name || 'Season'} Complete — View Season in Review
                 </Text>
-                <TouchableOpacity onPress={(e) => { e.stopPropagation?.(); setReviewDismissed(prev => ({ ...prev, [`${unreviewedSeason.sport}_${unreviewedSeason.championshipDate}`]: true })); }}>
+                <TouchableOpacity onPress={async (e) => {
+                  e.stopPropagation?.();
+                  const key = `${unreviewedSeason.sport}_${unreviewedSeason.championshipDate}`;
+                  setReviewDismissed(prev => ({ ...prev, [key]: true }));
+                  try { await updateDoc(doc(db, 'users', auth.currentUser.uid), { [`reviewedSeasons.${key}`]: true }); } catch (e2) { console.warn('Save review dismiss:', e2); }
+                }}>
                   <Ionicons name="close" size={18} color={NEUTRAL.muted} />
                 </TouchableOpacity>
               </View>
@@ -1337,6 +1342,7 @@ export default function CoachDashboard({ userData }) {
             groups={groups}
             school={school}
             schoolId={userData.schoolId}
+            userData={userData}
             onClose={() => setAnalyticsVisible(false)}
           />
         </View>

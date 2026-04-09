@@ -17,12 +17,15 @@ import {
 } from '../constants/design';
 import { calcPackAnalysis, formatTime, formatPace } from '../utils/raceUtils';
 import { getAthleteWeeklyTarget, getWeekStatus, computeVolumeCompliance } from '../utils/complianceUtils';
+import { getCompletedSeasons } from './SeasonPlanner';
+import SeasonReview from './SeasonReview';
 
 export default function CoachAnalytics({
   athletes, athleteWeeklyMiles, athlete3WeekAvg, athleteWeeklyBreakdown = {},
-  athleteZonePct, athletePaceEasyPct = {}, overtTrainingAlerts, athleteMiles, groups, school, schoolId, onClose,
+  athleteZonePct, athletePaceEasyPct = {}, overtTrainingAlerts, athleteMiles, groups, school, schoolId, userData, onClose,
 }) {
   const [analyticsTab, setAnalyticsTab] = useState('training');
+  const [seasonReviewSeason, setSeasonReviewSeason] = useState(null);
   const [expandedSection, setExpandedSection] = useState(null);
   const [wellnessData, setWellnessData] = useState(null);
   const [loadingWellness, setLoadingWellness] = useState(true);
@@ -779,6 +782,31 @@ export default function CoachAnalytics({
           </View>
         )}
 
+        {/* ── Season in Review (permanent access) ── */}
+        {(() => {
+          const completed = getCompletedSeasons(school);
+          if (completed.length === 0) return null;
+          const SPORT_LABELS = { cross_country: 'Cross Country', indoor_track: 'Indoor Track', outdoor_track: 'Outdoor Track' };
+          const SPORT_ICONS = { cross_country: '🏔️', indoor_track: '🏟️', outdoor_track: '🏃' };
+          return (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Season in Review</Text>
+              {completed.map((s, i) => (
+                <TouchableOpacity key={i} style={styles.seasonReviewCard} onPress={() => setSeasonReviewSeason(s)}>
+                  <Text style={styles.seasonReviewIcon}>{SPORT_ICONS[s.sport] || '🏃'}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.seasonReviewName}>{s.name || SPORT_LABELS[s.sport] || 'Season'}</Text>
+                    <Text style={styles.seasonReviewDate}>
+                      {new Date(s.seasonStart).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} – {new Date(s.championshipDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={NEUTRAL.muted} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          );
+        })()}
+
       </ScrollView>
       ) : (
       /* ── Race Analytics Tab ── */
@@ -887,6 +915,11 @@ export default function CoachAnalytics({
         })()}
       </ScrollView>
       )}
+      {seasonReviewSeason && (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+          <SeasonReview season={seasonReviewSeason} school={school} userData={userData} athletes={athletes} onClose={() => setSeasonReviewSeason(null)} />
+        </View>
+      )}
     </View>
   );
 }
@@ -977,4 +1010,8 @@ const styles = StyleSheet.create({
   gaugeBg:         { flex: 1, height: 8, backgroundColor: NEUTRAL.bg, borderRadius: 4, overflow: 'hidden' },
   gaugeFill:       { height: '100%', borderRadius: 4 },
   gaugeValue:      { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, minWidth: 28, textAlign: 'right' },
+  seasonReviewCard: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, marginBottom: SPACE.sm, ...SHADOW.sm },
+  seasonReviewIcon: { fontSize: 24 },
+  seasonReviewName: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  seasonReviewDate: { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 2 },
 });

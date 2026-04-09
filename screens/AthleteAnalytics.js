@@ -16,7 +16,8 @@ import {
   FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
   EFFORT_COLORS,
 } from '../constants/design';
-import { getActiveSeason, getPhaseForSeason, generateVolumeCurve } from './SeasonPlanner';
+import { getActiveSeason, getPhaseForSeason, getCompletedSeasons, generateVolumeCurve } from './SeasonPlanner';
+import SeasonReview from './SeasonReview';
 import { formatTime, calcPace, formatPace } from '../utils/raceUtils';
 import {
   calcMaxHR, calcZoneBreakdownFromStream, calcZoneBreakdownFromRuns,
@@ -55,6 +56,7 @@ function groupRunsByWeek(runs) {
 export default function AthleteAnalytics({ userData, school, myGroup, athleteAge, teamZoneSettings, onClose }) {
   const [loading, setLoading] = useState(true);
   const [expandedSection, setExpandedSection] = useState(null);
+  const [seasonReviewSeason, setSeasonReviewSeason] = useState(null);
 
   // Data stores
   const [allRuns, setAllRuns] = useState([]);
@@ -736,7 +738,44 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
           </View>
         )}
 
+        {/* ── Season in Review (permanent access) ── */}
+        {(() => {
+          const completed = getCompletedSeasons(school);
+          if (completed.length === 0) return null;
+          const SPORT_LABELS = { cross_country: 'Cross Country', indoor_track: 'Indoor Track', outdoor_track: 'Outdoor Track' };
+          const SPORT_ICONS = { cross_country: '🏔️', indoor_track: '🏟️', outdoor_track: '🏃' };
+          return (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionNum}>5</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sectionTitle}>Season in Review</Text>
+                  <Text style={styles.sectionSub}>Tap a season to see your recap</Text>
+                </View>
+              </View>
+              {completed.map((s, i) => (
+                <TouchableOpacity key={i} style={styles.seasonReviewCard} onPress={() => setSeasonReviewSeason(s)}>
+                  <Text style={styles.seasonReviewIcon}>{SPORT_ICONS[s.sport] || '🏃'}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.seasonReviewName}>{s.name || SPORT_LABELS[s.sport] || 'Season'}</Text>
+                    <Text style={styles.seasonReviewDate}>
+                      {new Date(s.seasonStart).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} – {new Date(s.championshipDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={NEUTRAL.muted} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          );
+        })()}
+
       </ScrollView>
+
+      {seasonReviewSeason && (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+          <SeasonReview season={seasonReviewSeason} school={school} userData={userData} onClose={() => setSeasonReviewSeason(null)} />
+        </View>
+      )}
     </View>
   );
 }
@@ -861,4 +900,8 @@ const styles = StyleSheet.create({
   },
   injuryChipText: { fontSize: FONT_SIZE.sm, color: STATUS.warning, fontWeight: FONT_WEIGHT.semibold },
   allClear:       { fontSize: FONT_SIZE.sm, color: STATUS.success, fontWeight: FONT_WEIGHT.semibold, textAlign: 'center', padding: SPACE.md },
+  seasonReviewCard: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, marginBottom: SPACE.sm, ...SHADOW.sm },
+  seasonReviewIcon: { fontSize: 24 },
+  seasonReviewName: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  seasonReviewDate: { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 2 },
 });
