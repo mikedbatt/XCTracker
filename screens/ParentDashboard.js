@@ -19,19 +19,20 @@ import {
 import { auth, db } from '../firebaseConfig';
 import AthleteDetailScreen from './AthleteDetailScreen';
 import CalendarScreen from './CalendarScreen';
+import ChannelList from './ChannelList';
 import ParentLinkScreen from './ParentLinkScreen';
 
 export default function ParentDashboard({ userData }) {
   const [athletes, setAthletes] = useState([]);
   const [selectedAthlete, setSelectedAthlete] = useState(null);
-  const [addAthleteVisible, setAddAthleteVisible] = useState(false);
   const [school, setSchool] = useState(null);
   const [teamZoneSettings, setTeamZoneSettings] = useState(null);
   const [groups, setGroups] = useState([]);
   const [athleteRuns, setAthleteRuns] = useState([]);
   const [upcomingMeets, setUpcomingMeets] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeView, setActiveView] = useState('training');
+  const [activeTab, setActiveTab] = useState('home');
+  const [unreadFeedCount, setUnreadFeedCount] = useState(0);
 
   useEffect(() => { loadDashboard(); }, []);
 
@@ -75,7 +76,6 @@ export default function ParentDashboard({ userData }) {
         if (zoneDoc?.exists()) setTeamZoneSettings(zoneDoc.data());
         setGroups(groupsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
-        // Upcoming meets
         const now = new Date();
         const allMeets = meetsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         const upcoming = allMeets
@@ -88,7 +88,6 @@ export default function ParentDashboard({ userData }) {
         setUpcomingMeets(upcoming);
       }
 
-      // Load athlete's runs for calendar overlay
       const runsSnap = await getDocs(query(
         collection(db, 'runs'),
         where('userId', '==', athlete.id),
@@ -103,7 +102,7 @@ export default function ParentDashboard({ userData }) {
   const handleSignOut = () => {
     Alert.alert('Sign out', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', onPress: async () => {
+      { text: 'Sign out', style: 'destructive', onPress: async () => {
         await SecureStore.deleteItemAsync('xctracker_email');
         await SecureStore.deleteItemAsync('xctracker_password');
         signOut(auth);
@@ -113,7 +112,7 @@ export default function ParentDashboard({ userData }) {
 
   const handleSwitchAthlete = (athlete) => {
     setSelectedAthlete(athlete);
-    setActiveView('training');
+    setActiveTab('home');
     loadAthleteData(athlete);
   };
 
@@ -131,8 +130,6 @@ export default function ParentDashboard({ userData }) {
 
   if (loading) return <View style={styles.loading}><ActivityIndicator size="large" color={BRAND} /></View>;
 
-  const primaryColor = school?.primaryColor || BRAND;
-
   return (
     <View style={styles.container}>
 
@@ -143,9 +140,6 @@ export default function ParentDashboard({ userData }) {
             <Text style={styles.greeting}>Hi, {userData.firstName}!</Text>
             <Text style={styles.schoolName}>{school?.name || 'XCTracker'}</Text>
           </View>
-          <TouchableOpacity onPress={handleSignOut} style={styles.signOutBtn}>
-            <Text style={styles.signOutText}>Sign out</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Athlete selector */}
@@ -162,29 +156,7 @@ export default function ParentDashboard({ userData }) {
                 </Text>
               </TouchableOpacity>
             ))}
-            <TouchableOpacity
-              style={[styles.athleteChip, { borderStyle: 'dashed' }]}
-              onPress={() => setAddAthleteVisible(true)}
-            >
-              <Text style={styles.athleteChipText}>+ Add</Text>
-            </TouchableOpacity>
           </ScrollView>
-        )}
-
-        {/* View toggle */}
-        {selectedAthlete && (
-          <View style={styles.viewToggle}>
-            {[{ key: 'training', icon: 'bar-chart-outline', label: 'Training' }, { key: 'calendar', icon: 'calendar-outline', label: 'Calendar' }].map(v => (
-              <TouchableOpacity
-                key={v.key}
-                style={[styles.toggleBtn, activeView === v.key && { backgroundColor: BRAND, borderColor: BRAND }]}
-                onPress={() => setActiveView(v.key)}
-              >
-                <Ionicons name={v.icon} size={14} color={activeView === v.key ? '#fff' : NEUTRAL.body} />
-                <Text style={[styles.toggleBtnText, activeView === v.key && { color: '#fff' }]}>{v.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
         )}
       </View>
 
@@ -195,77 +167,145 @@ export default function ParentDashboard({ userData }) {
           <Text style={styles.noAthletesText}>
             Ask your athlete to sign up for XCTracker first, then you can link to their account.
           </Text>
-          <TouchableOpacity style={styles.linkBtn} onPress={() => setAddAthleteVisible(true)}>
+          <TouchableOpacity style={styles.linkBtn} onPress={() => setActiveTab('profile')}>
             <Text style={styles.linkBtnText}>Link an Athlete</Text>
           </TouchableOpacity>
         </View>
-      ) : activeView === 'training' ? (
-        <View style={{ flex: 1 }}>
-          {/* Upcoming meets compact card */}
-          {upcomingMeets.length > 0 && (
-            <TouchableOpacity style={styles.meetsCard} onPress={() => setActiveView('calendar')}>
-              <Ionicons name="flag" size={18} color={STATUS.error} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.meetsCardTitle}>
-                  Next: {upcomingMeets[0].name}
-                </Text>
-                <Text style={styles.meetsCardSub}>
-                  {formatMeetDate(upcomingMeets[0].date)}
-                  {upcomingMeets[0].location ? ` · ${upcomingMeets[0].location}` : ''}
-                  {' · '}{daysUntil(upcomingMeets[0].date)}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={NEUTRAL.muted} />
-            </TouchableOpacity>
-          )}
-
-          {/* Athlete detail (parentMode) */}
-          <AthleteDetailScreen
-            key={selectedAthlete.id}
-            athlete={selectedAthlete}
-            school={school}
-            teamZoneSettings={teamZoneSettings}
-            groups={groups}
-            parentMode
-          />
-        </View>
       ) : (
-        <View style={{ flex: 1 }}>
-          {/* Upcoming meets expanded */}
-          {upcomingMeets.length > 0 && (
-            <View style={styles.meetsSection}>
-              <Text style={styles.meetsSectionTitle}>Upcoming Meets</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {upcomingMeets.map(meet => (
-                  <View key={meet.id} style={styles.meetCard}>
-                    <Text style={styles.meetCardDate}>{formatMeetDate(meet.date)}</Text>
-                    <Text style={styles.meetCardName}>{meet.name}</Text>
-                    {meet.location && <Text style={styles.meetCardLocation}>{meet.location}</Text>}
-                    <Text style={styles.meetCardDays}>{daysUntil(meet.date)}</Text>
+        <>
+          {/* Home tab */}
+          {activeTab === 'home' && selectedAthlete && (
+            <View style={{ flex: 1 }}>
+              {upcomingMeets.length > 0 && (
+                <TouchableOpacity style={styles.meetsCard} onPress={() => setActiveTab('calendar')}>
+                  <Ionicons name="flag" size={18} color={STATUS.error} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.meetsCardTitle}>Next: {upcomingMeets[0].name}</Text>
+                    <Text style={styles.meetsCardSub}>
+                      {formatMeetDate(upcomingMeets[0].date)}
+                      {upcomingMeets[0].location ? ` · ${upcomingMeets[0].location}` : ''}
+                      {' · '}{daysUntil(upcomingMeets[0].date)}
+                    </Text>
                   </View>
-                ))}
-              </ScrollView>
+                  <Ionicons name="chevron-forward" size={16} color={NEUTRAL.muted} />
+                </TouchableOpacity>
+              )}
+              <AthleteDetailScreen
+                key={selectedAthlete.id}
+                athlete={selectedAthlete}
+                school={school}
+                teamZoneSettings={teamZoneSettings}
+                groups={groups}
+                parentMode
+              />
             </View>
           )}
 
-          {/* Calendar */}
-          <CalendarScreen
-            userData={{ ...userData, schoolId: selectedAthlete.schoolId }}
-            school={school}
-            groups={groups}
-            externalAthleteRuns={athleteRuns}
-            trainingPaces={selectedAthlete.trainingPaces || null}
-            onClose={() => setActiveView('training')}
-          />
-        </View>
+          {/* Calendar tab */}
+          {activeTab === 'calendar' && selectedAthlete && (
+            <View style={{ flex: 1 }}>
+              {upcomingMeets.length > 0 && (
+                <View style={styles.meetsSection}>
+                  <Text style={styles.meetsSectionTitle}>Upcoming Meets</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    {upcomingMeets.map(meet => (
+                      <View key={meet.id} style={styles.meetCard}>
+                        <Text style={styles.meetCardDate}>{formatMeetDate(meet.date)}</Text>
+                        <Text style={styles.meetCardName}>{meet.name}</Text>
+                        {meet.location && <Text style={styles.meetCardLocation}>{meet.location}</Text>}
+                        <Text style={styles.meetCardDays}>{daysUntil(meet.date)}</Text>
+                      </View>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+              <CalendarScreen
+                userData={{ ...userData, schoolId: selectedAthlete.schoolId }}
+                school={school}
+                groups={groups}
+                externalAthleteRuns={athleteRuns}
+                trainingPaces={selectedAthlete.trainingPaces || null}
+                onClose={() => setActiveTab('home')}
+              />
+            </View>
+          )}
+
+          {/* Feed tab */}
+          {activeTab === 'feed' && selectedAthlete && (
+            <ChannelList
+              userData={{ ...userData, schoolId: selectedAthlete.schoolId }}
+              school={school}
+              onClose={() => setActiveTab('home')}
+              onUnreadChange={(count) => setUnreadFeedCount(count)}
+            />
+          )}
+
+          {/* Profile tab */}
+          {activeTab === 'profile' && (
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: SPACE.xl, paddingBottom: 100 }}>
+              <Text style={styles.profileTitle}>Parent Profile</Text>
+              <Text style={styles.profileName}>{userData.firstName} {userData.lastName}</Text>
+              <Text style={styles.profileEmail}>{userData.email}</Text>
+
+              <Text style={[styles.profileSectionTitle, { marginTop: SPACE.xl }]}>Linked Athletes</Text>
+              {athletes.map(a => (
+                <View key={a.id} style={styles.linkedAthleteCard}>
+                  <View style={[styles.linkedAvatar, { backgroundColor: a.avatarColor || BRAND }]}>
+                    <Text style={styles.linkedAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.linkedName}>{a.firstName} {a.lastName}</Text>
+                    <Text style={styles.linkedSchool}>{school?.name || ''}</Text>
+                  </View>
+                </View>
+              ))}
+              <TouchableOpacity style={styles.addAthleteBtn} onPress={() => setActiveTab('addAthlete')}>
+                <Ionicons name="add-circle-outline" size={20} color={BRAND} />
+                <Text style={styles.addAthleteBtnText}>Link another athlete</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
+                <Ionicons name="log-out-outline" size={20} color={STATUS.error} />
+                <Text style={styles.signOutText}>Sign out</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          )}
+
+          {/* Add athlete overlay */}
+          {activeTab === 'addAthlete' && (
+            <View style={styles.overlay}>
+              <ParentLinkScreen onLinkComplete={() => { setActiveTab('profile'); loadDashboard(); }} />
+            </View>
+          )}
+        </>
       )}
 
-      {/* Add athlete overlay */}
-      {addAthleteVisible && (
-        <View style={styles.overlay}>
-          <ParentLinkScreen onLinkComplete={() => { setAddAthleteVisible(false); loadDashboard(); }} />
-        </View>
-      )}
+      {/* Bottom nav */}
+      <View style={styles.bottomNav}>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => setActiveTab('home')}>
+          <Ionicons name="home-outline" size={24} color={activeTab === 'home' ? BRAND : NEUTRAL.muted} />
+          <Text style={[styles.bottomNavLabel, activeTab === 'home' && { color: BRAND }]}>Home</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => setActiveTab('calendar')}>
+          <Ionicons name="calendar-outline" size={24} color={activeTab === 'calendar' ? BRAND : NEUTRAL.muted} />
+          <Text style={[styles.bottomNavLabel, activeTab === 'calendar' && { color: BRAND }]}>Calendar</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => setActiveTab('feed')}>
+          <View>
+            <Ionicons name="chatbubbles-outline" size={24} color={activeTab === 'feed' ? BRAND : NEUTRAL.muted} />
+            {unreadFeedCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{unreadFeedCount > 99 ? '99+' : unreadFeedCount}</Text>
+              </View>
+            )}
+          </View>
+          <Text style={[styles.bottomNavLabel, activeTab === 'feed' && { color: BRAND }]}>Feed</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => setActiveTab('profile')}>
+          <Ionicons name="person-circle-outline" size={24} color={activeTab === 'profile' ? BRAND : NEUTRAL.muted} />
+          <Text style={[styles.bottomNavLabel, activeTab === 'profile' && { color: BRAND }]}>Profile</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -277,16 +317,11 @@ const styles = StyleSheet.create({
   headerTop:          { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   greeting:           { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
   schoolName:         { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginTop: 2 },
-  signOutBtn:         { paddingVertical: SPACE.xs, paddingHorizontal: SPACE.md, backgroundColor: NEUTRAL.bg, borderRadius: RADIUS.sm },
-  signOutText:        { color: NEUTRAL.body, fontSize: FONT_SIZE.sm },
   athleteSelector:    { marginTop: SPACE.md },
   athleteChip:        { paddingHorizontal: SPACE.lg - 2, paddingVertical: SPACE.sm, borderRadius: RADIUS.full, backgroundColor: NEUTRAL.bg, marginRight: SPACE.sm, borderWidth: 1.5, borderColor: NEUTRAL.border },
   athleteChipActive:  { backgroundColor: BRAND, borderColor: BRAND },
   athleteChipText:    { color: NEUTRAL.body, fontWeight: FONT_WEIGHT.semibold, fontSize: FONT_SIZE.sm },
   athleteChipTextActive: { color: '#fff' },
-  viewToggle:         { flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md },
-  toggleBtn:          { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.xs, borderRadius: RADIUS.md, paddingVertical: SPACE.sm, borderWidth: 1.5, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.card },
-  toggleBtnText:      { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.body },
   noAthletes:         { flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACE['3xl'] },
   noAthletesTitle:    { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.md },
   noAthletesText:     { fontSize: FONT_SIZE.base, color: NEUTRAL.body, textAlign: 'center', lineHeight: 22, marginBottom: SPACE.xl },
@@ -302,5 +337,27 @@ const styles = StyleSheet.create({
   meetCardName:       { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.xs },
   meetCardLocation:   { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginBottom: SPACE.xs },
   meetCardDays:       { fontSize: FONT_SIZE.xs, color: STATUS.error, fontWeight: FONT_WEIGHT.bold },
+
+  // Profile tab
+  profileTitle:       { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.sm },
+  profileName:        { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.semibold, color: BRAND_DARK },
+  profileEmail:       { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginTop: 2 },
+  profileSectionTitle:{ fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.md },
+  linkedAthleteCard:  { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, marginBottom: SPACE.sm, ...SHADOW.sm },
+  linkedAvatar:       { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  linkedAvatarText:   { color: '#fff', fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold },
+  linkedName:         { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  linkedSchool:       { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: 2 },
+  addAthleteBtn:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm, paddingVertical: SPACE.lg, marginTop: SPACE.sm },
+  addAthleteBtnText:  { fontSize: FONT_SIZE.sm, color: BRAND, fontWeight: FONT_WEIGHT.semibold },
+  signOutBtn:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm, paddingVertical: SPACE.lg, marginTop: SPACE.xl, borderTopWidth: 1, borderTopColor: NEUTRAL.border },
+  signOutText:        { color: STATUS.error, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold },
+
+  // Bottom nav
+  bottomNav:          { flexDirection: 'row', backgroundColor: NEUTRAL.card, borderTopWidth: 1, borderTopColor: NEUTRAL.border, paddingBottom: Platform.OS === 'ios' ? SPACE['2xl'] : SPACE.sm, paddingTop: SPACE.md, ...SHADOW.sm },
+  bottomNavBtn:       { flex: 1, alignItems: 'center', gap: 2 },
+  bottomNavLabel:     { fontSize: 10, color: NEUTRAL.muted },
+  badge:              { position: 'absolute', top: -4, right: -8, backgroundColor: STATUS.error, borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
+  badgeText:          { color: '#fff', fontSize: 9, fontWeight: FONT_WEIGHT.bold },
   overlay:            { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: NEUTRAL.bg, zIndex: 10 },
 });
