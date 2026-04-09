@@ -72,7 +72,7 @@ export default function ZoneSettings({ school, schoolId, onClose, onSaved }) {
         if (snap.data().boundaries) setBoundaries(snap.data().boundaries);
         if (snap.data().hrZonesDisabled !== undefined) setHrZonesDisabled(snap.data().hrZonesDisabled !== false);
       }
-    } catch (e) { console.log('Load team zone settings:', e); }
+    } catch (e) { console.warn('Load team zone settings:', e); }
     setLoading(false);
   };
 

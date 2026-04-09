@@ -202,11 +202,7 @@ async function checkOvertraining(athleteId) {
   } catch { return { alert: false, signals: [], todayInjury: null, todayIllness: null, injuryCheckinDate: null }; }
 }
 
-// ── Zone % helper — same 3-tier system used everywhere else in the app ────────
-// FIX: was using only calcZoneBreakdownFromRuns (avg HR estimate) regardless of
-// whether precise stream data existed. Now recalculates from rawHRStream first
-// so the Z1+Z2 % on each athlete card reflects actual second-by-second HR data
-// when available, and dynamically respects the coach's current zone boundaries.
+// ── Zone % helper — 3-tier priority: rawHRStream → stored zoneSeconds → avg HR estimate ──
 function calcAthleteZonePct(recentRuns, age, teamZoneSettings) {
   const boundaries  = teamZoneSettings?.boundaries  || DEFAULT_ZONE_BOUNDARIES;
   const customMaxHR = teamZoneSettings?.customMaxHR || null;
@@ -438,12 +434,6 @@ export default function CoachDashboard({ userData }) {
             w3: Math.round(w4 * 10) / 10, // 3 weeks ago
           };
 
-          // ── Zone 1+2 % — FIX: now uses 3-tier stream recalculation ──────────
-          // Previously only used calcZoneBreakdownFromRuns (avg HR estimate).
-          // Now calls calcAthleteZonePct which tries rawHRStream first, then
-          // stored zoneSeconds, then falls back to the avg HR estimate.
-          // This means the Z1+Z2 % on each athlete card is as accurate as the
-          // data available and always reflects the coach's current zone boundaries.
           try {
             const age = athlete.birthdate
               ? Math.floor((new Date() - parseBirthdate(athlete.birthdate)) / (365.25 * 86400000))
@@ -461,7 +451,7 @@ export default function CoachDashboard({ userData }) {
           } catch (e) { console.warn('Zone pct calc failed for athlete:', e); }
 
         } catch (e) {
-          console.log('Athlete data error:', e);
+          console.warn('Athlete data error:', e);
           milesMap[athlete.id]        = 0;
           weeklyMilesMap[athlete.id]  = 0;
           threeWeekAvgMap[athlete.id] = 0;
@@ -1428,7 +1418,7 @@ export default function CoachDashboard({ userData }) {
                 multiline
                 autoFocus
                 placeholder="Write your message to the team..."
-                placeholderTextColor="#999"
+                placeholderTextColor={NEUTRAL.muted}
               />
               <Text style={styles.tipModalHint}>
                 💡 Auto-generated based on your current training phase. Make it your own.

@@ -248,7 +248,7 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
               }
             }
             await new Promise(r => setTimeout(r, 200));
-          } catch (e) { console.log('Stream fetch:', e); }
+          } catch (e) { console.warn('Stream fetch:', e); }
         }
 
         const runWithZones = {

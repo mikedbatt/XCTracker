@@ -143,7 +143,7 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
               marks[key].dots.push({ key: `run_${run.id}`, color: '#9e9e9e' });
             }
           });
-        } catch (e) { console.log('Runs for calendar:', e); }
+        } catch (e) { console.warn('Runs for calendar:', e); }
       }
 
       setMarkedDates(marks);
@@ -516,7 +516,7 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
               <TextInput
                 style={styles.input}
                 placeholder={category === 'Training' ? 'e.g. Tuesday Tempo' : 'e.g. State Championship'}
-                placeholderTextColor="#999"
+                placeholderTextColor={NEUTRAL.muted}
                 value={title}
                 onChangeText={setTitle}
               />
@@ -553,14 +553,14 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
 
               {/* Location */}
               <Text style={styles.fieldLabel}>Location (optional)</Text>
-              <TextInput style={styles.input} placeholder="e.g. Camel's Back Park" placeholderTextColor="#999" value={location} onChangeText={setLocation} />
+              <TextInput style={styles.input} placeholder="e.g. Camel's Back Park" placeholderTextColor={NEUTRAL.muted} value={location} onChangeText={setLocation} />
 
               {/* Description */}
               <Text style={styles.fieldLabel}>{category === 'Training' ? 'Workout details' : 'Description'} (optional)</Text>
               <TextInput
                 style={[styles.input, { height: 100, textAlignVertical: 'top' }]}
                 placeholder={category === 'Training' ? 'Distance, pace, sets/reps, structure...' : 'Event details...'}
-                placeholderTextColor="#999"
+                placeholderTextColor={NEUTRAL.muted}
                 value={description}
                 onChangeText={setDescription}
                 multiline
@@ -571,7 +571,7 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
               <TextInput
                 style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
                 placeholder="Warmup info, gear, directions, reminders..."
-                placeholderTextColor="#999"
+                placeholderTextColor={NEUTRAL.muted}
                 value={notes}
                 onChangeText={setNotes}
                 multiline

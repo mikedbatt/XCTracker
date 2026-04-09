@@ -41,8 +41,7 @@ export default function TeammateProfile({ athlete, school, onBack }) {
   const loadProfile = async () => {
     setLoading(true);
     try {
-      // FIX: Load the team's zone settings from Firestore so zone breakdown
-      // respects coach-configured boundaries instead of using hardcoded defaults.
+      // Load team zone settings for boundary config
       if (school?.id || athlete.schoolId) {
         try {
           const schoolId = school?.id || athlete.schoolId;
@@ -74,10 +73,7 @@ export default function TeammateProfile({ athlete, school, onBack }) {
     setLoading(false);
   };
 
-  // ── Zone breakdown for this month ────────────────────────────────────────
-  // FIX: was using a local hardcoded getHRZone() that ignored team boundaries.
-  // Now uses zoneConfig functions with team-configured boundaries, matching
-  // what the coach sees on the CoachDashboard and AthleteDetailScreen.
+  // ── Zone breakdown for this month (uses team-configured boundaries) ──
   const getZoneBreakdown = () => {
     const boundaries = teamZoneSettings?.boundaries || DEFAULT_ZONE_BOUNDARIES;
     const maxHR = calcMaxHR(athleteAge, teamZoneSettings?.customMaxHR || null);

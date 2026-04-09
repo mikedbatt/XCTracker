@@ -69,7 +69,7 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
     try {
       const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
       if (userDoc.exists()) setStravaLinked(!!userDoc.data().stravaAccessToken);
-    } catch (e) { console.log('Strava check:', e); }
+    } catch (e) { console.warn('Strava check:', e); }
   };
 
   const loadMessages = async () => {
@@ -91,7 +91,7 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
         } catch { /* no message for this day */ }
       }
       setMessages(msgs);
-    } catch (e) { console.log('Messages load:', e); }
+    } catch (e) { console.warn('Messages load:', e); }
     setLoadingMsgs(false);
   };
 
@@ -303,7 +303,7 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
                 value={firstName}
                 onChangeText={setFirstName}
                 placeholder="First name"
-                placeholderTextColor="#999"
+                placeholderTextColor={NEUTRAL.muted}
                 autoCapitalize="words"
               />
 
@@ -313,7 +313,7 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
                 value={lastName}
                 onChangeText={setLastName}
                 placeholder="Last name"
-                placeholderTextColor="#999"
+                placeholderTextColor={NEUTRAL.muted}
                 autoCapitalize="words"
               />
 
@@ -323,7 +323,7 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
                 value={email}
                 onChangeText={setEmail}
                 placeholder="Email"
-                placeholderTextColor="#999"
+                placeholderTextColor={NEUTRAL.muted}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -413,7 +413,7 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
                 value={vdotTimeStr}
                 onChangeText={setVdotTimeStr}
                 placeholder={vdotDistance === 'Mile' || vdotDistance === '1500m' ? 'e.g. 5:30' : 'e.g. 20:00'}
-                placeholderTextColor="#999"
+                placeholderTextColor={NEUTRAL.muted}
                 keyboardType="numbers-and-punctuation"
               />
 
@@ -506,7 +506,6 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Connected apps</Text>
 
-            {/* FIX: connectionCard was used in JSX but missing from StyleSheet — added below */}
             <View style={styles.connectionCard}>
               <View style={[styles.connectionLogo, { backgroundColor: '#fc4c02' }]}>
                 <Text style={styles.connectionLogoText}>S</Text>

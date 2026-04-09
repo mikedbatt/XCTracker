@@ -216,7 +216,7 @@ export default function AthleteDashboard({ userData: userDataProp }) {
         await loadDashboard();
       }
     } catch (e) {
-      console.log('Auto-sync trigger:', e);
+      console.warn('Auto-sync trigger:', e);
     } finally {
       setAutoSyncing(false);
     }
@@ -360,7 +360,7 @@ export default function AthleteDashboard({ userData: userDataProp }) {
               await updateDoc(doc(db, 'users', user.uid), { lastSeenMessageDate: today });
             }
           } else { setDailyMessage(null); }
-        } catch (e) { console.log('Daily message load:', e); }
+        } catch (e) { console.warn('Daily message load:', e); }
       }
 
       if (userData.status === 'approved' && userData.schoolId) {
@@ -368,7 +368,7 @@ export default function AthleteDashboard({ userData: userDataProp }) {
           const todayStart = new Date(); todayStart.setHours(0,0,0,0);
           const wSnap = await getDocs(query(collection(db, 'events'), where('schoolId', '==', userData.schoolId), where('category', '==', 'Training'), where('date', '>=', todayStart), orderBy('date', 'asc'), limit(3)));
           setUpcomingWorkouts(wSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-        } catch (e) { console.log('Upcoming workouts:', e); }
+        } catch (e) { console.warn('Upcoming workouts:', e); }
 
         try {
           const athleteSnap = await getDocs(query(collection(db, 'users'), where('schoolId', '==', userData.schoolId), where('role', '==', 'athlete'), where('status', '==', 'approved')));
@@ -392,7 +392,7 @@ export default function AthleteDashboard({ userData: userDataProp }) {
             } catch (e) { console.warn('Failed to load miles for athlete:', e); milesMap[athlete.id] = 0; }
           }));
           setTeamMiles(milesMap);
-        } catch (e) { console.log('Team athletes:', e); }
+        } catch (e) { console.warn('Team athletes:', e); }
       }
     } catch (error) { console.error('Dashboard load error:', error); }
 
@@ -1007,11 +1007,11 @@ export default function AthleteDashboard({ userData: userDataProp }) {
             <ScrollView style={styles.modalScroll} keyboardShouldPersistTaps="handled">
               <DatePickerField label="Run date" value={runDate} onChange={setRunDate} primaryColor={primaryColor} maximumDate={new Date()} />
               <Text style={styles.modalLabel}>Miles *</Text>
-              <TextInput style={styles.modalInput} placeholder="e.g. 5.2" placeholderTextColor="#999" value={miles} onChangeText={setMiles} keyboardType="decimal-pad" returnKeyType="next" />
+              <TextInput style={styles.modalInput} placeholder="e.g. 5.2" placeholderTextColor={NEUTRAL.muted} value={miles} onChangeText={setMiles} keyboardType="decimal-pad" returnKeyType="next" />
               <Text style={styles.modalLabel}>Duration (optional)</Text>
-              <TextInput style={styles.modalInput} placeholder="e.g. 42:30" placeholderTextColor="#999" value={duration} onChangeText={setDuration} returnKeyType="next" />
+              <TextInput style={styles.modalInput} placeholder="e.g. 42:30" placeholderTextColor={NEUTRAL.muted} value={duration} onChangeText={setDuration} returnKeyType="next" />
               <Text style={styles.modalLabel}>Avg heart rate (optional)</Text>
-              <TextInput style={styles.modalInput} placeholder="e.g. 155" placeholderTextColor="#999" value={heartRate} onChangeText={setHeartRate} keyboardType="numeric" returnKeyType="next" />
+              <TextInput style={styles.modalInput} placeholder="e.g. 155" placeholderTextColor={NEUTRAL.muted} value={heartRate} onChangeText={setHeartRate} keyboardType="numeric" returnKeyType="next" />
               <Text style={styles.modalLabel}>How did it feel? {effort}/10 — {EFFORT_LABELS[effort]}</Text>
               <View style={styles.effortRow}>
                 {[1,2,3,4,5,6,7,8,9,10].map(n => (
@@ -1021,7 +1021,7 @@ export default function AthleteDashboard({ userData: userDataProp }) {
                 ))}
               </View>
               <Text style={styles.modalLabel}>Notes (optional)</Text>
-              <TextInput style={[styles.modalInput, { height: 90, textAlignVertical: 'top' }]} placeholder="How did the run go?" placeholderTextColor="#999" value={notes} onChangeText={setNotes} multiline />
+              <TextInput style={[styles.modalInput, { height: 90, textAlignVertical: 'top' }]} placeholder="How did the run go?" placeholderTextColor={NEUTRAL.muted} value={notes} onChangeText={setNotes} multiline />
               <TouchableOpacity style={[styles.saveBtn, { backgroundColor: BRAND }]} onPress={handleLogRun} disabled={savingRun}>
                 {savingRun ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>{editingRunId ? 'Save Changes' : 'Save Run'}</Text>}
               </TouchableOpacity>

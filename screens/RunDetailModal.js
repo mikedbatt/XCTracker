@@ -30,15 +30,7 @@ const EFFORT_LABELS = ['', 'Very Easy', 'Easy', 'Moderate', 'Moderate', 'Medium'
 const EFFORT_COLORS = ['', '#4caf50', '#4caf50', '#8bc34a', '#8bc34a', '#ffeb3b',
   '#ffc107', '#ff9800', '#ff5722', '#f44336', '#b71c1c'];
 
-// ── Zone breakdown for a single run ──────────────────────────────────────────
-// FIX: Added Tier 1 (rawHRStream recalculation) which was missing entirely.
-// Previously jumped straight to Tier 2 (stored zoneSeconds from sync time),
-// which used whatever boundaries existed when the run was synced — not the
-// coach's current configured boundaries. Now uses the same 3-tier priority
-// as the rest of the app:
-//   Tier 1 — rawHRStream → recalculate with current coach boundaries (most accurate)
-//   Tier 2 — stored zoneSeconds → sync-time boundaries (fallback)
-//   Tier 3 — avg HR + duration → estimate (least accurate, covers manual runs)
+// ── Zone breakdown for a single run (3-tier: rawHRStream → zoneSeconds → avg HR) ──
 function RunPaceBreakdown({ run, trainingPaces }) {
   if (!trainingPaces || (!run.rawPaceStream && !run.paceZoneSeconds)) return null;
 

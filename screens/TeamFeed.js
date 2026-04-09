@@ -77,7 +77,7 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
       setPosts(filtered);
       setLoading(false);
     }, err => {
-      console.log('TeamFeed listener:', err);
+      console.warn('TeamFeed listener:', err);
       loadPosts();
     });
     return () => unsub();
@@ -99,7 +99,7 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
         })
         .slice(0, 100);
       setPosts(filtered);
-    } catch (e) { console.log('Load posts:', e); }
+    } catch (e) { console.warn('Load posts:', e); }
     setLoading(false);
     setRefreshing(false);
   };
@@ -286,7 +286,7 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
             ref={inputRef}
             style={styles.composeInput}
             placeholder={`Message ${channelName || 'the team'}...`}
-            placeholderTextColor="#999"
+            placeholderTextColor={NEUTRAL.muted}
             value={message}
             onChangeText={setMessage}
             multiline
