@@ -1,51 +1,32 @@
 // ── Strava API Configuration ──────────────────────────────────────────────────
-// IMPORTANT: Before launching to production, move STRAVA_CLIENT_SECRET
-// to a Firebase Cloud Function. Never ship a client secret in a production app.
+// Token exchange and refresh are handled by Firebase Cloud Functions.
+// The client secret never ships in the app bundle.
+
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { app } from './firebaseConfig';
+
+const functions = getFunctions(app);
 
 export const STRAVA_CONFIG = {
   clientId:     process.env.EXPO_PUBLIC_STRAVA_CLIENT_ID,
-  clientSecret: process.env.EXPO_PUBLIC_STRAVA_CLIENT_SECRET,
   scopes:       'activity:read_all',
-  tokenUrl:     'https://www.strava.com/oauth/token',
   authUrl:      'https://www.strava.com/oauth/authorize',
   activitiesUrl:'https://www.strava.com/api/v3/athlete/activities',
 };
 
-// ── Token exchange: code → access + refresh tokens ───────────────────────────
+// ── Token exchange via Cloud Function ────────────────────────────────────────
 export async function exchangeStravaCode(code, redirectUri) {
-  const response = await fetch(STRAVA_CONFIG.tokenUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      client_id:     STRAVA_CONFIG.clientId,
-      client_secret: STRAVA_CONFIG.clientSecret,
-      code,
-      redirect_uri:  redirectUri,
-      grant_type:    'authorization_code',
-    }),
-  });
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Token exchange failed: ${err}`);
-  }
-  return response.json();
+  const fn = httpsCallable(functions, 'stravaTokenExchange');
+  const result = await fn({ code, redirectUri });
+  return result.data;
   // Returns: { access_token, refresh_token, expires_at, athlete: { id, ... } }
 }
 
-// ── Refresh expired access token ─────────────────────────────────────────────
+// ── Token refresh via Cloud Function ─────────────────────────────────────────
 export async function refreshStravaToken(refreshToken) {
-  const response = await fetch(STRAVA_CONFIG.tokenUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      client_id:     STRAVA_CONFIG.clientId,
-      client_secret: STRAVA_CONFIG.clientSecret,
-      refresh_token: refreshToken,
-      grant_type:    'refresh_token',
-    }),
-  });
-  if (!response.ok) throw new Error('Token refresh failed');
-  return response.json();
+  const fn = httpsCallable(functions, 'stravaTokenRefresh');
+  const result = await fn({ refreshToken });
+  return result.data;
 }
 
 // ── Fetch ALL activities from Strava with pagination ──────────────────────────
