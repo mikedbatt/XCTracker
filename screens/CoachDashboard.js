@@ -1179,18 +1179,19 @@ export default function CoachDashboard({ userData }) {
               {upcomingItems.length === 0 ? (
                 <View style={styles.emptyCard}><Text style={styles.emptyText}>No upcoming training scheduled.</Text></View>
               ) : upcomingItems.map(item => (
-                <View key={item.id} style={styles.trainingCard}>
+                <TouchableOpacity key={item.id} style={styles.trainingCard} onPress={() => setTodayWorkoutDetail(item)}>
                   <View style={[styles.typeBadge, { backgroundColor: TYPE_COLORS[item.type] || primaryColor }]}>
                     <Text style={styles.typeBadgeText}>{item.type}</Text>
                   </View>
                   <View style={styles.trainingInfo}>
-                    <Text style={styles.trainingTitle}>{item.title}</Text>
+                    <Text style={styles.trainingTitle}>{item.title}{item.baseMiles ? ` — ${item.baseMiles} mi` : ''}</Text>
                     {item.description && <Text style={styles.trainingDesc} numberOfLines={1}>{item.description}</Text>}
                     <Text style={styles.trainingDate}>
                       {item.date?.toDate?.()?.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                     </Text>
                   </View>
-                </View>
+                  <Ionicons name="chevron-forward" size={16} color={NEUTRAL.input} />
+                </TouchableOpacity>
               ))}
             </View>
           </View>
