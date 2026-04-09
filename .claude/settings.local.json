@@ -57,7 +57,12 @@
       "Bash(bash /tmp/scan_deadcode.sh)",
       "Bash(bash /tmp/final_scan.sh)",
       "Bash(sed:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(rm -rf app/\\\\\\(tabs\\\\\\)/explore.tsx app/\\\\\\(tabs\\\\\\)/index.tsx app/\\\\\\(tabs\\\\\\)/_layout.tsx)",
+      "Bash(rmdir app/\\\\\\(tabs\\\\\\))",
+      "Bash(rm:*)",
+      "Bash(rm -f components/ui/icon-symbol.ios.tsx components/ui/icon-symbol.tsx)",
+      "Bash(rmdir components/ui)"
     ]
   }
 }
