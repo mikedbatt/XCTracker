@@ -47,7 +47,8 @@ import CalendarScreen from './CalendarScreen';
 import { TYPE_COLORS, WORKOUT_PACE_ZONE } from '../constants/training';
 import DatePickerField from './DatePickerField';
 import RunDetailModal from './RunDetailModal';
-import { getActiveSeason } from './SeasonPlanner';
+import { getActiveSeason, getCompletedSeasons } from './SeasonPlanner';
+import SeasonReview from './SeasonReview';
 import StravaConnect from './StravaConnect';
 import ChannelList from './ChannelList';
 import TeammateProfile from './TeammateProfile';
@@ -161,6 +162,9 @@ export default function AthleteDashboard({ userData: userDataProp }) {
   const [stravaLinked,         setStravaLinked]         = useState(true); // default true to avoid flash
   const [stravaDismissed,      setStravaDismissed]      = useState(false);
   const [benchmarkDismissed,   setBenchmarkDismissed]   = useState(false);
+  const [seasonReviewVisible,  setSeasonReviewVisible]  = useState(false);
+  const [seasonReviewSeason,   setSeasonReviewSeason]   = useState(null);
+  const [reviewDismissed,      setReviewDismissed]      = useState({});
   const [todayCheckinDone,     setTodayCheckinDone]     = useState(true); // default true to avoid flash
   const [wellnessCardDismissed, setWellnessCardDismissed] = useState(false);
   const [zoneExpanded, setZoneExpanded] = useState(false);
@@ -668,6 +672,37 @@ export default function AthleteDashboard({ userData: userDataProp }) {
 
         </View>
 
+        {/* ── Season in Review banner ── */}
+        {(() => {
+          if (!school) return null;
+          const completed = getCompletedSeasons(school);
+          const unreviewedSeason = completed.find(s => !reviewDismissed[`${s.sport}_${s.championshipDate}`]);
+          if (!unreviewedSeason) return null;
+          const sportDef = { cross_country: 'Cross Country', indoor_track: 'Indoor Track', outdoor_track: 'Outdoor Track' };
+          return (
+            <View style={styles.vdotCard}>
+              <View style={styles.stravaCardTop}>
+                <View style={styles.stravaCardLeft}>
+                  <View style={[styles.stravaLogo, { backgroundColor: '#e8f5e9' }]}>
+                    <Ionicons name="trophy-outline" size={18} color={STATUS.success} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.stravaCardTitle}>Season Complete!</Text>
+                    <Text style={styles.stravaCardDesc}>Your {sportDef[unreviewedSeason.sport] || 'season'} season is in the books. See your recap.</Text>
+                  </View>
+                </View>
+                <TouchableOpacity onPress={() => setReviewDismissed(prev => ({ ...prev, [`${unreviewedSeason.sport}_${unreviewedSeason.championshipDate}`]: true }))} style={styles.stravaCloseBtn}>
+                  <Ionicons name="close" size={18} color={NEUTRAL.muted} />
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity style={[styles.stravaConnectBtn, { backgroundColor: STATUS.success }]} onPress={() => { setSeasonReviewSeason(unreviewedSeason); setSeasonReviewVisible(true); }}>
+                <Text style={styles.stravaConnectText}>View Season in Review</Text>
+                <Ionicons name="arrow-forward" size={16} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          );
+        })()}
+
         {/* ── Daily wellness check-in prompt ── */}
         {!todayCheckinDone && !wellnessCardDismissed && (
           <View style={styles.wellnessCard}>
@@ -997,6 +1032,11 @@ export default function AthleteDashboard({ userData: userDataProp }) {
 
       {/* ── Persistent bottom nav ── */}
       {/* ── Sub-screens rendered over content but under nav ── */}
+      {seasonReviewVisible && seasonReviewSeason && (
+        <View style={styles.subScreen}>
+          <SeasonReview season={seasonReviewSeason} school={school} userData={userData} onClose={() => { setSeasonReviewVisible(false); setSeasonReviewSeason(null); }} />
+        </View>
+      )}
       {calendarVisible && (
         <View style={styles.subScreen}>
           <CalendarScreen userData={userData} school={school} trainingPaces={userData.trainingPaces || null} onClose={() => setCalendarVisible(false)} />

@@ -40,7 +40,8 @@ import { TYPE_COLORS } from '../constants/training';
 import ManageGroups from '../screens/ManageGroups';
 import ManageSeasons from '../screens/ManageSeasons';
 import RaceManager from '../screens/RaceManager';
-import { getActiveSeason, getPhaseForSeason } from '../screens/SeasonPlanner';
+import { getActiveSeason, getPhaseForSeason, getCompletedSeasons } from '../screens/SeasonPlanner';
+import SeasonReview from '../screens/SeasonReview';
 import WeeklyPlanner from '../screens/WeeklyPlanner';
 import ChannelList from '../screens/ChannelList';
 import TimeframePicker, { TIMEFRAMES, getDateRange } from '../screens/TimeframePicker';
@@ -316,6 +317,9 @@ export default function CoachDashboard({ userData }) {
   const [teamPulse,           setTeamPulse]           = useState({ checkinCount: 0, totalAthletes: 0, teamAvgMood: null, inactiveCount: 0 });
   const [complianceExpanded,  setComplianceExpanded]  = useState(false);
   const [todayWorkoutDetail,  setTodayWorkoutDetail]  = useState(null);
+  const [seasonReviewVisible, setSeasonReviewVisible] = useState(false);
+  const [seasonReviewSeason,  setSeasonReviewSeason]  = useState(null);
+  const [reviewDismissed,     setReviewDismissed]     = useState({});
   const [paceComplianceExpanded, setPaceComplianceExpanded] = useState(false);
   const [paceComplianceData, setPaceComplianceData] = useState({ runningEasy: [], tooHard: [], noPaces: 0, noPacesAthletes: [] });
 
@@ -954,6 +958,30 @@ export default function CoachDashboard({ userData }) {
           );
         })()}
 
+        {/* ── Season in Review banner ── */}
+        {(() => {
+          if (!school) return null;
+          const completed = getCompletedSeasons(school);
+          const unreviewedSeason = completed.find(s => !reviewDismissed[`${s.sport}_${s.championshipDate}`]);
+          if (!unreviewedSeason) return null;
+          return (
+            <TouchableOpacity
+              style={[styles.complianceCard, { borderColor: STATUS.success + '60' }]}
+              onPress={() => { setSeasonReviewSeason(unreviewedSeason); setSeasonReviewVisible(true); }}
+            >
+              <View style={styles.complianceHeader}>
+                <Ionicons name="trophy" size={20} color={STATUS.success} />
+                <Text style={[styles.complianceTitle, { color: STATUS.success }]}>
+                  {unreviewedSeason.name || 'Season'} Complete — View Season in Review
+                </Text>
+                <TouchableOpacity onPress={(e) => { e.stopPropagation?.(); setReviewDismissed(prev => ({ ...prev, [`${unreviewedSeason.sport}_${unreviewedSeason.championshipDate}`]: true })); }}>
+                  <Ionicons name="close" size={18} color={NEUTRAL.muted} />
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          );
+        })()}
+
         {/* ── Mileage Volume card (expandable, like injury card) ── */}
         {(complianceData.underTarget.length > 0 || complianceData.overTarget.length > 0) && (
           <View style={styles.complianceCard}>
@@ -1325,6 +1353,12 @@ export default function CoachDashboard({ userData }) {
       )}
 
       {/* ── Persistent bottom nav ── */}
+      {seasonReviewVisible && seasonReviewSeason && (
+        <View style={styles.subScreen}>
+          <SeasonReview season={seasonReviewSeason} school={school} userData={userData} athletes={athletes} onClose={() => { setSeasonReviewVisible(false); setSeasonReviewSeason(null); }} />
+        </View>
+      )}
+
       <WorkoutDetailModal
         item={todayWorkoutDetail}
         visible={!!todayWorkoutDetail}

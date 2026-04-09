@@ -185,6 +185,16 @@ export function getActiveSeason(school) {
   return active;
 }
 
+export function getCompletedSeasons(school) {
+  if (!school?.seasons?.length) return [];
+  const now = new Date();
+  return school.seasons.filter(s => {
+    if (!s.championshipDate) return false;
+    const champEnd = new Date(new Date(s.championshipDate).getTime() + 7 * 86400000);
+    return now > champEnd;
+  }).sort((a, b) => new Date(b.championshipDate) - new Date(a.championshipDate));
+}
+
 export function getPhaseForSeason(season) {
   if (!season) {
     return { name: 'Pre-Season', color: '#607d8b', icon: '📋', tip: 'No active season. Set up your season plan.', weekNum: null, daysToChamp: null, isPreSeason: true, sport: 'cross_country', phases: SPORT_PHASES.cross_country };
