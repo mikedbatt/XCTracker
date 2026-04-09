@@ -33,6 +33,7 @@ export default function ParentDashboard({ userData }) {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('home');
   const [unreadFeedCount, setUnreadFeedCount] = useState(0);
+  const [feedSchool, setFeedSchool] = useState(null);
 
   useEffect(() => { loadDashboard(); }, []);
 
@@ -174,15 +175,41 @@ export default function ParentDashboard({ userData }) {
       ) : (
         <>
           {/* Feed tab (independent of athlete selection) */}
-          {activeTab === 'feed' && school && (
-            <ChannelList
-              userData={{ ...userData, schoolId: school.id || athletes[0]?.schoolId }}
-              school={school}
-              embedded
-              onClose={() => setActiveTab('home')}
-              onUnreadChange={(count) => setUnreadFeedCount(count)}
-            />
-          )}
+          {activeTab === 'feed' && (() => {
+            // Get unique schools from linked athletes
+            const schoolIds = [...new Set(athletes.map(a => a.schoolId).filter(Boolean))];
+            const feedSchoolId = feedSchool || schoolIds[0];
+            return (
+              <View style={{ flex: 1 }}>
+                {schoolIds.length > 1 && (
+                  <View style={styles.feedSchoolToggle}>
+                    {schoolIds.map(sid => {
+                      const schoolAthlete = athletes.find(a => a.schoolId === sid);
+                      return (
+                        <TouchableOpacity
+                          key={sid}
+                          style={[styles.athleteChip, feedSchoolId === sid && styles.athleteChipActive]}
+                          onPress={() => setFeedSchool(sid)}
+                        >
+                          <Text style={[styles.athleteChipText, feedSchoolId === sid && styles.athleteChipTextActive]}>
+                            {schoolAthlete?.schoolName || sid.slice(0, 8)}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+                <ChannelList
+                  key={feedSchoolId}
+                  userData={{ ...userData, schoolId: feedSchoolId }}
+                  school={feedSchoolId === school?.id ? school : { id: feedSchoolId }}
+                  embedded
+                  onClose={() => setActiveTab('home')}
+                  onUnreadChange={(count) => setUnreadFeedCount(count)}
+                />
+              </View>
+            );
+          })()}
 
           {/* Profile tab (independent of athlete selection) */}
           {activeTab === 'profile' && (
@@ -339,6 +366,8 @@ const styles = StyleSheet.create({
   meetCardName:       { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.xs },
   meetCardLocation:   { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginBottom: SPACE.xs },
   meetCardDays:       { fontSize: FONT_SIZE.xs, color: STATUS.error, fontWeight: FONT_WEIGHT.bold },
+
+  feedSchoolToggle:   { flexDirection: 'row', gap: SPACE.sm, paddingHorizontal: SPACE.lg, paddingVertical: SPACE.sm },
 
   // Profile tab
   profileTitle:       { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.sm },
