@@ -1,4 +1,4 @@
-import AppNavigator from '../screens/AppNavigator';
+import { Slot } from 'expo-router';
 export default function RootLayout() {
-  return <AppNavigator />;
+  return <Slot />;
 }
