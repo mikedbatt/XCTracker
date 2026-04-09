@@ -128,6 +128,7 @@ export default function AthleteDashboard({ userData: userDataProp }) {
   const userData = { ...userDataProp, ...userOverrides };
   const [school,               setSchool]               = useState(null);
   const [recentRuns,           setRecentRuns]           = useState([]);
+  const [weekRuns,             setWeekRuns]             = useState([]);
   const [upcomingWorkouts,     setUpcomingWorkouts]     = useState([]);
   const [teamAthletes,         setTeamAthletes]         = useState([]);
   const [weeklyMiles,          setWeeklyMiles]          = useState(0);
@@ -297,11 +298,15 @@ export default function AthleteDashboard({ userData: userDataProp }) {
           collection(db, 'runs'), where('userId', '==', user.uid),
           where('date', '>=', weekStart), orderBy('date', 'desc')
         ));
-        const wMiles = weekRunsSnap.docs.reduce((s, d) => s + (d.data().miles || 0), 0);
+        const wRunDocs = weekRunsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setWeekRuns(wRunDocs);
+        const wMiles = wRunDocs.reduce((s, r) => s + (r.miles || 0), 0);
         setWeeklyMiles(Math.round(wMiles * 10) / 10);
       } catch (e) {
         // Fallback: use filtered runs if separate query fails
-        const wMiles = runs.filter(r => { const d = r.date?.toDate?.(); return d && d >= weekStart; }).reduce((s, r) => s + (r.miles || 0), 0);
+        const wFiltered = runs.filter(r => { const d = r.date?.toDate?.(); return d && d >= weekStart; });
+        setWeekRuns(wFiltered);
+        const wMiles = wFiltered.reduce((s, r) => s + (r.miles || 0), 0);
         setWeeklyMiles(Math.round(wMiles * 10) / 10);
       }
 
@@ -515,11 +520,12 @@ export default function AthleteDashboard({ userData: userDataProp }) {
 
   // Pace zones — compute from runs that have rawPaceStream data
   const trainingPaces = userData.trainingPaces || null;
-  let paceBreakdown = null;
-  let paceAnalysis = null;
-  if (trainingPaces) {
+
+  // Helper to compute pace breakdown from a set of runs
+  const computePaceBreakdown = (runs) => {
+    if (!trainingPaces) return { breakdown: null, analysis: null };
     const combined = { e: 0, m: 0, t: 0, i: 0, r: 0 };
-    for (const r of recentRuns) {
+    for (const r of runs) {
       if (r.rawPaceStream?.length > 0) {
         const zones = calcPaceZoneBreakdown(r.rawPaceStream, trainingPaces);
         Object.keys(zones).forEach(k => { combined[k] += zones[k]; });
@@ -528,16 +534,22 @@ export default function AthleteDashboard({ userData: userDataProp }) {
       }
     }
     const total = Object.values(combined).reduce((s, v) => s + v, 0);
-    if (total > 0) {
-      paceBreakdown = PACE_ZONES.map(z => ({
+    if (total <= 0) return { breakdown: null, analysis: null };
+    return {
+      breakdown: PACE_ZONES.map(z => ({
         ...z,
         seconds: combined[z.key],
         minutes: Math.round(combined[z.key] / 60),
         pct: Math.round((combined[z.key] / total) * 100),
-      })).filter(z => z.seconds > 0);
-      paceAnalysis = calcPace8020(combined);
-    }
-  }
+      })).filter(z => z.seconds > 0),
+      analysis: calcPace8020(combined),
+    };
+  };
+
+  // Hero card: always this week's pace data
+  const { breakdown: weekPaceBreakdown, analysis: weekPaceAnalysis } = computePaceBreakdown(weekRuns);
+  // Leaderboard: selected timeframe pace data
+  const { breakdown: paceBreakdown, analysis: paceAnalysis } = computePaceBreakdown(recentRuns);
 
   // Show HR zones if explicitly enabled, or auto-show when preference not yet set and HR data exists
   const coachDisabledHR = teamZoneSettings?.hrZonesDisabled === true;
@@ -636,13 +648,13 @@ export default function AthleteDashboard({ userData: userDataProp }) {
             </View>
           </View>
 
-          {/* Pace zone dropdown (primary — shown when VDOT is set and pace data exists) */}
-          {paceBreakdown && selectedTimeframe.key === 'week' && (
+          {/* Pace zone dropdown (always shows this week's data regardless of timeframe picker) */}
+          {weekPaceBreakdown && (
             <>
               <TouchableOpacity style={styles.zoneToggle} onPress={() => setZoneExpanded(e => !e)} activeOpacity={0.7}>
                 <View style={styles.zoneToggleLeft}>
                   <View style={styles.zoneStackedBarSmall}>
-                    {paceBreakdown.map(z => <View key={z.key} style={[styles.zoneStackedSegment, { flex: z.minutes || 1, backgroundColor: z.color }]} />)}
+                    {weekPaceBreakdown.map(z => <View key={z.key} style={[styles.zoneStackedSegment, { flex: z.minutes || 1, backgroundColor: z.color }]} />)}
                   </View>
                   <Text style={styles.zoneToggleText}>Pace zones</Text>
                   <View style={styles.streamBadge}><Text style={styles.streamBadgeText}>GPS</Text></View>
@@ -651,7 +663,7 @@ export default function AthleteDashboard({ userData: userDataProp }) {
               </TouchableOpacity>
               {zoneExpanded && (
                 <View style={styles.zoneDropdown}>
-                  {paceBreakdown.map(z => (
+                  {weekPaceBreakdown.map(z => (
                     <View key={z.key} style={styles.zoneRow}>
                       <View style={[styles.zoneDot, { backgroundColor: z.color }]} />
                       <Text style={styles.zoneName}>{z.short} {z.name}</Text>
@@ -659,10 +671,10 @@ export default function AthleteDashboard({ userData: userDataProp }) {
                       <Text style={styles.zoneTime}>{formatMinutes(z.minutes)}</Text>
                     </View>
                   ))}
-                  {paceAnalysis && (
-                    <View style={[styles.analysis8020, { backgroundColor: paceAnalysis.status === 'great' ? '#e8f5e9' : paceAnalysis.status === 'good' ? '#fff8e1' : '#fce4ec' }]}>
-                      <Text style={[styles.analysis8020Text, { color: paceAnalysis.status === 'great' ? BRAND : paceAnalysis.status === 'good' ? '#f57f17' : '#c62828' }]}>
-                        Easy: {paceAnalysis.easyPct}% · Hard: {paceAnalysis.hardPct}% {paceAnalysis.status === 'great' ? '— Great balance!' : paceAnalysis.status === 'good' ? '— Good, aim for more easy' : '— Too hard, slow down easy days'}
+                  {weekPaceAnalysis && (
+                    <View style={[styles.analysis8020, { backgroundColor: weekPaceAnalysis.status === 'great' ? '#e8f5e9' : weekPaceAnalysis.status === 'good' ? '#fff8e1' : '#fce4ec' }]}>
+                      <Text style={[styles.analysis8020Text, { color: weekPaceAnalysis.status === 'great' ? BRAND : weekPaceAnalysis.status === 'good' ? STATUS.warning : STATUS.error }]}>
+                        Easy: {weekPaceAnalysis.easyPct}% · Hard: {weekPaceAnalysis.hardPct}% {weekPaceAnalysis.status === 'great' ? '— Great balance!' : weekPaceAnalysis.status === 'good' ? '— Good, aim for more easy' : '— Too hard, slow down easy days'}
                       </Text>
                     </View>
                   )}
