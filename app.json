@@ -47,7 +47,13 @@
       "@react-native-community/datetimepicker",
       "expo-web-browser",
       "expo-secure-store",
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow access to attach photos to team messages."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

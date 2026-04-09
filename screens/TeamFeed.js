@@ -13,11 +13,11 @@ import {
     where,
 } from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
-
 import {
     ActivityIndicator,
     Alert,
     FlatList,
+    Image,
     KeyboardAvoidingView, Platform,
     RefreshControl,
     StyleSheet,
@@ -26,7 +26,9 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { auth, db } from '../firebaseConfig';
+import * as ImagePicker from 'expo-image-picker';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { auth, db, storage } from '../firebaseConfig';
 import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SPACE } from '../constants/design';
 
 export default function TeamFeed({ userData, school, onClose, channel, channelName }) {
@@ -36,6 +38,7 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
   const [message,     setMessage]     = useState('');
   const [posting,     setPosting]     = useState(false);
   const [showTip,     setShowTip]     = useState(false);
+  const [imageUri,    setImageUri]    = useState(null);
   const inputRef = useRef(null);
 
   const primaryColor = school?.primaryColor || BRAND;
@@ -109,25 +112,56 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
     loadPosts();
   };
 
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Allow photo access to attach images.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.7,
+      allowsEditing: true,
+    });
+    if (!result.canceled && result.assets?.[0]?.uri) {
+      setImageUri(result.assets[0].uri);
+    }
+  };
+
+  const uploadImage = async (uri) => {
+    const response = await fetch(uri);
+    const blob = await response.blob();
+    const filename = `teamPosts/${userData.schoolId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
+    const storageRef = ref(storage, filename);
+    await uploadBytes(storageRef, blob);
+    return getDownloadURL(storageRef);
+  };
+
   const handlePost = async () => {
     const text = message.trim();
-    if (!text) return;
+    if (!text && !imageUri) return;
     if (text.length > 500) {
       Alert.alert('Too long', 'Messages are limited to 500 characters.');
       return;
     }
     setPosting(true);
     try {
+      let imageUrl = null;
+      if (imageUri) {
+        imageUrl = await uploadImage(imageUri);
+      }
       await addDoc(collection(db, 'teamPosts'), {
         schoolId:    userData.schoolId,
         channel:     activeChannel,
-        text,
+        text:        text || '',
         authorId:    myUid,
         authorName:  `${userData.firstName} ${userData.lastName}`,
         authorRole:  userData.role,
         createdAt:   serverTimestamp(),
+        ...(imageUrl && { imageUrl }),
       });
       setMessage('');
+      setImageUri(null);
       inputRef.current?.blur();
     } catch (e) {
       Alert.alert('Error', 'Could not post. Please try again.');
@@ -200,7 +234,10 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
               )}
             </View>
           )}
-          <Text style={[styles.bubbleText, isOwn && { color: '#fff' }]}>{post.text}</Text>
+          {post.imageUrl && (
+            <Image source={{ uri: post.imageUrl }} style={styles.bubbleImage} resizeMode="cover" />
+          )}
+          {post.text ? <Text style={[styles.bubbleText, isOwn && { color: '#fff' }]}>{post.text}</Text> : null}
           <View style={styles.bubbleFooter}>
             <Text style={[styles.bubbleTime, isOwn && { color: 'rgba(255,255,255,0.6)' }]}>{formatTime(post.createdAt)}</Text>
             {canDelete && (
@@ -276,12 +313,18 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={0}
       >
-        <View style={styles.composeBar}>
-          <View style={[styles.composeAvatar, { backgroundColor: primaryColor }]}>
-            <Text style={styles.composeAvatarText}>
-              {userData.firstName?.[0]}{userData.lastName?.[0]}
-            </Text>
+        {imageUri && (
+          <View style={styles.imagePreview}>
+            <Image source={{ uri: imageUri }} style={styles.imagePreviewImg} resizeMode="cover" />
+            <TouchableOpacity style={styles.imagePreviewClose} onPress={() => setImageUri(null)}>
+              <Ionicons name="close-circle" size={22} color="#fff" />
+            </TouchableOpacity>
           </View>
+        )}
+        <View style={styles.composeBar}>
+          <TouchableOpacity style={styles.imageBtn} onPress={pickImage}>
+            <Ionicons name="image-outline" size={24} color={NEUTRAL.muted} />
+          </TouchableOpacity>
           <TextInput
             ref={inputRef}
             style={styles.composeInput}
@@ -296,14 +339,14 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
           <TouchableOpacity
             style={[
               styles.postBtn,
-              { backgroundColor: message.trim() ? primaryColor : '#e0e0e0' }
+              { backgroundColor: (message.trim() || imageUri) ? primaryColor : '#e0e0e0' }
             ]}
             onPress={handlePost}
-            disabled={!message.trim() || posting}
+            disabled={(!message.trim() && !imageUri) || posting}
           >
             {posting
               ? <ActivityIndicator color="#fff" size="small" />
-              : <Text style={[styles.postBtnText, { color: message.trim() ? '#fff' : '#bbb' }]}>Post</Text>
+              : <Text style={[styles.postBtnText, { color: (message.trim() || imageUri) ? '#fff' : '#bbb' }]}>Post</Text>
             }
           </TouchableOpacity>
         </View>
@@ -350,7 +393,12 @@ const styles = StyleSheet.create({
   composeAvatar:     { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginBottom: 2 },
   composeAvatarText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   composeInput:      { flex: 1, backgroundColor: '#f5f5f5', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, fontSize: 15, color: '#333', maxHeight: 100, borderWidth: 1, borderColor: '#e0e0e0' },
+  imageBtn:          { paddingBottom: 4 },
   postBtn:           { borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, marginBottom: 2 },
   postBtnText:       { fontSize: 14, fontWeight: '700' },
   charCount:         { textAlign: 'right', fontSize: 11, color: '#f59e0b', paddingHorizontal: 16, paddingBottom: 4, backgroundColor: '#fff' },
+  bubbleImage:       { width: '100%', height: 200, borderRadius: 12, marginBottom: 6 },
+  imagePreview:      { backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#eee', padding: 10, alignItems: 'flex-start' },
+  imagePreviewImg:   { width: 80, height: 80, borderRadius: 8 },
+  imagePreviewClose: { position: 'absolute', top: 4, left: 74, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 11 },
 });
