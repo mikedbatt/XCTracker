@@ -175,41 +175,32 @@ export default function ParentDashboard({ userData }) {
       ) : (
         <>
           {/* Feed tab (independent of athlete selection) */}
-          {activeTab === 'feed' && (() => {
-            // Get unique schools from linked athletes
-            const schoolIds = [...new Set(athletes.map(a => a.schoolId).filter(Boolean))];
-            const feedSchoolId = feedSchool || schoolIds[0];
-            return (
-              <View style={{ flex: 1 }}>
-                {schoolIds.length > 1 && (
-                  <View style={styles.feedSchoolToggle}>
-                    {schoolIds.map(sid => {
-                      const schoolAthlete = athletes.find(a => a.schoolId === sid);
-                      return (
-                        <TouchableOpacity
-                          key={sid}
-                          style={[styles.athleteChip, feedSchoolId === sid && styles.athleteChipActive]}
-                          onPress={() => setFeedSchool(sid)}
-                        >
-                          <Text style={[styles.athleteChipText, feedSchoolId === sid && styles.athleteChipTextActive]}>
-                            {schoolAthlete?.schoolName || sid.slice(0, 8)}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                )}
-                <ChannelList
-                  key={feedSchoolId}
-                  userData={{ ...userData, schoolId: feedSchoolId }}
-                  school={feedSchoolId === school?.id ? school : { id: feedSchoolId }}
-                  embedded
-                  onClose={() => setActiveTab('home')}
-                  onUnreadChange={(count) => setUnreadFeedCount(count)}
-                />
-              </View>
-            );
-          })()}
+          {activeTab === 'feed' && school && (
+            <View style={{ flex: 1 }}>
+              {[...new Set(athletes.map(a => a.schoolId).filter(Boolean))].length > 1 && (
+                <View style={styles.feedSchoolToggle}>
+                  {[...new Set(athletes.map(a => a.schoolId).filter(Boolean))].map(sid => {
+                    const active = (feedSchool || athletes[0]?.schoolId) === sid;
+                    return (
+                      <TouchableOpacity key={sid} style={[styles.athleteChip, active && styles.athleteChipActive]} onPress={() => setFeedSchool(sid)}>
+                        <Text style={[styles.athleteChipText, active && styles.athleteChipTextActive]}>
+                          {athletes.find(a => a.schoolId === sid)?.schoolName || sid.slice(0, 8)}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+              <ChannelList
+                key={feedSchool || athletes[0]?.schoolId}
+                userData={{ ...userData, schoolId: feedSchool || athletes[0]?.schoolId }}
+                school={school}
+                embedded
+                onClose={() => setActiveTab('home')}
+                onUnreadChange={(count) => setUnreadFeedCount(count)}
+              />
+            </View>
+          )}
 
           {/* Profile tab (independent of athlete selection) */}
           {activeTab === 'profile' && (
