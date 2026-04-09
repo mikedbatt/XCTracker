@@ -184,3 +184,69 @@ exports.onNewTeamPost = functions.firestore
       console.error('onNewTeamPost error:', error);
     }
   });
+
+// ── Daily Wellness Check-In Reminder ─────────────────────────────────────────
+// Runs every day at 7 PM EST (midnight UTC). Sends a push to athletes who
+// haven't submitted a check-in today.
+
+exports.dailyCheckinReminder = functions.pubsub
+  .schedule('0 0 * * *')  // midnight UTC = 7 PM EST / 8 PM EDT
+  .timeZone('America/New_York')
+  .onRun(async (context) => {
+    try {
+      // Today's date range (Eastern time)
+      const now = new Date();
+      const todayStart = new Date(now);
+      todayStart.setHours(0, 0, 0, 0);
+
+      // Get all athletes with push tokens
+      const athletesSnap = await db.collection('users')
+        .where('role', '==', 'athlete')
+        .where('status', '==', 'approved')
+        .get();
+
+      if (athletesSnap.empty) return;
+
+      // Get today's check-ins
+      const checkinsSnap = await db.collection('checkins')
+        .where('date', '>=', admin.firestore.Timestamp.fromDate(todayStart))
+        .get();
+
+      const checkedInUserIds = new Set(
+        checkinsSnap.docs.map(d => d.data().userId).filter(Boolean)
+      );
+
+      // Find athletes who haven't checked in and have push tokens
+      const messages = [];
+      athletesSnap.docs.forEach(doc => {
+        const athlete = doc.data();
+        if (checkedInUserIds.has(doc.id)) return; // Already checked in
+        if (!athlete.expoPushToken) return; // No push token
+        if (!Expo.isExpoPushToken(athlete.expoPushToken)) return;
+
+        messages.push({
+          to: athlete.expoPushToken,
+          sound: 'default',
+          title: 'Daily Check-In',
+          body: 'How are you feeling? A quick check-in helps your coach keep you healthy.',
+          data: { type: 'checkin_reminder' },
+        });
+      });
+
+      if (messages.length === 0) return;
+
+      // Send in chunks
+      const chunks = expo.chunkPushNotifications(messages);
+      for (const chunk of chunks) {
+        try {
+          await expo.sendPushNotificationsAsync(chunk);
+        } catch (error) {
+          console.error('Checkin reminder push error:', error);
+        }
+      }
+
+      console.log(`Sent ${messages.length} check-in reminders`);
+    } catch (error) {
+      console.error('dailyCheckinReminder error:', error);
+    }
+  });
