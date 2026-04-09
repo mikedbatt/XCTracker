@@ -2,7 +2,7 @@
   "name": "xctracker-functions",
   "description": "Firebase Cloud Functions for XCTracker",
   "engines": {
-    "node": "18"
+    "node": "20"
   },
   "main": "index.js",
   "dependencies": {
