@@ -217,12 +217,12 @@ export default function CoachAnalytics({
     setLoadingWellness(false);
   };
 
-  // ── Metric 1: Volume Compliance (last 3 completed weeks) ──
+  // ── Metric 1: Mileage Volume (last 3 completed weeks) ──
   const { volumeData, onTarget, underTarget, overTarget } = computeVolumeCompliance(
     athletes, groups, athlete3WeekAvg, athleteWeeklyBreakdown
   );
 
-  // ── Metric 2: Pace Compliance (pace-only, no HR fallback) ──
+  // ── Metric 2: Easy-Hard Balance (pace-only, no HR fallback) ──
   const paceOnTarget = [];
   const paceCaution = [];
   const paceTooHard = [];
@@ -339,12 +339,12 @@ export default function CoachAnalytics({
       {analyticsTab === 'training' ? (
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
 
-        {/* ── 1. Volume Compliance (last 3 weeks) ── */}
+        {/* ── 1. Mileage Volume (last 3 weeks) ── */}
         <TouchableOpacity style={styles.section} onPress={() => toggle('volume')} activeOpacity={0.8}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionNum}>1</Text>
             <View style={{ flex: 1 }}>
-              <Text style={styles.sectionTitle}>Volume Compliance</Text>
+              <Text style={styles.sectionTitle}>Mileage Volume</Text>
               <Text style={styles.sectionSub}>Last 3 weeks — consistently under or over target?</Text>
             </View>
             <Ionicons name={expandedSection === 'volume' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />
@@ -407,12 +407,12 @@ export default function CoachAnalytics({
           </View>
         )}
 
-        {/* ── 2. Pace Compliance ── */}
+        {/* ── 2. Easy-Hard Balance ── */}
         <TouchableOpacity style={styles.section} onPress={() => toggle('intensity')} activeOpacity={0.8}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionNum}>2</Text>
             <View style={{ flex: 1 }}>
-              <Text style={styles.sectionTitle}>Pace Compliance</Text>
+              <Text style={styles.sectionTitle}>Easy-Hard Balance</Text>
               <Text style={styles.sectionSub}>Is the team running easy enough?</Text>
             </View>
             <Ionicons name={expandedSection === 'intensity' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />

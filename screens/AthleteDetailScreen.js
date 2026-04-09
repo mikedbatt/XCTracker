@@ -503,12 +503,12 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
             </View>
           )}
 
-          {/* ── 1. Volume Compliance ── */}
+          {/* ── 1. Mileage Volume ── */}
           <TouchableOpacity style={styles.section} onPress={() => toggle('volume')} activeOpacity={0.8}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionNum}>1</Text>
               <View style={{ flex: 1 }}>
-                <Text style={styles.sectionTitle}>Volume Compliance</Text>
+                <Text style={styles.sectionTitle}>Mileage Volume</Text>
                 <Text style={styles.sectionSub}>
                   {phaseInfo.weekNum ? `Week ${phaseInfo.weekNum}${totalWeeks ? ` of ${totalWeeks}` : ''} · ${phaseInfo.name}` : 'No active season'}
                   {phaseInfo.daysToChamp != null && phaseInfo.daysToChamp > 0 ? ` · ${phaseInfo.daysToChamp}d to championship` : ''}
@@ -570,13 +570,13 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
             </View>
           )}
 
-          {/* ── 2. Pace Compliance (coach only) ── */}
+          {/* ── 2. Easy-Hard Balance (coach only) ── */}
           {!parentMode && (<>
           <TouchableOpacity style={styles.section} onPress={() => toggle('quality')} activeOpacity={0.8}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionNum}>2</Text>
               <View style={{ flex: 1 }}>
-                <Text style={styles.sectionTitle}>Pace Compliance</Text>
+                <Text style={styles.sectionTitle}>Easy-Hard Balance</Text>
                 <Text style={styles.sectionSub}>Last 30 days — 80/20 compliance & effort</Text>
               </View>
               <Ionicons name={expandedSection === 'quality' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />

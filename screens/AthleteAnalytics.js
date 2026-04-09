@@ -535,7 +535,7 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionNum}>2</Text>
             <View style={{ flex: 1 }}>
-              <Text style={styles.sectionTitle}>Pace Compliance</Text>
+              <Text style={styles.sectionTitle}>Easy-Hard Balance</Text>
               <Text style={styles.sectionSub}>Last 30 days — 80/20 compliance & effort</Text>
             </View>
             <Ionicons name={expandedSection === 'quality' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />

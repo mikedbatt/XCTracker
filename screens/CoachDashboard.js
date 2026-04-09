@@ -954,13 +954,13 @@ export default function CoachDashboard({ userData }) {
           );
         })()}
 
-        {/* ── Volume Compliance card (expandable, like injury card) ── */}
+        {/* ── Mileage Volume card (expandable, like injury card) ── */}
         {(complianceData.underTarget.length > 0 || complianceData.overTarget.length > 0) && (
           <View style={styles.complianceCard}>
             <TouchableOpacity style={styles.complianceHeader} onPress={() => setComplianceExpanded(prev => !prev)}>
               <Ionicons name="trending-up" size={20} color={BRAND} />
               <Text style={styles.complianceTitle}>
-                Volume Compliance — {complianceData.onTarget.length} on track
+                Mileage Volume — {complianceData.onTarget.length} on track
                 {complianceData.underTarget.length > 0 ? `, ${complianceData.underTarget.length} under` : ''}
                 {complianceData.overTarget.length > 0 ? `, ${complianceData.overTarget.length} over` : ''}
               </Text>
@@ -1023,13 +1023,13 @@ export default function CoachDashboard({ userData }) {
           </View>
         )}
 
-        {/* ── Pace Compliance card (expandable) ── */}
+        {/* ── Easy-Hard Balance card (expandable) ── */}
         {(paceComplianceData.tooHard.length > 0 || paceComplianceData.runningEasy.length > 0 || paceComplianceData.noPaces > 0) && (
           <View style={styles.complianceCard}>
             <TouchableOpacity style={styles.complianceHeader} onPress={() => setPaceComplianceExpanded(prev => !prev)}>
               <Ionicons name="speedometer-outline" size={20} color={BRAND} />
               <Text style={styles.complianceTitle}>
-                Pace Compliance — {paceComplianceData.runningEasy.length} running easy
+                Easy-Hard Balance — {paceComplianceData.runningEasy.length} running easy
                 {paceComplianceData.tooHard.length > 0 ? `, ${paceComplianceData.tooHard.length} too hard` : ''}
                 {paceComplianceData.noPaces > 0 ? `, ${paceComplianceData.noPaces} need paces` : ''}
               </Text>
