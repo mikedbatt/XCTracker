@@ -30,27 +30,28 @@ import ParentLinkScreen from '../screens/ParentLinkScreen';
 
 // Register for push notifications and save token to Firestore
 async function registerForPushNotifications(uid) {
-  if (!Device.isDevice) return; // Push only works on physical devices
-
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-
-  if (finalStatus !== 'granted') return;
-
-  const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-  const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-  const pushToken = tokenData.data;
-
-  // Save to user's Firestore doc
   try {
+    if (!Device.isDevice) return; // Push only works on physical devices
+
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+
+    if (finalStatus !== 'granted') return;
+
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+    const pushToken = tokenData.data;
+
     await updateDoc(doc(db, 'users', uid), { expoPushToken: pushToken });
   } catch (e) {
-    console.warn('Failed to save push token:', e);
+    // Fails silently in Expo Go — push tokens only work in standalone builds
+    console.warn('Push registration skipped:', e.message);
+    return;
   }
 
   // Android notification channel
