@@ -166,7 +166,7 @@ export default function AthleteDashboard({ userData: userDataProp }) {
   const [leaderPaceExpanded,   setLeaderPaceExpanded]   = useState(false);
   const [seasonReviewVisible,  setSeasonReviewVisible]  = useState(false);
   const [seasonReviewSeason,   setSeasonReviewSeason]   = useState(null);
-  const [reviewDismissed,      setReviewDismissed]      = useState(userData.reviewedSeasons || {});
+  const [reviewDismissed,      setReviewDismissed]      = useState({});
   const [todayCheckinDone,     setTodayCheckinDone]     = useState(true); // default true to avoid flash
   const [wellnessCardDismissed, setWellnessCardDismissed] = useState(false);
   const [zoneExpanded, setZoneExpanded] = useState(false);
@@ -185,6 +185,18 @@ export default function AthleteDashboard({ userData: userDataProp }) {
   const [hrZonePref,   setHrZonePref]   = useState(userData.showHRZones);
   const [myGroup,      setMyGroup]      = useState(null);
   const [leaderboardFilter, setLeaderboardFilter] = useState('all');
+
+  // Load reviewed seasons from Firestore on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+        if (userDoc.exists() && userDoc.data().reviewedSeasons) {
+          setReviewDismissed(userDoc.data().reviewedSeasons);
+        }
+      } catch (e) { console.warn('Load reviewed seasons:', e); }
+    })();
+  }, []);
 
   useEffect(() => {
     setZoneExpanded(false);

@@ -315,9 +315,21 @@ export default function CoachDashboard({ userData }) {
   const [todayWorkoutDetail,  setTodayWorkoutDetail]  = useState(null);
   const [seasonReviewVisible, setSeasonReviewVisible] = useState(false);
   const [seasonReviewSeason,  setSeasonReviewSeason]  = useState(null);
-  const [reviewDismissed,     setReviewDismissed]     = useState(userData.reviewedSeasons || {});
+  const [reviewDismissed,     setReviewDismissed]     = useState({});
   const [paceComplianceExpanded, setPaceComplianceExpanded] = useState(false);
   const [paceComplianceData, setPaceComplianceData] = useState({ runningEasy: [], tooHard: [], noPaces: 0, noPacesAthletes: [] });
+
+  // Load reviewed seasons from Firestore on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+        if (userDoc.exists() && userDoc.data().reviewedSeasons) {
+          setReviewDismissed(userDoc.data().reviewedSeasons);
+        }
+      } catch (e) { console.warn('Load reviewed seasons:', e); }
+    })();
+  }, []);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
