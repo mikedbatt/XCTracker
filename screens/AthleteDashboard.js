@@ -191,12 +191,13 @@ export default function AthleteDashboard({ userData: userDataProp }) {
     loadDashboard();
   }, [selectedTimeframe]);
 
-  // Animate progress bar when weeklyMiles changes
+  // Animate progress bar when weeklyMiles or target changes
   useEffect(() => {
     const pct = weeklyTarget > 0 ? Math.min(weeklyMiles / weeklyTarget, 1) : 0;
-    progressAnim.setValue(0);
+    const target = pct * 100;
+    // Don't reset to 0 — animate from current position to new target
     Animated.timing(progressAnim, {
-      toValue: pct * 100,
+      toValue: target,
       duration: 600,
       useNativeDriver: false,
     }).start();
