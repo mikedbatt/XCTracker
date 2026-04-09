@@ -77,7 +77,7 @@ export const SPORT_PHASES = {
 };
 
 // ── Generate a weekly volume plan from season dates + peak mileage ────────────
-export function generateVolumeCurve(season, peakMiles) {
+export function generateVolumeCurve(season, peakMiles, startingMiles = null) {
   const sport = season.sport || 'cross_country';
   const phases = SPORT_PHASES[sport] || SPORT_PHASES.cross_country;
   const start = new Date(season.seasonStart);
@@ -102,9 +102,15 @@ export function generateVolumeCurve(season, peakMiles) {
     const phase = phases.find(p => pct >= p.pct[0] && pct < p.pct[1]) || phases[phases.length - 1];
     const phaseProgress = phase.pct[1] > phase.pct[0] ? (pct - phase.pct[0]) / (phase.pct[1] - phase.pct[0]) : 0;
 
+    // Starting floor: use startingMiles if provided, otherwise default 60% of peak
+    const startPct = startingMiles && startingMiles > 0
+      ? Math.max(startingMiles / peakMiles, 0.30)
+      : 0.60;
+
     let targetPct;
     if (phase.name.includes('Base') || phase.name === 'Summer Base') {
-      targetPct = 0.60 + phaseProgress * 0.25;
+      // Ramp from starting % to 85% over the base phase
+      targetPct = startPct + phaseProgress * (0.85 - startPct);
     } else if (phase.name === 'Build') {
       targetPct = 0.85 + phaseProgress * 0.15;
     } else if (phase.name === 'Competition') {

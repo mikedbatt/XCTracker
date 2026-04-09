@@ -114,9 +114,10 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
       championshipDate: championshipDate.toISOString(),
     };
 
-    // Preserve peakMileage if editing
-    if (editingIdx !== null && seasons[editingIdx].peakMileage) {
-      newSeason.peakMileage = seasons[editingIdx].peakMileage;
+    // Preserve peakMileage and startingMileage if editing
+    if (editingIdx !== null) {
+      if (seasons[editingIdx].peakMileage) newSeason.peakMileage = seasons[editingIdx].peakMileage;
+      if (seasons[editingIdx].startingMileage) newSeason.startingMileage = seasons[editingIdx].startingMileage;
     }
 
     const updated = [...seasons];
@@ -142,16 +143,18 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
         });
         if (doImport) {
           newSeason.peakMileage = { ...prevSameSport.peakMileage };
+          if (prevSameSport.startingMileage) newSeason.startingMileage = { ...prevSameSport.startingMileage };
           // Also copy volume curves for each group
           const prevKey = seasonKey(prevSameSport);
           const newKey = seasonKey(newSeason);
           for (const g of groups) {
             const prevCurve = g.seasonPlans?.[prevKey];
             if (prevCurve) {
-              // Regenerate the curve with the new season dates but same peak
+              // Regenerate the curve with the new season dates but same peak/starting
               const peak = prevSameSport.peakMileage?.[g.id];
               if (peak) {
-                const curve = generateVolumeCurve(newSeason, peak);
+                const starting = prevSameSport.startingMileage?.[g.id] || null;
+                const curve = generateVolumeCurve(newSeason, peak, starting);
                 const plans = { ...(g.seasonPlans || {}), [newKey]: curve };
                 try {
                   await updateDoc(doc(db, 'groups', g.id), { seasonPlans: plans });
@@ -195,6 +198,25 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
 
   // ── Peak mileage & volume curve ────────────────────────────────────────────
 
+  const handleStartingChange = async (seasonIdx, groupId, value) => {
+    const s = { ...seasons[seasonIdx] };
+    const startingMileage = { ...(s.startingMileage || {}) };
+    if (value === '' || value == null) {
+      delete startingMileage[groupId];
+    } else {
+      startingMileage[groupId] = parseInt(value);
+    }
+    s.startingMileage = startingMileage;
+    const updated = [...seasons];
+    updated[seasonIdx] = s;
+    setSeasons(updated);
+
+    try {
+      await updateDoc(doc(db, 'schools', schoolId), { seasons: updated });
+      onSaved && onSaved({ seasons: updated });
+    } catch (e) { console.warn('Failed to save starting mileage:', e); }
+  };
+
   const handlePeakChange = async (seasonIdx, groupId, value) => {
     const s = { ...seasons[seasonIdx] };
     const peakMileage = { ...(s.peakMileage || {}) };
@@ -231,7 +253,8 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
         { text: 'Generate', onPress: async () => {
           for (const g of groupsWithPeak) {
             const peak = s.peakMileage[g.id];
-            const curve = generateVolumeCurve(s, peak);
+            const starting = s.startingMileage?.[g.id] || null;
+            const curve = generateVolumeCurve(s, peak, starting);
             const plans = { ...(g.seasonPlans || {}), [key]: curve };
             try {
               await updateDoc(doc(db, 'groups', g.id), { seasonPlans: plans });
@@ -303,28 +326,52 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
 
     return (
       <View style={styles.volumeSection}>
-        {/* Peak mileage per group */}
-        <Text style={styles.volumeLabel}>Peak mileage per group</Text>
-        <Text style={styles.volumeHint}>Set the target miles for championship week for each group.</Text>
+        {/* Starting + Peak mileage per group */}
+        <Text style={styles.volumeLabel}>Mileage per group</Text>
+        <Text style={styles.volumeHint}>Starting = where the group is now. Peak = championship week target.</Text>
         <View style={styles.peakRow}>
           {groups.map(g => (
             <View key={g.id} style={styles.peakCell}>
               <Text style={styles.peakCellName} numberOfLines={1}>{g.name}</Text>
-              <TextInput
-                style={styles.peakInput}
-                value={s.peakMileage?.[g.id] != null ? String(s.peakMileage[g.id]) : ''}
-                onChangeText={(text) => {
-                  const num = text === '' ? null : parseInt(text);
-                  const updated = [...seasons];
-                  updated[seasonIdx] = { ...s, peakMileage: { ...(s.peakMileage || {}), [g.id]: num } };
-                  setSeasons(updated);
-                }}
-                onBlur={() => handlePeakChange(seasonIdx, g.id, s.peakMileage?.[g.id])}
-                placeholder="--"
-                placeholderTextColor="#ccc"
-                keyboardType="number-pad"
-                maxLength={3}
-              />
+              <View style={styles.mileageInputRow}>
+                <View style={styles.mileageInputCol}>
+                  <Text style={styles.mileageInputLabel}>Start</Text>
+                  <TextInput
+                    style={styles.peakInput}
+                    value={s.startingMileage?.[g.id] != null ? String(s.startingMileage[g.id]) : ''}
+                    onChangeText={(text) => {
+                      const num = text === '' ? null : parseInt(text);
+                      const updated = [...seasons];
+                      updated[seasonIdx] = { ...s, startingMileage: { ...(s.startingMileage || {}), [g.id]: num } };
+                      setSeasons(updated);
+                    }}
+                    onBlur={() => handleStartingChange(seasonIdx, g.id, s.startingMileage?.[g.id])}
+                    placeholder="--"
+                    placeholderTextColor="#ccc"
+                    keyboardType="number-pad"
+                    maxLength={3}
+                  />
+                </View>
+                <Text style={styles.mileageArrow}>→</Text>
+                <View style={styles.mileageInputCol}>
+                  <Text style={styles.mileageInputLabel}>Peak</Text>
+                  <TextInput
+                    style={styles.peakInput}
+                    value={s.peakMileage?.[g.id] != null ? String(s.peakMileage[g.id]) : ''}
+                    onChangeText={(text) => {
+                      const num = text === '' ? null : parseInt(text);
+                      const updated = [...seasons];
+                      updated[seasonIdx] = { ...s, peakMileage: { ...(s.peakMileage || {}), [g.id]: num } };
+                      setSeasons(updated);
+                    }}
+                    onBlur={() => handlePeakChange(seasonIdx, g.id, s.peakMileage?.[g.id])}
+                    placeholder="--"
+                    placeholderTextColor="#ccc"
+                    keyboardType="number-pad"
+                    maxLength={3}
+                  />
+                </View>
+              </View>
               <Text style={styles.peakUnit}>mi/wk</Text>
             </View>
           ))}
@@ -618,7 +665,11 @@ const styles = StyleSheet.create({
   peakRow:           { flexDirection: 'row', gap: 10, marginBottom: SPACE.md },
   peakCell:          { flex: 1, alignItems: 'center', backgroundColor: '#fff', borderRadius: RADIUS.md, padding: SPACE.sm, ...SHADOW.sm },
   peakCellName:      { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginBottom: 4, fontWeight: '600' },
-  peakInput:         { fontSize: 18, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, textAlign: 'center', width: '100%', borderBottomWidth: 1, borderBottomColor: NEUTRAL.border, paddingVertical: 4 },
+  mileageInputRow:   { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  mileageInputCol:   { alignItems: 'center', flex: 1 },
+  mileageInputLabel: { fontSize: 10, color: NEUTRAL.muted, marginBottom: 2 },
+  mileageArrow:      { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted, marginTop: 12 },
+  peakInput:         { fontSize: 16, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, textAlign: 'center', width: '100%', borderBottomWidth: 1, borderBottomColor: NEUTRAL.border, paddingVertical: 4 },
   peakUnit:          { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 2 },
   generateBtn:       { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: BRAND + '15', borderRadius: RADIUS.md, padding: 12, marginBottom: SPACE.sm },
   generateBtnText:   { fontSize: FONT_SIZE.sm, fontWeight: '600', color: BRAND },
