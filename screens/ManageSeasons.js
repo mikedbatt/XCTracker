@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { db } from '../firebaseConfig';
 import {
-  BRAND, BRAND_DARK,
+  BRAND, BRAND_DARK, BRAND_LIGHT,
   FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE,
 } from '../constants/design';
 import DatePickerField from './DatePickerField';
@@ -324,9 +324,9 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
 
     const groupsWithPeak = groups.filter(g => (s.peakMileage?.[g.id] || 0) > 0);
 
-    // Find prior season of same sport for reference
+    // Find most recent prior season (any sport) for reference
     const priorSeason = seasons
-      .filter(ps => ps.sport === s.sport && ps !== s && new Date(ps.championshipDate) < new Date(s.seasonStart))
+      .filter(ps => ps !== s && ps.peakMileage && new Date(ps.championshipDate) < new Date(s.seasonStart))
       .sort((a, b) => new Date(b.championshipDate) - new Date(a.championshipDate))[0] || null;
 
     return (
@@ -334,23 +334,18 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
         {/* Starting + Peak mileage per group */}
         <Text style={styles.volumeLabel}>Mileage per group</Text>
         <Text style={styles.volumeHint}>Starting = where the group is now. Peak = championship week target.</Text>
-        <View style={styles.peakRow}>
+        <View style={styles.groupMileageList}>
           {groups.map(g => {
             const priorPeak = priorSeason?.peakMileage?.[g.id];
-            const priorStart = priorSeason?.startingMileage?.[g.id];
             return (
-            <View key={g.id} style={styles.peakCell}>
-              <Text style={styles.peakCellName} numberOfLines={1}>{g.name}</Text>
-              {priorPeak && (
-                <Text style={styles.priorSeasonHint}>
-                  Last season: {priorStart ? `${priorStart}→` : ''}{priorPeak} mi/wk
-                </Text>
-              )}
-              <View style={styles.mileageInputRow}>
-                <View style={styles.mileageInputCol}>
-                  <Text style={styles.mileageInputLabel}>Start</Text>
+              <View key={g.id} style={styles.groupMileageRow}>
+                <View style={styles.groupMileageNameCol}>
+                  <Text style={styles.groupMileageName} numberOfLines={1}>{g.name}</Text>
+                  {priorPeak && <Text style={styles.priorSeasonHint}>Prior peak: {priorPeak} mi/wk</Text>}
+                </View>
+                <View style={styles.groupMileageInputs}>
                   <TextInput
-                    style={styles.peakInput}
+                    style={styles.mileageInput}
                     value={s.startingMileage?.[g.id] != null ? String(s.startingMileage[g.id]) : ''}
                     onChangeText={(text) => {
                       const num = text === '' ? null : parseInt(text);
@@ -359,17 +354,14 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
                       setSeasons(updated);
                     }}
                     onBlur={() => handleStartingChange(seasonIdx, g.id, s.startingMileage?.[g.id])}
-                    placeholder="--"
-                    placeholderTextColor="#ccc"
+                    placeholder="Start"
+                    placeholderTextColor={NEUTRAL.muted}
                     keyboardType="number-pad"
                     maxLength={3}
                   />
-                </View>
-                <Text style={styles.mileageArrow}>→</Text>
-                <View style={styles.mileageInputCol}>
-                  <Text style={styles.mileageInputLabel}>Peak</Text>
+                  <Text style={styles.mileageArrow}>→</Text>
                   <TextInput
-                    style={styles.peakInput}
+                    style={styles.mileageInput}
                     value={s.peakMileage?.[g.id] != null ? String(s.peakMileage[g.id]) : ''}
                     onChangeText={(text) => {
                       const num = text === '' ? null : parseInt(text);
@@ -378,15 +370,14 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
                       setSeasons(updated);
                     }}
                     onBlur={() => handlePeakChange(seasonIdx, g.id, s.peakMileage?.[g.id])}
-                    placeholder="--"
-                    placeholderTextColor="#ccc"
+                    placeholder="Peak"
+                    placeholderTextColor={NEUTRAL.muted}
                     keyboardType="number-pad"
                     maxLength={3}
                   />
+                  <Text style={styles.mileageUnit}>mi/wk</Text>
                 </View>
               </View>
-              <Text style={styles.peakUnit}>mi/wk</Text>
-            </View>
             );
           })}
         </View>
@@ -676,16 +667,15 @@ const styles = StyleSheet.create({
   volumeSection:     { backgroundColor: NEUTRAL.bg, paddingHorizontal: SPACE.lg, paddingBottom: SPACE.lg, marginBottom: 12, borderBottomLeftRadius: RADIUS.lg, borderBottomRightRadius: RADIUS.lg },
   volumeLabel:       { fontSize: 15, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: 4, marginTop: SPACE.md },
   volumeHint:        { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginBottom: SPACE.md },
-  peakRow:           { flexDirection: 'row', gap: 10, marginBottom: SPACE.md },
-  peakCell:          { flex: 1, alignItems: 'center', backgroundColor: '#fff', borderRadius: RADIUS.md, padding: SPACE.sm, ...SHADOW.sm },
-  peakCellName:      { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginBottom: 4, fontWeight: '600' },
-  priorSeasonHint:   { fontSize: 10, color: NEUTRAL.body, marginBottom: 4, textAlign: 'center', fontStyle: 'italic' },
-  mileageInputRow:   { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  mileageInputCol:   { alignItems: 'center', flex: 1 },
-  mileageInputLabel: { fontSize: 10, color: NEUTRAL.muted, marginBottom: 2 },
-  mileageArrow:      { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted, marginTop: 12 },
-  peakInput:         { fontSize: 16, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, textAlign: 'center', width: '100%', borderBottomWidth: 1, borderBottomColor: NEUTRAL.border, paddingVertical: 4 },
-  peakUnit:          { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 2 },
+  groupMileageList:  { gap: SPACE.sm, marginBottom: SPACE.md },
+  groupMileageRow:   { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: RADIUS.md, padding: SPACE.md, ...SHADOW.sm },
+  groupMileageNameCol: { width: 90 },
+  groupMileageName:  { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  priorSeasonHint:   { fontSize: 10, color: NEUTRAL.body, marginTop: 2, fontStyle: 'italic' },
+  groupMileageInputs:{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: SPACE.sm },
+  mileageInput:      { width: 52, fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, textAlign: 'center', borderWidth: 1, borderColor: NEUTRAL.border, borderRadius: RADIUS.sm, paddingVertical: SPACE.xs, backgroundColor: NEUTRAL.bg },
+  mileageArrow:      { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted },
+  mileageUnit:       { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, width: 32 },
   generateBtn:       { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: BRAND + '15', borderRadius: RADIUS.md, padding: 12, marginBottom: SPACE.sm },
   generateBtnText:   { fontSize: FONT_SIZE.sm, fontWeight: '600', color: BRAND },
 
