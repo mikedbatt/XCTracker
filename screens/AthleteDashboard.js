@@ -510,7 +510,7 @@ export default function AthleteDashboard({ userData: userDataProp }) {
     Alert.alert('Sign out', 'Are you sure?', [{ text: 'Cancel', style: 'cancel' }, { text: 'Sign out', style: 'destructive', onPress: () => signOut(auth) }]);
   };
 
-  if (loading) return <View style={styles.loading}><ActivityIndicator size="large" color="#2e7d32" /></View>;
+  if (loading) return <View style={styles.loading}><ActivityIndicator size="large" color={BRAND} /></View>;
 
   const primaryColor = school?.primaryColor || BRAND;
   const isApproved = userData.status === 'approved';
@@ -702,7 +702,10 @@ export default function AthleteDashboard({ userData: userDataProp }) {
         {(() => {
           if (!school) return null;
           const completed = getCompletedSeasons(school);
-          const unreviewedSeason = completed.find(s => !reviewDismissed[`${s.sport}_${s.championshipDate}`]);
+          const unreviewedSeason = completed.find(s => {
+            const key = `${s.sport}_${new Date(s.championshipDate).toISOString().split('T')[0]}`;
+            return !reviewDismissed[key];
+          });
           if (!unreviewedSeason) return null;
           const sportDef = { cross_country: 'Cross Country', indoor_track: 'Indoor Track', outdoor_track: 'Outdoor Track' };
           return (
@@ -718,7 +721,7 @@ export default function AthleteDashboard({ userData: userDataProp }) {
                   </View>
                 </View>
                 <TouchableOpacity onPress={async () => {
-                  const key = `${unreviewedSeason.sport}_${unreviewedSeason.championshipDate}`;
+                  const key = `${unreviewedSeason.sport}_${new Date(unreviewedSeason.championshipDate).toISOString().split('T')[0]}`;
                   setReviewDismissed(prev => ({ ...prev, [key]: true }));
                   try { await updateDoc(doc(db, 'users', auth.currentUser.uid), { [`reviewedSeasons.${key}`]: true }); } catch (e) { console.warn('Save review dismiss:', e); }
                 }} style={styles.stravaCloseBtn}>

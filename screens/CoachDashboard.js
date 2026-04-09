@@ -964,7 +964,10 @@ export default function CoachDashboard({ userData }) {
         {(() => {
           if (!school) return null;
           const completed = getCompletedSeasons(school);
-          const unreviewedSeason = completed.find(s => !reviewDismissed[`${s.sport}_${s.championshipDate}`]);
+          const unreviewedSeason = completed.find(s => {
+            const key = `${s.sport}_${new Date(s.championshipDate).toISOString().split('T')[0]}`;
+            return !reviewDismissed[key];
+          });
           if (!unreviewedSeason) return null;
           return (
             <TouchableOpacity
@@ -978,7 +981,7 @@ export default function CoachDashboard({ userData }) {
                 </Text>
                 <TouchableOpacity onPress={async (e) => {
                   e.stopPropagation?.();
-                  const key = `${unreviewedSeason.sport}_${unreviewedSeason.championshipDate}`;
+                  const key = `${unreviewedSeason.sport}_${new Date(unreviewedSeason.championshipDate).toISOString().split('T')[0]}`;
                   setReviewDismissed(prev => ({ ...prev, [key]: true }));
                   try { await updateDoc(doc(db, 'users', auth.currentUser.uid), { [`reviewedSeasons.${key}`]: true }); } catch (e2) { console.warn('Save review dismiss:', e2); }
                 }}>
