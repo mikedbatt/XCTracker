@@ -108,11 +108,12 @@ export function generateVolumeCurve(season, peakMiles, startingMiles = null) {
       : 0.60;
 
     let targetPct;
+    const baseEnd = Math.max(0.85, startPct); // Don't ramp down if already above 85%
     if (phase.name.includes('Base') || phase.name === 'Summer Base') {
-      // Ramp from starting % to 85% over the base phase
-      targetPct = startPct + phaseProgress * (0.85 - startPct);
+      // Ramp from starting % to 85% (or hold if already above)
+      targetPct = startPct + phaseProgress * (baseEnd - startPct);
     } else if (phase.name === 'Build') {
-      targetPct = 0.85 + phaseProgress * 0.15;
+      targetPct = baseEnd + phaseProgress * (1.0 - baseEnd);
     } else if (phase.name === 'Competition') {
       targetPct = 0.92 - phaseProgress * 0.02;
     } else if (phase.name === 'Peak') {
