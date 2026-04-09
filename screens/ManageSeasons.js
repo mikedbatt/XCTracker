@@ -324,15 +324,28 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
 
     const groupsWithPeak = groups.filter(g => (s.peakMileage?.[g.id] || 0) > 0);
 
+    // Find prior season of same sport for reference
+    const priorSeason = seasons
+      .filter(ps => ps.sport === s.sport && ps !== s && new Date(ps.championshipDate) < new Date(s.seasonStart))
+      .sort((a, b) => new Date(b.championshipDate) - new Date(a.championshipDate))[0] || null;
+
     return (
       <View style={styles.volumeSection}>
         {/* Starting + Peak mileage per group */}
         <Text style={styles.volumeLabel}>Mileage per group</Text>
         <Text style={styles.volumeHint}>Starting = where the group is now. Peak = championship week target.</Text>
         <View style={styles.peakRow}>
-          {groups.map(g => (
+          {groups.map(g => {
+            const priorPeak = priorSeason?.peakMileage?.[g.id];
+            const priorStart = priorSeason?.startingMileage?.[g.id];
+            return (
             <View key={g.id} style={styles.peakCell}>
               <Text style={styles.peakCellName} numberOfLines={1}>{g.name}</Text>
+              {priorPeak && (
+                <Text style={styles.priorSeasonHint}>
+                  Last season: {priorStart ? `${priorStart}→` : ''}{priorPeak} mi/wk
+                </Text>
+              )}
               <View style={styles.mileageInputRow}>
                 <View style={styles.mileageInputCol}>
                   <Text style={styles.mileageInputLabel}>Start</Text>
@@ -374,7 +387,8 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
               </View>
               <Text style={styles.peakUnit}>mi/wk</Text>
             </View>
-          ))}
+            );
+          })}
         </View>
 
         {/* Generate button */}
@@ -665,6 +679,7 @@ const styles = StyleSheet.create({
   peakRow:           { flexDirection: 'row', gap: 10, marginBottom: SPACE.md },
   peakCell:          { flex: 1, alignItems: 'center', backgroundColor: '#fff', borderRadius: RADIUS.md, padding: SPACE.sm, ...SHADOW.sm },
   peakCellName:      { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginBottom: 4, fontWeight: '600' },
+  priorSeasonHint:   { fontSize: 10, color: NEUTRAL.body, marginBottom: 4, textAlign: 'center', fontStyle: 'italic' },
   mileageInputRow:   { flexDirection: 'row', alignItems: 'center', gap: 4 },
   mileageInputCol:   { alignItems: 'center', flex: 1 },
   mileageInputLabel: { fontSize: 10, color: NEUTRAL.muted, marginBottom: 2 },
