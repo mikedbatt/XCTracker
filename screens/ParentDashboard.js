@@ -142,8 +142,8 @@ export default function ParentDashboard({ userData }) {
           </View>
         </View>
 
-        {/* Athlete selector */}
-        {athletes.length > 0 && (
+        {/* Athlete selector (only show on athlete-specific tabs) */}
+        {athletes.length > 0 && (activeTab === 'home' || activeTab === 'calendar') && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.athleteSelector}>
             {athletes.map((athlete) => (
               <TouchableOpacity
@@ -173,6 +173,54 @@ export default function ParentDashboard({ userData }) {
         </View>
       ) : (
         <>
+          {/* Feed tab (independent of athlete selection) */}
+          {activeTab === 'feed' && school && (
+            <ChannelList
+              userData={{ ...userData, schoolId: school.id || athletes[0]?.schoolId }}
+              school={school}
+              onClose={() => setActiveTab('home')}
+              onUnreadChange={(count) => setUnreadFeedCount(count)}
+            />
+          )}
+
+          {/* Profile tab (independent of athlete selection) */}
+          {activeTab === 'profile' && (
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: SPACE.xl, paddingBottom: 100 }}>
+              <Text style={styles.profileTitle}>Parent Profile</Text>
+              <Text style={styles.profileName}>{userData.firstName} {userData.lastName}</Text>
+              <Text style={styles.profileEmail}>{userData.email}</Text>
+
+              <Text style={[styles.profileSectionTitle, { marginTop: SPACE.xl }]}>Linked Athletes</Text>
+              {athletes.map(a => (
+                <View key={a.id} style={styles.linkedAthleteCard}>
+                  <View style={[styles.linkedAvatar, { backgroundColor: a.avatarColor || BRAND }]}>
+                    <Text style={styles.linkedAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.linkedName}>{a.firstName} {a.lastName}</Text>
+                    <Text style={styles.linkedSchool}>{school?.name || ''}</Text>
+                  </View>
+                </View>
+              ))}
+              <TouchableOpacity style={styles.addAthleteBtn} onPress={() => setActiveTab('addAthlete')}>
+                <Ionicons name="add-circle-outline" size={20} color={BRAND} />
+                <Text style={styles.addAthleteBtnText}>Link another athlete</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
+                <Ionicons name="log-out-outline" size={20} color={STATUS.error} />
+                <Text style={styles.signOutText}>Sign out</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          )}
+
+          {/* Add athlete overlay */}
+          {activeTab === 'addAthlete' && (
+            <View style={styles.overlay}>
+              <ParentLinkScreen onLinkComplete={() => { setActiveTab('profile'); loadDashboard(); }} />
+            </View>
+          )}
+
           {/* Home tab */}
           {activeTab === 'home' && selectedAthlete && (
             <View style={{ flex: 1 }}>
@@ -230,53 +278,6 @@ export default function ParentDashboard({ userData }) {
             </View>
           )}
 
-          {/* Feed tab */}
-          {activeTab === 'feed' && selectedAthlete && (
-            <ChannelList
-              userData={{ ...userData, schoolId: selectedAthlete.schoolId }}
-              school={school}
-              onClose={() => setActiveTab('home')}
-              onUnreadChange={(count) => setUnreadFeedCount(count)}
-            />
-          )}
-
-          {/* Profile tab */}
-          {activeTab === 'profile' && (
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: SPACE.xl, paddingBottom: 100 }}>
-              <Text style={styles.profileTitle}>Parent Profile</Text>
-              <Text style={styles.profileName}>{userData.firstName} {userData.lastName}</Text>
-              <Text style={styles.profileEmail}>{userData.email}</Text>
-
-              <Text style={[styles.profileSectionTitle, { marginTop: SPACE.xl }]}>Linked Athletes</Text>
-              {athletes.map(a => (
-                <View key={a.id} style={styles.linkedAthleteCard}>
-                  <View style={[styles.linkedAvatar, { backgroundColor: a.avatarColor || BRAND }]}>
-                    <Text style={styles.linkedAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.linkedName}>{a.firstName} {a.lastName}</Text>
-                    <Text style={styles.linkedSchool}>{school?.name || ''}</Text>
-                  </View>
-                </View>
-              ))}
-              <TouchableOpacity style={styles.addAthleteBtn} onPress={() => setActiveTab('addAthlete')}>
-                <Ionicons name="add-circle-outline" size={20} color={BRAND} />
-                <Text style={styles.addAthleteBtnText}>Link another athlete</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
-                <Ionicons name="log-out-outline" size={20} color={STATUS.error} />
-                <Text style={styles.signOutText}>Sign out</Text>
-              </TouchableOpacity>
-            </ScrollView>
-          )}
-
-          {/* Add athlete overlay */}
-          {activeTab === 'addAthlete' && (
-            <View style={styles.overlay}>
-              <ParentLinkScreen onLinkComplete={() => { setActiveTab('profile'); loadDashboard(); }} />
-            </View>
-          )}
         </>
       )}
 
