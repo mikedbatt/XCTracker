@@ -162,6 +162,7 @@ export default function AthleteDashboard({ userData: userDataProp }) {
   const [stravaLinked,         setStravaLinked]         = useState(true); // default true to avoid flash
   const [stravaDismissed,      setStravaDismissed]      = useState(false);
   const [benchmarkDismissed,   setBenchmarkDismissed]   = useState(false);
+  const [leaderPaceExpanded,   setLeaderPaceExpanded]   = useState(false);
   const [seasonReviewVisible,  setSeasonReviewVisible]  = useState(false);
   const [seasonReviewSeason,   setSeasonReviewSeason]   = useState(null);
   const [reviewDismissed,      setReviewDismissed]      = useState({});
@@ -791,58 +792,10 @@ export default function AthleteDashboard({ userData: userDataProp }) {
           </View>
         )}
 
-        <View style={styles.timeframeRow}>
-          <TimeframePicker selected={selectedTimeframe} onSelect={setSelectedTimeframe} customStart={customStart} customEnd={customEnd} onCustomChange={(s, e) => { setCustomStart(s); setCustomEnd(e); }} activeSeason={getActiveSeason(school)} primaryColor={primaryColor} />
-        </View>
-
-        {selectedTimeframe.key !== 'week' && (
-          <View style={styles.periodMilesCard}>
-            <View style={styles.periodMilesRow}>
-              <Text style={styles.periodMilesNum}>{(Math.round(totalMiles * 10) / 10).toFixed(1)}</Text>
-              <Text style={styles.periodMilesLabel}>miles — {selectedTimeframe.label?.toLowerCase() || 'selected period'}</Text>
-            </View>
-
-            {/* Pace zone dropdown inside period card (primary) */}
-            {paceBreakdown && (
-              <>
-                <TouchableOpacity style={styles.zoneToggle} onPress={() => setZoneExpanded(e => !e)} activeOpacity={0.7}>
-                  <View style={styles.zoneToggleLeft}>
-                    <View style={styles.zoneStackedBarSmall}>
-                      {paceBreakdown.map(z => <View key={z.key} style={[styles.zoneStackedSegment, { flex: z.minutes || 1, backgroundColor: z.color }]} />)}
-                    </View>
-                    <Text style={styles.zoneToggleText}>Pace zones</Text>
-                  </View>
-                  <Ionicons name={zoneExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={NEUTRAL.muted} />
-                </TouchableOpacity>
-                {zoneExpanded && (
-                  <View style={styles.zoneDropdown}>
-                    {paceBreakdown.map(z => (
-                      <View key={z.key} style={styles.zoneRow}>
-                        <View style={[styles.zoneDot, { backgroundColor: z.color }]} />
-                        <Text style={styles.zoneName}>{z.short} {z.name}</Text>
-                        <View style={styles.zoneBarBg}><View style={[styles.zoneBarFill, { width: z.pct + '%', backgroundColor: z.color }]} /></View>
-                        <Text style={styles.zoneTime}>{formatMinutes(z.minutes)}</Text>
-                      </View>
-                    ))}
-                    {paceAnalysis && (
-                      <View style={[styles.analysis8020, { backgroundColor: paceAnalysis.status === 'great' ? '#e8f5e9' : paceAnalysis.status === 'good' ? '#fff8e1' : '#fce4ec' }]}>
-                        <Text style={[styles.analysis8020Text, { color: paceAnalysis.status === 'great' ? BRAND : paceAnalysis.status === 'good' ? '#f57f17' : '#c62828' }]}>
-                          Easy: {paceAnalysis.easyPct}% · Hard: {paceAnalysis.hardPct}%
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                )}
-              </>
-            )}
-
-          </View>
-        )}
-
         {isApproved && upcomingWorkouts.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Upcoming workouts</Text>
-            {upcomingWorkouts.map(workout => {
+            {upcomingWorkouts.slice(0, 2).map(workout => {
               const wkMiles = myGroup && workout.groupMiles?.[myGroup.id]
                 ? workout.groupMiles[myGroup.id]
                 : workout.baseMiles || null;
@@ -869,6 +822,10 @@ export default function AthleteDashboard({ userData: userDataProp }) {
             })}
           </View>
         )}
+
+        <View style={styles.timeframeRow}>
+          <TimeframePicker selected={selectedTimeframe} onSelect={setSelectedTimeframe} customStart={customStart} customEnd={customEnd} onCustomChange={(s, e) => { setCustomStart(s); setCustomEnd(e); }} activeSeason={getActiveSeason(school)} primaryColor={primaryColor} />
+        </View>
 
         {isApproved && sortedTeam.length > 0 && (() => {
           const displayTeam = leaderboardFilter === 'mygroup' && myGroup
@@ -899,17 +856,39 @@ export default function AthleteDashboard({ userData: userDataProp }) {
               const isMe = athlete.id === auth.currentUser?.uid;
               const miles = teamMiles[athlete.id] || 0;
               return (
-                <TouchableOpacity key={athlete.id} style={[styles.leaderRow, isMe && { backgroundColor: BRAND_LIGHT, borderColor: BRAND, borderWidth: 1.5 }]} onPress={() => !isMe && setSelectedTeammate(athlete)} activeOpacity={isMe ? 1 : 0.7}>
-                  <Text style={[styles.leaderRank, isMe && { color: BRAND }]}>#{index + 1}</Text>
-                  <View style={[styles.leaderAvatar, { backgroundColor: athlete.avatarColor || BRAND }]}>
-                    <Text style={styles.leaderAvatarText}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
-                  </View>
-                  <View style={styles.leaderInfo}>
-                    <Text style={[styles.leaderName, isMe && { color: BRAND, fontWeight: '700' }]}>{isMe ? 'You' : athlete.firstName + ' ' + athlete.lastName}</Text>
-                    {!isMe && <Text style={styles.leaderTap}>Tap to view profile</Text>}
-                  </View>
-                  <Text style={[styles.leaderMiles, { color: isMe ? BRAND : BRAND_DARK }]}>{(Math.round(miles * 10) / 10).toFixed(1)} mi</Text>
-                </TouchableOpacity>
+                <View key={athlete.id}>
+                  <TouchableOpacity style={[styles.leaderRow, isMe && { backgroundColor: BRAND_LIGHT, borderColor: BRAND, borderWidth: 1.5 }]} onPress={() => isMe ? (paceBreakdown && setLeaderPaceExpanded(e => !e)) : setSelectedTeammate(athlete)} activeOpacity={isMe && !paceBreakdown ? 1 : 0.7}>
+                    <Text style={[styles.leaderRank, isMe && { color: BRAND }]}>#{index + 1}</Text>
+                    <View style={[styles.leaderAvatar, { backgroundColor: athlete.avatarColor || BRAND }]}>
+                      <Text style={styles.leaderAvatarText}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
+                    </View>
+                    <View style={styles.leaderInfo}>
+                      <Text style={[styles.leaderName, isMe && { color: BRAND, fontWeight: '700' }]}>{isMe ? 'You' : athlete.firstName + ' ' + athlete.lastName}</Text>
+                      {!isMe && <Text style={styles.leaderTap}>Tap to view profile</Text>}
+                    </View>
+                    <Text style={[styles.leaderMiles, { color: isMe ? BRAND : BRAND_DARK }]}>{(Math.round(miles * 10) / 10).toFixed(1)} mi</Text>
+                    {isMe && paceBreakdown && <Ionicons name={leaderPaceExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={BRAND} style={{ marginLeft: 4 }} />}
+                  </TouchableOpacity>
+                  {isMe && leaderPaceExpanded && paceBreakdown && (
+                    <View style={[styles.zoneDropdown, { marginHorizontal: SPACE.lg, marginBottom: SPACE.sm }]}>
+                      {paceBreakdown.map(z => (
+                        <View key={z.key} style={styles.zoneRow}>
+                          <View style={[styles.zoneDot, { backgroundColor: z.color }]} />
+                          <Text style={styles.zoneName}>{z.short} {z.name}</Text>
+                          <View style={styles.zoneBarBg}><View style={[styles.zoneBarFill, { width: z.pct + '%', backgroundColor: z.color }]} /></View>
+                          <Text style={styles.zoneTime}>{formatMinutes(z.minutes)}</Text>
+                        </View>
+                      ))}
+                      {paceAnalysis && (
+                        <View style={[styles.analysis8020, { backgroundColor: paceAnalysis.status === 'great' ? '#e8f5e9' : paceAnalysis.status === 'good' ? '#fff8e1' : '#fce4ec' }]}>
+                          <Text style={[styles.analysis8020Text, { color: paceAnalysis.status === 'great' ? BRAND : paceAnalysis.status === 'good' ? STATUS.warning : STATUS.error }]}>
+                            Easy: {paceAnalysis.easyPct}% · Hard: {paceAnalysis.hardPct}%
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                </View>
               );
             })}
             {displayTeam.length > 5 && displayRank > 5 && (
@@ -918,6 +897,7 @@ export default function AthleteDashboard({ userData: userDataProp }) {
                 <View style={[styles.leaderAvatar, { backgroundColor: avatarColor }]}><Text style={styles.leaderAvatarText}>{userData.firstName?.[0]}{userData.lastName?.[0]}</Text></View>
                 <View style={styles.leaderInfo}><Text style={[styles.leaderName, { color: BRAND, fontWeight: '700' }]}>You</Text></View>
                 <Text style={[styles.leaderMiles, { color: BRAND }]}>{(Math.round(totalMiles * 10) / 10).toFixed(1)} mi</Text>
+                {paceBreakdown && <Ionicons name="chevron-down" size={16} color={BRAND} style={{ marginLeft: 4 }} />}
               </View>
             )}
           </View>
