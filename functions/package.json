@@ -1,6 +1,6 @@
 {
   "name": "xctracker-functions",
-  "description": "Firebase Cloud Functions for XCTracker",
+  "description": "Firebase Cloud Functions for TeamBase",
   "engines": {
     "node": "22"
   },

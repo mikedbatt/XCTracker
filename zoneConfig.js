@@ -1,4 +1,4 @@
-// ── XCTracker Heart Rate Zone System ─────────────────────────────────────────
+// ── TeamBase Heart Rate Zone System ──────────────────────────────────────────
 //
 // Zones are defined as percentages of Max HR.
 // Max HR is calculated as 220 - age (default) or coach-entered value.

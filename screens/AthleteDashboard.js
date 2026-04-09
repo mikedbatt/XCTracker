@@ -574,7 +574,7 @@ export default function AthleteDashboard({ userData: userDataProp }) {
         <View style={styles.headerTop}>
           <View>
             <Text style={styles.greeting}>Hey, {userData.firstName}</Text>
-            <Text style={styles.schoolName}>{school?.name || 'XCTracker'}</Text>
+            <Text style={styles.schoolName}>{school?.name || 'TeamBase'}</Text>
           </View>
           <TouchableOpacity onPress={() => { setActiveTab('home'); setProfileVisible(true); }} style={styles.profileBtn}>
             <View style={[styles.profileAvatar, { backgroundColor: avatarColor }]}>

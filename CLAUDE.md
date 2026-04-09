@@ -1,7 +1,7 @@
-# XCTracker — Claude Code Guide
+# TeamBase — Claude Code Guide
 
 ## Project Overview
-XCTracker is a cross country team training app built with React Native + Expo. It has two main user roles — **athletes** and **coaches** — with a separate parent role for account creation. Athletes log runs, sync from Strava, and view zone breakdowns. Coaches monitor their team, detect overtraining, and manage workouts and season planning.
+TeamBase is a team training platform built with React Native + Expo. It supports multiple sports (cross country, indoor track, outdoor track, and more). It has three main user roles — **athletes**, **coaches**, and **parents**. Athletes log runs, sync from Strava, and view pace-based training zones. Coaches manage their team, plan workouts, track compliance, and monitor athlete wellness. Parents can view their athlete's progress and access team communication.
 
 ## Tech Stack
 - **Framework:** React Native with Expo (SDK 54) + Expo Router v6

@@ -454,7 +454,7 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
             </TouchableOpacity>
 
             <Text style={styles.syncHint}>
-              You'll be taken to Strava to authorize XCTracker to read your activities. We never post or modify your Strava data.
+              You'll be taken to Strava to authorize TeamBase to read your activities. We never post or modify your Strava data.
             </Text>
           </>
         )}

@@ -54,7 +54,7 @@ export default function LoginScreen({ onAuthSuccess }) {
 
   const handleBiometricLogin = async () => {
     const result = await LocalAuthentication.authenticateAsync({
-      promptMessage: 'Sign in to XCTracker',
+      promptMessage: 'Sign in to TeamBase',
       fallbackLabel: 'Use password instead',
     });
     if (!result.success) {
@@ -216,7 +216,7 @@ export default function LoginScreen({ onAuthSuccess }) {
 
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>XCTracker</Text>
+          <Text style={styles.title}>TeamBase</Text>
           <Text style={styles.subtitle}>Cross Country Training App</Text>
         </View>
 

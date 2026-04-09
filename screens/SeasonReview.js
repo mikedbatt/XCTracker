@@ -543,7 +543,7 @@ export default function SeasonReview({ season, school, userData, athletes = [], 
         <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 1 }}>
           <View style={styles.captureArea}>
             {isCoach ? renderCoachReview() : renderAthleteReview()}
-            <Text style={styles.watermark}>XCTracker Season in Review</Text>
+            <Text style={styles.watermark}>TeamBase Season in Review</Text>
           </View>
         </ViewShot>
       </ScrollView>

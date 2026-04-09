@@ -31,7 +31,7 @@ export default function ParentLinkScreen({ onLinkComplete }) {
       const q = query(usersRef, where('email', '==', athleteEmail.toLowerCase().trim()), where('role', '==', 'athlete'));
       const snapshot = await getDocs(q);
       if (snapshot.empty) {
-        Alert.alert('Not found', 'No athlete account found with that email. Make sure your athlete has already signed up for XCTracker.');
+        Alert.alert('Not found', 'No athlete account found with that email. Make sure your athlete has already signed up for TeamBase.');
         setLoading(false);
         return;
       }

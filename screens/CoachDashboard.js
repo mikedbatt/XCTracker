@@ -670,7 +670,7 @@ export default function CoachDashboard({ userData }) {
       '',
       ...lines,
       '',
-      `Sent from XCTracker`,
+      `Sent from TeamBase`,
     ].join('\n');
 
     try {
@@ -837,7 +837,7 @@ export default function CoachDashboard({ userData }) {
         <View style={styles.headerRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.greeting}>Coach {userData.lastName}</Text>
-            <Text style={styles.schoolName}>{school?.name || 'XCTracker'}</Text>
+            <Text style={styles.schoolName}>{school?.name || 'TeamBase'}</Text>
           </View>
           <View style={styles.headerRight}>
             <Text style={styles.headerRightText}>{athletes.length} athletes  ·  Code: {school?.joinCode || '--'}</Text>
