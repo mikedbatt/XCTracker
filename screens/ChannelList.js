@@ -28,7 +28,7 @@ function getChannelMeta(channelKey) {
   return { name: channelKey, icon: 'fitness', color: BRAND };
 }
 
-export default function ChannelList({ userData, school, groups, athletes, onClose }) {
+export default function ChannelList({ userData, school, groups, athletes, onClose, onUnreadChange }) {
   const [channels, setChannels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedChannel, setSelectedChannel] = useState(null);
@@ -147,9 +147,11 @@ export default function ChannelList({ userData, school, groups, athletes, onClos
       });
 
       setChannels(enriched);
+      if (onUnreadChange) onUnreadChange(enriched.reduce((s, ch) => s + (ch.unread || 0), 0));
     } catch (e) {
       console.warn('Failed to build channels:', e);
       setChannels(myChannels.map(ch => ({ ...ch, lastPost: null, unread: 0, postCount: 0 })));
+      if (onUnreadChange) onUnreadChange(0);
     }
 
     setLoading(false);

@@ -1298,7 +1298,7 @@ export default function CoachDashboard({ userData }) {
       )}
       {feedVisible && (
         <View style={styles.subScreen}>
-          <ChannelList userData={userData} school={school} groups={groups} athletes={athletes} onClose={() => { setFeedVisible(false); loadDashboard(); }} />
+          <ChannelList userData={userData} school={school} groups={groups} athletes={athletes} onClose={() => { setFeedVisible(false); loadDashboard(); }} onUnreadChange={(count) => setUnreadFeedCount(count)} />
         </View>
       )}
       {zonesVisible && (

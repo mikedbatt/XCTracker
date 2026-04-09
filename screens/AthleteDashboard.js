@@ -1046,7 +1046,7 @@ export default function AthleteDashboard({ userData: userDataProp }) {
       )}
       {feedVisible && (
         <View style={styles.subScreen}>
-          <ChannelList userData={userData} school={school} onClose={() => { setFeedVisible(false); loadDashboard(); }} />
+          <ChannelList userData={userData} school={school} onClose={() => { setFeedVisible(false); loadDashboard(); }} onUnreadChange={(count) => setUnreadFeedCount(count)} />
         </View>
       )}
       {statsVisible && (
