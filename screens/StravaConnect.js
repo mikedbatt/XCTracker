@@ -1,5 +1,6 @@
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
+import * as AuthSession from 'expo-auth-session';
 import {
   collection,
   doc, getDoc,
@@ -88,7 +89,7 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
   const handleConnect = async () => {
     try {
       // Build the redirect URI using Expo's deep linking
-      const redirectUri = Linking.createURL('strava-auth');
+      const redirectUri = AuthSession.makeRedirectUri({ scheme: 'xctracker', path: 'strava-auth' });
 
       const authUrl = `${STRAVA_CONFIG.authUrl}?client_id=${STRAVA_CONFIG.clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&approval_prompt=auto&scope=${STRAVA_CONFIG.scopes}`;
 
@@ -115,7 +116,7 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
   const handleOAuthSuccess = async (code) => {
     setSyncing(true);
     try {
-      const redirectUri = Linking.createURL('strava-auth');
+      const redirectUri = AuthSession.makeRedirectUri({ scheme: 'xctracker', path: 'strava-auth' });
       const tokenData = await exchangeStravaCode(code, redirectUri);
 
       await updateDoc(doc(db, 'users', auth.currentUser.uid), {
