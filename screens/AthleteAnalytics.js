@@ -14,13 +14,13 @@ import { auth, db } from '../firebaseConfig';
 import {
   BRAND, BRAND_ACCENT, BRAND_DARK, BRAND_LIGHT,
   FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
-  EFFORT_COLORS, EFFORT_LABELS,
+  EFFORT_COLORS,
 } from '../constants/design';
-import { getActiveSeason, getPhaseForSeason, SPORT_PHASES, generateVolumeCurve } from './SeasonPlanner';
-import { formatTime, calcPace, formatPace, parseTime } from '../utils/raceUtils';
+import { getActiveSeason, getPhaseForSeason, generateVolumeCurve } from './SeasonPlanner';
+import { formatTime, calcPace, formatPace } from '../utils/raceUtils';
 import {
   calcMaxHR, calcZoneBreakdownFromStream, calcZoneBreakdownFromRuns,
-  calc8020, parseDurationSeconds, ZONE_META, DEFAULT_ZONE_BOUNDARIES,
+  calc8020, ZONE_META, DEFAULT_ZONE_BOUNDARIES,
 } from '../zoneConfig';
 import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
 
@@ -49,12 +49,6 @@ function groupRunsByWeek(runs) {
   return weeks;
 }
 
-function formatPaceFromSeconds(totalSec) {
-  if (!totalSec || !isFinite(totalSec)) return '--:--';
-  const mins = Math.floor(totalSec / 60);
-  const secs = Math.round(totalSec % 60);
-  return `${mins}:${String(secs).padStart(2, '0')}`;
-}
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -364,53 +358,6 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
     const locs = recentCheckins[0].injury.locations || [];
     activeInjuries.push({ locations: locs, severity: recentCheckins[0].injury.severity, streak: injuryStreak });
   }
-
-  // ── Feature 5: Fitness Fingerprint data ──
-  // Easy run pace trend (effort <= 5, last 8 weeks)
-  const easyPaceWeeks = [];
-  for (let w = 0; w < 8; w++) {
-    const wStart = new Date(now - (w + 1) * 7 * 86400000);
-    const wEnd = new Date(now - w * 7 * 86400000);
-    const easyRuns = allRuns.filter(r => {
-      const d = getRunDate(r);
-      return d >= wStart && d < wEnd && (r.effort || 5) <= 5 && r.miles > 0 && r.duration;
-    });
-    if (easyRuns.length > 0) {
-      const totalSec = easyRuns.reduce((s, r) => s + parseDurationSeconds(r.duration), 0);
-      const totalMi = easyRuns.reduce((s, r) => s + (r.miles || 0), 0);
-      easyPaceWeeks.unshift({ pace: totalSec / totalMi, runs: easyRuns.length });
-    } else {
-      easyPaceWeeks.unshift(null);
-    }
-  }
-
-  // Aerobic efficiency: compare 4 weeks ago vs this week
-  const getWeekEasyData = (weeksAgo) => {
-    const wStart = new Date(now - (weeksAgo + 1) * 7 * 86400000);
-    const wEnd = new Date(now - weeksAgo * 7 * 86400000);
-    const runs = allRuns.filter(r => {
-      const d = getRunDate(r);
-      return d >= wStart && d < wEnd && (r.effort || 5) <= 5 && r.miles > 0 && r.duration && r.heartRate;
-    });
-    if (runs.length === 0) return null;
-    const avgPace = runs.reduce((s, r) => s + parseDurationSeconds(r.duration), 0) / runs.reduce((s, r) => s + r.miles, 0);
-    const avgHR = Math.round(runs.reduce((s, r) => s + r.heartRate, 0) / runs.length);
-    return { pace: avgPace, hr: avgHR };
-  };
-  const efficiencyNow = getWeekEasyData(0);
-  const efficiency4wk = getWeekEasyData(4);
-
-  // Personal bests
-  const personalBests = {};
-  allRuns.forEach(r => {
-    if (!r.miles || !r.duration || r.miles < 1) return;
-    const pace = parseDurationSeconds(r.duration) / r.miles;
-    const effort = r.effort || 5;
-    const cat = effort <= 5 ? 'easy' : effort <= 7 ? 'tempo' : 'workout';
-    if (!personalBests[cat] || pace < personalBests[cat].pace) {
-      personalBests[cat] = { pace, date: getRunDate(r), miles: r.miles };
-    }
-  });
 
   // ── Render helpers ──
 
@@ -914,22 +861,4 @@ const styles = StyleSheet.create({
   },
   injuryChipText: { fontSize: FONT_SIZE.sm, color: STATUS.warning, fontWeight: FONT_WEIGHT.semibold },
   allClear:       { fontSize: FONT_SIZE.sm, color: STATUS.success, fontWeight: FONT_WEIGHT.semibold, textAlign: 'center', padding: SPACE.md },
-
-  // ── Feature 5: Fitness Fingerprint ──
-  efficiencyRow:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.lg, marginTop: SPACE.md },
-  efficiencyBlock:{ alignItems: 'center' },
-  efficiencyLabel:{ fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginBottom: 2 },
-  efficiencyPace: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  efficiencyHR:   { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: 2 },
-
-  paceChart:      { flexDirection: 'row', alignItems: 'flex-end', gap: SPACE.xs, height: 100 },
-  paceBarWrap:    { flex: 1, alignItems: 'center', justifyContent: 'flex-end', height: '100%' },
-  paceBar:        { width: '100%', borderRadius: 3, minHeight: 2 },
-  paceBarValue:   { fontSize: 8, color: NEUTRAL.muted, marginBottom: 2 },
-  paceBarLabel:   { fontSize: 9, color: NEUTRAL.muted, marginTop: 2 },
-
-  pbRow:          { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACE.sm, borderBottomWidth: 1, borderBottomColor: NEUTRAL.bg },
-  pbCat:          { flex: 1, fontSize: FONT_SIZE.sm, color: NEUTRAL.body },
-  pbPace:         { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginRight: SPACE.md },
-  pbDate:         { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, width: 50, textAlign: 'right' },
 });
