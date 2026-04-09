@@ -90,10 +90,8 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
     try {
       // Build the redirect URI using Expo's deep linking
       const redirectUri = Linking.createURL('strava-auth');
-      console.warn('STRAVA REDIRECT URI:', redirectUri);
 
       const authUrl = `${STRAVA_CONFIG.authUrl}?client_id=${STRAVA_CONFIG.clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&approval_prompt=auto&scope=${STRAVA_CONFIG.scopes}`;
-      console.warn('STRAVA AUTH URL:', authUrl);
 
       const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
 
