@@ -14,12 +14,11 @@ exports.stravaTokenExchange = functions.https.onCall(async (data, context) => {
   const { code, redirectUri } = data;
   if (!code) throw new functions.https.HttpsError('invalid-argument', 'Missing code');
 
-  const config = functions.config().strava || {};
-  const clientId = config.client_id;
-  const clientSecret = config.client_secret;
+  const clientId = process.env.STRAVA_CLIENT_ID;
+  const clientSecret = process.env.STRAVA_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
-    throw new functions.https.HttpsError('failed-precondition', 'Strava config not set');
+    throw new functions.https.HttpsError('failed-precondition', 'Strava env vars not set');
   }
 
   const response = await fetch('https://www.strava.com/oauth/token', {
@@ -48,12 +47,11 @@ exports.stravaTokenRefresh = functions.https.onCall(async (data, context) => {
   const { refreshToken } = data;
   if (!refreshToken) throw new functions.https.HttpsError('invalid-argument', 'Missing refreshToken');
 
-  const config = functions.config().strava || {};
-  const clientId = config.client_id;
-  const clientSecret = config.client_secret;
+  const clientId = process.env.STRAVA_CLIENT_ID;
+  const clientSecret = process.env.STRAVA_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
-    throw new functions.https.HttpsError('failed-precondition', 'Strava config not set');
+    throw new functions.https.HttpsError('failed-precondition', 'Strava env vars not set');
   }
 
   const response = await fetch('https://www.strava.com/oauth/token', {
