@@ -186,11 +186,11 @@ exports.onNewTeamPost = functions.firestore
   });
 
 // ── Daily Wellness Check-In Reminder ─────────────────────────────────────────
-// Runs every day at 7 PM EST (midnight UTC). Sends a push to athletes who
-// haven't submitted a check-in today.
+// Runs every day at 5 PM Eastern (2 PM Pacific). Sends a push to athletes
+// who haven't submitted a check-in today.
 
 exports.dailyCheckinReminder = functions.pubsub
-  .schedule('0 0 * * *')  // midnight UTC = 7 PM EST / 8 PM EDT
+  .schedule('0 17 * * *')  // 5 PM Eastern
   .timeZone('America/New_York')
   .onRun(async (context) => {
     try {
