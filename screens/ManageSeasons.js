@@ -286,8 +286,29 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
+  const [showArchive, setShowArchive] = useState(false);
+
   const activeSeason = getActiveSeason({ seasons });
   const activePhase = activeSeason ? getPhaseForSeason(activeSeason) : getPhaseForSeason(null);
+
+  // Categorize seasons
+  const now = new Date();
+  const categorized = seasons.map((s, idx) => {
+    const champEnd = new Date(new Date(s.championshipDate).getTime() + 7 * 86400000);
+    const isActive = activeSeason && activeSeason.seasonStart === s.seasonStart && activeSeason.sport === s.sport;
+    const isFuture = new Date(s.seasonStart) > now && !isActive;
+    const isCompleted = now > champEnd;
+    return { ...s, idx, isActive, isFuture, isCompleted };
+  });
+
+  // Most recent completed season (show on main page)
+  const completedSeasons = categorized.filter(s => s.isCompleted).sort((a, b) => new Date(b.championshipDate) - new Date(a.championshipDate));
+  const lastSeason = completedSeasons[0] || null;
+  const archivedSeasons = completedSeasons.slice(1);
+
+  // Visible on main page: last completed + active + future — chronological order
+  const visibleSeasons = categorized.filter(s => s.isActive || s.isFuture || s === lastSeason)
+    .sort((a, b) => new Date(a.seasonStart) - new Date(b.seasonStart));
 
   const renderVolumePlan = (seasonIdx) => {
     const s = seasons[seasonIdx];
@@ -542,9 +563,10 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
                     <Text style={styles.addSeasonBtnText}>+ Add first season</Text>
                   </TouchableOpacity>
                 </View>
-              ) : seasons.map((s, idx) => {
+              ) : (showArchive ? archivedSeasons : visibleSeasons).map((cs) => {
+                const idx = cs.idx;
+                const s = seasons[idx];
                 const sportDef = SPORTS[s.sport] || SPORTS.cross_country;
-                const isActive = activeSeason && activeSeason.seasonStart === s.seasonStart && activeSeason.sport === s.sport;
                 const phase = getPhaseForSeason(s);
                 const start = new Date(s.seasonStart);
                 const champ = new Date(s.championshipDate);
@@ -553,7 +575,7 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
                 return (
                   <View key={idx}>
                     <TouchableOpacity
-                      style={[styles.seasonCard, isActive && { borderColor: sportDef.color, borderWidth: 2 }]}
+                      style={[styles.seasonCard, cs.isActive && { borderColor: sportDef.color, borderWidth: 2 }]}
                       activeOpacity={0.7}
                       onPress={() => setExpandedIdx(isExpanded ? null : idx)}
                     >
@@ -567,14 +589,19 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
                               {start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – {champ.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                             </Text>
                           </View>
-                          {isActive && (
+                          {cs.isActive && (
                             <View style={[styles.activePill, { backgroundColor: sportDef.color }]}>
                               <Text style={styles.activePillText}>Active</Text>
                             </View>
                           )}
+                          {cs === lastSeason && !cs.isActive && (
+                            <View style={[styles.activePill, { backgroundColor: NEUTRAL.muted }]}>
+                              <Text style={styles.activePillText}>Last</Text>
+                            </View>
+                          )}
                           <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={NEUTRAL.muted} />
                         </View>
-                        {isActive && !phase.isPreSeason && (
+                        {cs.isActive && !phase.isPreSeason && (
                           <Text style={[styles.phaseTag, { color: phase.color }]}>
                             {phase.icon} {phase.name} · Wk {phase.weekNum} · {phase.daysToChamp}d to champs
                           </Text>
@@ -595,6 +622,20 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
                   </View>
                 );
               })}
+
+              {/* Archive link */}
+              {!showArchive && archivedSeasons.length > 0 && (
+                <TouchableOpacity style={styles.archiveLink} onPress={() => setShowArchive(true)}>
+                  <Ionicons name="time-outline" size={16} color={BRAND} />
+                  <Text style={styles.archiveLinkText}>View {archivedSeasons.length} past season{archivedSeasons.length > 1 ? 's' : ''}</Text>
+                </TouchableOpacity>
+              )}
+              {showArchive && (
+                <TouchableOpacity style={styles.archiveLink} onPress={() => setShowArchive(false)}>
+                  <Ionicons name="arrow-back" size={16} color={BRAND} />
+                  <Text style={styles.archiveLinkText}>Back to current seasons</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </>
         )}
@@ -667,6 +708,8 @@ const styles = StyleSheet.create({
   volumeSection:     { backgroundColor: NEUTRAL.bg, paddingHorizontal: SPACE.lg, paddingBottom: SPACE.lg, marginBottom: 12, borderBottomLeftRadius: RADIUS.lg, borderBottomRightRadius: RADIUS.lg },
   volumeLabel:       { fontSize: 15, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: 4, marginTop: SPACE.md },
   volumeHint:        { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginBottom: SPACE.md },
+  archiveLink:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.xs, paddingVertical: SPACE.md },
+  archiveLinkText:   { fontSize: FONT_SIZE.sm, color: BRAND, fontWeight: FONT_WEIGHT.semibold },
   groupMileageList:  { gap: SPACE.sm, marginBottom: SPACE.md },
   groupMileageRow:   { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: RADIUS.md, padding: SPACE.md, ...SHADOW.sm },
   groupMileageNameCol: { width: 90 },
