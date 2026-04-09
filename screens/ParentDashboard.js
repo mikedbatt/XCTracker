@@ -178,6 +178,7 @@ export default function ParentDashboard({ userData }) {
             <ChannelList
               userData={{ ...userData, schoolId: school.id || athletes[0]?.schoolId }}
               school={school}
+              embedded
               onClose={() => setActiveTab('home')}
               onUnreadChange={(count) => setUnreadFeedCount(count)}
             />

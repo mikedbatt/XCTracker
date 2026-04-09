@@ -28,7 +28,7 @@ function getChannelMeta(channelKey) {
   return { name: channelKey, icon: 'fitness', color: BRAND };
 }
 
-export default function ChannelList({ userData, school, groups, athletes, onClose, onUnreadChange }) {
+export default function ChannelList({ userData, school, groups, athletes, onClose, onUnreadChange, embedded = false }) {
   const [channels, setChannels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedChannel, setSelectedChannel] = useState(null);
@@ -186,14 +186,21 @@ export default function ChannelList({ userData, school, groups, athletes, onClos
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
-          <Text style={styles.backText}>Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Messages</Text>
-        <View style={{ width: 60 }} />
-      </View>
+      {!embedded && (
+        <View style={styles.header}>
+          <TouchableOpacity onPress={onClose} style={styles.backBtn}>
+            <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+            <Text style={styles.backText}>Back</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Messages</Text>
+          <View style={{ width: 60 }} />
+        </View>
+      )}
+      {embedded && (
+        <View style={styles.embeddedHeader}>
+          <Text style={styles.headerTitle}>Messages</Text>
+        </View>
+      )}
 
       {loading ? (
         <View style={styles.center}>
@@ -245,6 +252,7 @@ const styles = StyleSheet.create({
   container:      { flex: 1, backgroundColor: NEUTRAL.bg },
   center:         { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header:         { backgroundColor: NEUTRAL.card, paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 14, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
+  embeddedHeader: { paddingVertical: SPACE.md, paddingHorizontal: 20 },
   backBtn:        { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6 },
   backText:       { color: BRAND_DARK, fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.semibold },
   headerTitle:    { fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
