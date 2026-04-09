@@ -520,8 +520,7 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
             </View>
           )}
 
-          {/* ── 2. Easy-Hard Balance (coach only) ── */}
-          {!parentMode && (<>
+          {/* ── 2. Easy-Hard Balance ── */}
           <TouchableOpacity style={styles.section} onPress={() => toggle('quality')} activeOpacity={0.8}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionNum}>2</Text>
@@ -606,7 +605,6 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
               </View>
             </View>
           )}
-          </>)}
 
           {/* ── 3. Readiness & Recovery (coach only) ── */}
           {!parentMode && (<>
@@ -681,7 +679,7 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
           {/* ── 4. Race Performance ── */}
           <TouchableOpacity style={styles.section} onPress={() => toggle('races')} activeOpacity={0.8}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionNum}>{parentMode ? '2' : '4'}</Text>
+              <Text style={styles.sectionNum}>{parentMode ? '3' : '4'}</Text>
               <View style={{ flex: 1 }}>
                 <Text style={styles.sectionTitle}>Race Performance</Text>
                 <Text style={styles.sectionSub}>{myResults.length} race{myResults.length !== 1 ? 's' : ''} this season</Text>
@@ -742,7 +740,7 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
           {/* ── 5. Run History ── */}
           <TouchableOpacity style={styles.section} onPress={() => toggle('runs')} activeOpacity={0.8}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionNum}>{parentMode ? '3' : '5'}</Text>
+              <Text style={styles.sectionNum}>{parentMode ? '4' : '5'}</Text>
               <View style={{ flex: 1 }}>
                 <Text style={styles.sectionTitle}>Run History</Text>
                 <Text style={styles.sectionSub}>{allRuns.length} run{allRuns.length !== 1 ? 's' : ''} logged</Text>
