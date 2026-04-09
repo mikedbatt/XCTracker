@@ -2,10 +2,7 @@
 // Token exchange and refresh are handled by Firebase Cloud Functions.
 // The client secret never ships in the app bundle.
 
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { app } from './firebaseConfig';
-
-const functions = getFunctions(app);
+const FUNCTIONS_BASE = 'https://us-central1-xctracker-a2532.cloudfunctions.net';
 
 export const STRAVA_CONFIG = {
   clientId:     process.env.EXPO_PUBLIC_STRAVA_CLIENT_ID,
@@ -16,17 +13,27 @@ export const STRAVA_CONFIG = {
 
 // ── Token exchange via Cloud Function ────────────────────────────────────────
 export async function exchangeStravaCode(code, redirectUri) {
-  const fn = httpsCallable(functions, 'stravaTokenExchange');
-  const result = await fn({ code, redirectUri });
-  return result.data;
-  // Returns: { access_token, refresh_token, expires_at, athlete: { id, ... } }
+  const response = await fetch(`${FUNCTIONS_BASE}/stravaTokenExchange`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code, redirectUri }),
+  });
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Token exchange failed: ${err}`);
+  }
+  return response.json();
 }
 
 // ── Token refresh via Cloud Function ─────────────────────────────────────────
 export async function refreshStravaToken(refreshToken) {
-  const fn = httpsCallable(functions, 'stravaTokenRefresh');
-  const result = await fn({ refreshToken });
-  return result.data;
+  const response = await fetch(`${FUNCTIONS_BASE}/stravaTokenRefresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshToken }),
+  });
+  if (!response.ok) throw new Error('Token refresh failed');
+  return response.json();
 }
 
 // ── Fetch ALL activities from Strava with pagination ──────────────────────────
