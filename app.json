@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "TeamBase",
-    "slug": "TeamBase",
+    "slug": "XCTracker",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -13,7 +13,9 @@
       "bundleIdentifier": "com.mikedbatt.XCTracker",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "UIBackgroundModes": ["remote-notification"]
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
       }
     },
     "android": {
@@ -23,7 +25,10 @@
         "backgroundImage": "./assets/images/android-icon-background.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "output": "static",
@@ -63,6 +68,7 @@
       "eas": {
         "projectId": "08e5e05e-f3b5-4897-b680-1d1535622bd1"
       }
-    }
+    },
+    "owner": "mikedbatt"
   }
 }
