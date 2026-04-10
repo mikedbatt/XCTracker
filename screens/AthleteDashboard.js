@@ -995,7 +995,13 @@ export default function AthleteDashboard({ userData: userDataProp }) {
             ...(data.illness && { illness: data.illness }),
           });
           setTodayCheckinDone(true);
-        } catch (e) { console.warn('Failed to save daily check-in:', e); }
+          // Force a fresh dashboard load so the wellness card hides immediately
+          // even if the local state update gets lost in a render race.
+          loadDashboard();
+        } catch (e) {
+          console.warn('Failed to save daily check-in:', e);
+          Alert.alert('Check-in not saved', `Could not save your check-in: ${e.message || e}. Please try again.`);
+        }
       }} onSkip={() => { setDailyWellnessVisible(false); setTodayCheckinDone(true); }} onClose={() => setDailyWellnessVisible(false)} />
       <WorkoutDetailModal
         item={selectedWorkout}

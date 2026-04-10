@@ -299,8 +299,10 @@ export async function autoSyncStrava(userId, userData, teamZoneSettings) {
         console.log('Auto-sync stream fetch:', e);
       }
 
-      // Write the run to Firestore
-      await setDoc(doc(collection(db, 'runs')), {
+      // Write the run to Firestore using a deterministic doc ID
+      // (`strava_<userId>_<stravaId>`). Concurrent syncs that race each other
+      // will overwrite the same doc instead of creating duplicate runs.
+      await setDoc(doc(db, 'runs', `strava_${userId}_${activity.id}`), {
         ...run,
         ...(zoneSeconds ? { zoneSeconds, hasStreamData: true } : { hasStreamData: false }),
         ...(rawHRStream ? { rawHRStream } : {}),

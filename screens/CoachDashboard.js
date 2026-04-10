@@ -548,7 +548,7 @@ export default function CoachDashboard({ userData }) {
       }
       setOvertTrainingAlerts(alertsMap);
 
-      if (userData.coachRole === 'admin') {
+      if (userData.role === 'admin_coach') {
         const pendingSnap = await getDocs(query(
           collection(db, 'users'),
           where('schoolId', '==', userData.schoolId),
@@ -766,7 +766,7 @@ export default function CoachDashboard({ userData }) {
   if (loading) return <View style={styles.loading}><ActivityIndicator size="large" color={BRAND} /></View>;
 
   const primaryColor  = school?.primaryColor || BRAND;
-  const isAdmin       = userData.coachRole === 'admin';
+  const isAdmin       = userData.role === 'admin_coach';
   const hasTrainingAccess = isAdmin || userData.trainingAccess === true;
   const today         = new Date().toISOString().split('T')[0];
   const todayItems    = trainingItems.filter(item => item.date?.toDate?.()?.toISOString().split('T')[0] === today);

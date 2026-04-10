@@ -258,7 +258,9 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
           ...(rawHRStream ? { rawHRStream } : {}), // store raw stream for recalculation
         };
 
-        await setDoc(doc(collection(db, 'runs')), runWithZones);
+        // Deterministic doc ID prevents duplicate runs from concurrent syncs.
+        // A second sync that races with the first just overwrites the same doc.
+        await setDoc(doc(db, 'runs', `strava_${auth.currentUser.uid}_${activity.id}`), runWithZones);
         totalMilesImported += run.miles;
         imported++;
       }

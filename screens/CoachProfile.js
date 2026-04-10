@@ -54,7 +54,7 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
   const [savingSchool, setSavingSchool]     = useState(false);
   const [editingSchool, setEditingSchool]   = useState(false);
 
-  const isAdmin = userData.coachRole === 'admin';
+  const isAdmin = userData.role === 'admin_coach';
 
   // Assistant coach management state
   const [pendingCoaches, setPendingCoaches] = useState([]);
