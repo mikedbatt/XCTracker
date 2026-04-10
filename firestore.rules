@@ -56,7 +56,20 @@ service cloud.firestore {
     match /schools/{schoolId} {
       allow create: if isSignedIn(); // coach creates school during onboarding
       allow read:   if isSignedIn(); // athletes need to read school during join flow
-      allow update: if isCoachAtSchool(schoolId);
+      // Coaches at the school have full update access. Anyone else who is
+      // signed in may update ONLY the pendingAthleteIds / pendingCoachIds
+      // arrays, and only to ADD entries — needed by the athlete + assistant
+      // coach join flows so they can request to join.
+      allow update: if isCoachAtSchool(schoolId)
+        || (
+          isSignedIn()
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['pendingAthleteIds', 'pendingCoachIds'])
+          && request.resource.data.get('pendingAthleteIds', [])
+               .hasAll(resource.data.get('pendingAthleteIds', []))
+          && request.resource.data.get('pendingCoachIds', [])
+               .hasAll(resource.data.get('pendingCoachIds', []))
+        );
       allow delete: if false;
     }
 
