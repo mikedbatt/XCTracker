@@ -32,6 +32,27 @@ export default function AthleteJoinScreen({ onJoinComplete }) {
   const [searching, setSearching] = useState(false);
   const [activeTab, setActiveTab] = useState('code');
 
+  // Look up the head coach (admin_coach) for a school so the search results
+  // can show "Coach: Jane Doe" alongside each school. Helps disambiguate
+  // when multiple schools share the same name (e.g. two Davis High Schools).
+  // Returns null if no head coach found or on error — never throws.
+  const loadHeadCoachName = async (schoolId) => {
+    try {
+      const snap = await getDocs(query(
+        collection(db, 'users'),
+        where('schoolId', '==', schoolId),
+        where('role', '==', 'admin_coach')
+      ));
+      if (snap.empty) return null;
+      const c = snap.docs[0].data();
+      const name = `${c.firstName || ''} ${c.lastName || ''}`.trim();
+      return name || null;
+    } catch (e) {
+      console.warn('Head coach lookup failed for', schoolId, e);
+      return null;
+    }
+  };
+
   const handleSearch = async () => {
     if (!searchQuery || searchQuery.length < 3) {
       Alert.alert('Search', 'Please enter at least 3 characters to search.');
@@ -48,8 +69,15 @@ export default function AthleteJoinScreen({ onJoinComplete }) {
       );
       const snapshot = await getDocs(q);
       const results = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      setSearchResults(results);
-      if (results.length === 0) {
+
+      // Decorate each result with its head coach's name in parallel.
+      const enriched = await Promise.all(results.map(async (s) => ({
+        ...s,
+        headCoachName: await loadHeadCoachName(s.id),
+      })));
+
+      setSearchResults(enriched);
+      if (enriched.length === 0) {
         Alert.alert('No results', 'No schools found. Try a different search or ask your coach for the join code.');
       }
     } catch (error) {
@@ -74,7 +102,9 @@ export default function AthleteJoinScreen({ onJoinComplete }) {
         return;
       }
       const schoolDoc = snapshot.docs[0];
-      setSelectedSchool({ id: schoolDoc.id, ...schoolDoc.data() });
+      const school = { id: schoolDoc.id, ...schoolDoc.data() };
+      school.headCoachName = await loadHeadCoachName(school.id);
+      setSelectedSchool(school);
     } catch (error) {
       Alert.alert('Error', 'Could not find that join code. Please try again.');
     }
@@ -222,6 +252,9 @@ function SchoolCard({ school, onJoin, loading }) {
         <Text style={styles.schoolName}>{school.name}</Text>
         {school.mascot ? <Text style={styles.schoolMascot}>{school.mascot}</Text> : null}
         <Text style={styles.schoolLocation}>{school.city}, {school.state}</Text>
+        {school.headCoachName ? (
+          <Text style={styles.schoolCoach}>Coach: {school.headCoachName}</Text>
+        ) : null}
       </View>
       <Button label="Request to Join" onPress={onJoin} loading={loading} size="sm" />
     </Card>
@@ -264,6 +297,7 @@ const styles = StyleSheet.create({
   schoolName:    { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
   schoolMascot:  { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginTop: 2 },
   schoolLocation: { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted, marginTop: 2 },
+  schoolCoach:    { fontSize: FONT_SIZE.sm, color: BRAND, fontWeight: FONT_WEIGHT.semibold, marginTop: 2 },
   skipButton:    { marginTop: SPACE.xl, alignItems: 'center' },
   skipText:      { color: NEUTRAL.muted, fontSize: FONT_SIZE.sm },
 });
