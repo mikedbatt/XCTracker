@@ -267,17 +267,18 @@ export async function autoSyncStrava(userId, userData, teamZoneSettings) {
       const run = stravaActivityToRun(activity, userId, userData?.schoolId);
       if (!run) continue;
 
-      // Fetch streams (HR + velocity) for zone data
+      // Fetch streams (HR + velocity) only to compute zone breakdowns at sync
+      // time. We do NOT persist the raw streams — storing one entry per
+      // second of activity inline on the run doc was OOM-crashing the app
+      // for users with lots of synced runs. zoneSeconds + paceZoneSeconds
+      // are the durable summaries; recalculation if a coach changes
+      // boundaries later is no longer possible (acceptable trade-off).
       let zoneSeconds = null;
-      let rawHRStream = null;
-      let rawPaceStream = null;
       let paceZoneSeconds = null;
       try {
         const { hrStream, paceStream } = await fetchStravaStreams(accessToken, activity.id);
 
-        // HR zones
         if (hrStream && maxHR) {
-          rawHRStream = hrStream;
           const breakdown = calcZoneBreakdownFromStream(hrStream, maxHR, boundaries);
           if (breakdown) {
             zoneSeconds = {};
@@ -285,13 +286,9 @@ export async function autoSyncStrava(userId, userData, teamZoneSettings) {
           }
         }
 
-        // Pace zones (if athlete has VDOT set)
-        if (paceStream) {
-          rawPaceStream = paceStream;
-          if (userData?.trainingPaces) {
-            const { calcPaceZoneBreakdown } = await import('./utils/vdotUtils.js');
-            paceZoneSeconds = calcPaceZoneBreakdown(paceStream, userData.trainingPaces);
-          }
+        if (paceStream && userData?.trainingPaces) {
+          const { calcPaceZoneBreakdown } = await import('./utils/vdotUtils.js');
+          paceZoneSeconds = calcPaceZoneBreakdown(paceStream, userData.trainingPaces);
         }
 
         await new Promise(r => setTimeout(r, 200));
@@ -305,9 +302,7 @@ export async function autoSyncStrava(userId, userData, teamZoneSettings) {
       await setDoc(doc(db, 'runs', `strava_${userId}_${activity.id}`), {
         ...run,
         ...(zoneSeconds ? { zoneSeconds, hasStreamData: true } : { hasStreamData: false }),
-        ...(rawHRStream ? { rawHRStream } : {}),
-        ...(rawPaceStream ? { rawPaceStream, hasPaceData: true } : { hasPaceData: false }),
-        ...(paceZoneSeconds ? { paceZoneSeconds } : {}),
+        ...(paceZoneSeconds ? { paceZoneSeconds, hasPaceData: true } : { hasPaceData: false }),
       });
 
       totalMilesImported += run.miles;

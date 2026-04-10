@@ -233,15 +233,15 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
         const run = stravaActivityToRun(activity, auth.currentUser.uid, userData.schoolId);
         if (!run) { skipped++; continue; }
 
-        // Try to fetch HR stream for accurate zone data
-        // Rate limit: only fetch streams for activities that have HR data
+        // Fetch HR stream only to compute zoneSeconds at sync time. We do
+        // NOT persist the raw stream — storing one entry per second of
+        // activity inline on the run doc was OOM-crashing the app for
+        // users with lots of synced runs.
         let zoneSeconds = null;
-        let rawHRStream = null;
         if (activity.average_heartrate && activity.has_heartrate) {
           try {
             const stream = await fetchStravaHRStream(token, activity.id);
             if (stream) {
-              rawHRStream = stream; // Store raw { hr, seconds } array for recalculation
               const breakdown = calcZoneBreakdownFromStream(stream, maxHR, boundaries);
               if (breakdown) {
                 zoneSeconds = {};
@@ -255,7 +255,6 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
         const runWithZones = {
           ...run,
           ...(zoneSeconds ? { zoneSeconds, hasStreamData: true } : { hasStreamData: false }),
-          ...(rawHRStream ? { rawHRStream } : {}), // store raw stream for recalculation
         };
 
         // Deterministic doc ID prevents duplicate runs from concurrent syncs.
