@@ -57,6 +57,14 @@
         {
           "photosPermission": "Allow access to attach photos to team messages."
         }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow TeamBase to save shared photos to your camera roll.",
+          "savePhotosPermission": "Allow TeamBase to save shared photos to your camera roll.",
+          "isAccessMediaLocationEnabled": false
+        }
       ]
     ],
     "experiments": {

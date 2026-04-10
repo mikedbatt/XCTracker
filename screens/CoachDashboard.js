@@ -38,6 +38,7 @@ import CoachProfile from '../screens/CoachProfile';
 import CalendarScreen from '../screens/CalendarScreen';
 import { TYPE_COLORS } from '../constants/training';
 import ManageGroups from '../screens/ManageGroups';
+import ManageRoster from '../screens/ManageRoster';
 import ManageSeasons from '../screens/ManageSeasons';
 import RaceManager from '../screens/RaceManager';
 import { getActiveSeason, getPhaseForSeason, getCompletedSeasons } from '../screens/SeasonPlanner';
@@ -290,7 +291,7 @@ export default function CoachDashboard({ userData }) {
   const [profileVisible,      setProfileVisible]      = useState(false);
   const [groups,              setGroups]              = useState([]);
   const [groupFilter,         setGroupFilter]         = useState('all');
-  const [trainingSection,     setTrainingSection]     = useState(null); // null | 'hub' | 'groups' | 'seasons' | 'weekly' | 'calendar' | 'races'
+  const [trainingSection,     setTrainingSection]     = useState(null); // null | 'hub' | 'groups' | 'roster' | 'seasons' | 'weekly' | 'calendar' | 'races'
   const [nextMeet,            setNextMeet]            = useState(null);
   const [addFromDashboard,    setAddFromDashboard]    = useState(false);
   const [pendingWorkout,      setPendingWorkout]      = useState(null);
@@ -1256,6 +1257,16 @@ export default function CoachDashboard({ userData }) {
           <ManageGroups
             schoolId={userData.schoolId}
             athletes={athletes}
+            onClose={() => { setTrainingSection('hub'); loadDashboard(); }}
+          />
+        </View>
+      )}
+      {/* Training > Roster */}
+      {trainingSection === 'roster' && (
+        <View style={styles.subScreen}>
+          <ManageRoster
+            schoolId={userData.schoolId}
+            groups={groups}
             onClose={() => { setTrainingSection('hub'); loadDashboard(); }}
           />
         </View>

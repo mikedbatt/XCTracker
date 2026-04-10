@@ -43,6 +43,11 @@ export default function TrainingHub({ school, athletes, groups, trainingItems, n
     return d >= weekStart && d < weekEnd;
   }).length;
 
+  // Roster card summary — show pending count (if any) so the head coach
+  // notices unapproved athletes without having to drill in.
+  const pendingAthletes = (athletes || []).filter(a => a.status === 'pending').length;
+  const totalAthletes   = (athletes || []).length;
+
   const cards = [
     {
       key: 'groups',
@@ -51,6 +56,14 @@ export default function TrainingHub({ school, athletes, groups, trainingItems, n
       subtitle: groupCount > 0
         ? `${groupCount} group${groupCount !== 1 ? 's' : ''} · ${athleteCount} athlete${athleteCount !== 1 ? 's' : ''} assigned`
         : 'Create groups and assign athletes',
+    },
+    {
+      key: 'roster',
+      icon: 'person-remove-outline',
+      title: 'Roster',
+      subtitle: totalAthletes > 0
+        ? `${totalAthletes} athlete${totalAthletes !== 1 ? 's' : ''}${pendingAthletes > 0 ? `  ·  ${pendingAthletes} pending` : ''}`
+        : 'Add or remove athletes from your team',
     },
     {
       key: 'seasons',

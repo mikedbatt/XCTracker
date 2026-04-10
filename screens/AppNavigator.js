@@ -213,15 +213,19 @@ export default function AppNavigator() {
     return <ParentLinkScreen onLinkComplete={handleOnboardingComplete} />;
   }
 
-  // Main app dashboards
+  // Main app dashboards. handleOnboardingComplete doubles as a `refreshUser`
+  // callback — it re-fetches the user doc from Firestore and re-evaluates
+  // which onboarding step (if any) the user belongs in. Dashboards call this
+  // after destructive profile changes like "leave team" so the user lands
+  // back in the right onboarding flow without having to sign out and in.
   const role = userData?.role;
   if (role === 'admin_coach' || role === 'assistant_coach') {
-    return <CoachDashboard userData={userData} />;
+    return <CoachDashboard userData={userData} refreshUser={handleOnboardingComplete} />;
   }
   if (role === 'parent') {
-    return <ParentDashboard userData={userData} />;
+    return <ParentDashboard userData={userData} refreshUser={handleOnboardingComplete} />;
   }
-  return <AthleteDashboard userData={userData} />;
+  return <AthleteDashboard userData={userData} refreshUser={handleOnboardingComplete} />;
 }
 
 const styles = StyleSheet.create({

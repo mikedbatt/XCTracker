@@ -27,6 +27,8 @@ import {
     View,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
+import * as FileSystem from 'expo-file-system';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from '../firebaseConfig';
 import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SPACE } from '../constants/design';
@@ -169,6 +171,38 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
     setPosting(false);
   };
 
+  const handleSaveImage = async (imageUrl) => {
+    if (!imageUrl) return;
+    try {
+      // Request permission first; bail with a friendly message if denied
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission needed',
+          'TeamBase needs photo library access to save images. You can enable it in Settings → TeamBase → Photos.'
+        );
+        return;
+      }
+
+      // Download the remote image to a local temp file, then save to camera roll
+      const filename = `teambase_${Date.now()}.jpg`;
+      const localPath = FileSystem.cacheDirectory + filename;
+      const download = await FileSystem.downloadAsync(imageUrl, localPath);
+      if (download.status !== 200) throw new Error(`HTTP ${download.status}`);
+
+      await MediaLibrary.saveToLibraryAsync(download.uri);
+
+      // Best-effort cleanup of the temp file
+      try { await FileSystem.deleteAsync(download.uri, { idempotent: true }); }
+      catch (e) { console.warn('Temp file cleanup:', e); }
+
+      Alert.alert('Saved', 'Image saved to your camera roll.');
+    } catch (e) {
+      console.warn('Save image failed:', e);
+      Alert.alert('Could not save', 'Something went wrong saving this image. Please try again.');
+    }
+  };
+
   const handleDelete = (post) => {
     const isOwn = post.authorId === myUid;
     Alert.alert(
@@ -235,7 +269,21 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
             </View>
           )}
           {post.imageUrl && (
-            <Image source={{ uri: post.imageUrl }} style={styles.bubbleImage} resizeMode="cover" />
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onLongPress={() => {
+                Alert.alert(
+                  'Save image',
+                  'Save this image to your camera roll?',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Save', onPress: () => handleSaveImage(post.imageUrl) },
+                  ]
+                );
+              }}
+            >
+              <Image source={{ uri: post.imageUrl }} style={styles.bubbleImage} resizeMode="cover" />
+            </TouchableOpacity>
           )}
           {post.text ? <Text style={[styles.bubbleText, isOwn && { color: '#fff' }]}>{post.text}</Text> : null}
           <View style={styles.bubbleFooter}>

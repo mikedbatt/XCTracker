@@ -123,7 +123,7 @@ function buildZoneBreakdown(runs, maxHR, boundaries, athleteAge, customMaxHR) {
   return { breakdown, hasStreamData: hasAnyStreamData };
 }
 
-export default function AthleteDashboard({ userData: userDataProp }) {
+export default function AthleteDashboard({ userData: userDataProp, refreshUser }) {
   const [userOverrides,        setUserOverrides]        = useState({});
   const userData = { ...userDataProp, ...userOverrides };
   const [school,               setSchool]               = useState(null);
@@ -1084,7 +1084,7 @@ export default function AthleteDashboard({ userData: userDataProp }) {
       )}
       {profileVisible && (
         <View style={styles.subScreen}>
-          <AthleteProfile userData={userData} school={school} coachDisabledHR={coachDisabledHR} onClose={async () => {
+          <AthleteProfile userData={userData} school={school} coachDisabledHR={coachDisabledHR} refreshUser={refreshUser} onClose={async () => {
             try {
               const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
               if (userDoc.exists()) {

@@ -26,7 +26,7 @@ import {
 import { calcVDOT, getTrainingPaces, formatPace, parseTimeToSeconds, RACE_DISTANCES } from '../utils/vdotUtils';
 import StravaConnect from './StravaConnect';
 
-export default function AthleteProfile({ userData, school, coachDisabledHR = false, onClose, onUpdated }) {
+export default function AthleteProfile({ userData, school, coachDisabledHR = false, onClose, onUpdated, refreshUser }) {
   const [firstName,     setFirstName]     = useState(userData.firstName || '');
   const [lastName,      setLastName]      = useState(userData.lastName  || '');
   const [email,         setEmail]         = useState(userData.email     || '');
@@ -207,6 +207,56 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
             });
             setLinkedParents(prev => prev.filter(p => p.id !== parent.id));
           } catch (e) { console.warn('Failed to remove parent:', e); }
+        }},
+      ]
+    );
+  };
+
+  const handleLeaveTeam = () => {
+    if (!userData.schoolId) return; // nothing to leave
+    Alert.alert(
+      'Leave team?',
+      `You'll be removed from ${school?.name || 'your school'} and your runs will stop being shared with that coach. You can join a different school right after.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Leave team', style: 'destructive', onPress: async () => {
+          try {
+            const uid = auth.currentUser.uid;
+            const oldSchoolId = userData.schoolId;
+
+            // Clear school + group + status from the user doc. Leaving null
+            // (rather than deleting) keeps the field present so AppNavigator's
+            // schoolId check works correctly.
+            await updateDoc(doc(db, 'users', uid), {
+              schoolId: null,
+              groupId: null,
+              status: null,
+            });
+
+            // Remove from the school's athleteIds and pendingAthleteIds arrays.
+            // arrayRemove on a non-existent value is a no-op so it's safe to
+            // call both unconditionally.
+            try {
+              await updateDoc(doc(db, 'schools', oldSchoolId), {
+                athleteIds: arrayRemove(uid),
+                pendingAthleteIds: arrayRemove(uid),
+              });
+            } catch (e) {
+              // Coach-update permission can be denied here if the rule check
+              // happens after the user doc's schoolId is already cleared.
+              // Not fatal — the array entry just lingers; the coach roster
+              // UI filters by user.schoolId so it won't show.
+              console.warn('Failed to remove from school arrays:', e);
+            }
+
+            // Trigger AppNavigator to re-evaluate onboarding step. Since
+            // schoolId is now null + role is athlete, the user lands in
+            // AthleteJoinScreen automatically.
+            if (refreshUser) await refreshUser();
+          } catch (e) {
+            console.warn('Leave team failed:', e);
+            Alert.alert('Could not leave team', 'Something went wrong. Please try again.');
+          }
         }},
       ]
     );
@@ -576,6 +626,21 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
                 </TouchableOpacity>
               </View>
             ))}
+          </View>
+        )}
+
+        {/* Leave team — only shown when the athlete is connected to a school */}
+        {userData.schoolId && school?.name && (
+          <View style={styles.signOutSection}>
+            <Button
+              label="Leave team"
+              variant="destructive"
+              onPress={handleLeaveTeam}
+              style={{ paddingHorizontal: SPACE['4xl'] }}
+            />
+            <Text style={styles.signOutHint}>
+              Removes you from {school.name} so you can join a different school. You'll keep your account and runs.
+            </Text>
           </View>
         )}
 
