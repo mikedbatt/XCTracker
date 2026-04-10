@@ -413,7 +413,7 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionNum}>1</Text>
             <View style={{ flex: 1 }}>
-              <Text style={styles.sectionTitle}>Season Volume Arc</Text>
+              <Text style={styles.sectionTitle}>Mileage Volume</Text>
               <Text style={styles.sectionSub}>
                 {phaseInfo.weekNum ? `Week ${phaseInfo.weekNum}${totalWeeks ? ` of ${totalWeeks}` : ''} · ${phaseInfo.name}` : 'No active season'}
                 {phaseInfo.daysToChamp != null && phaseInfo.daysToChamp > 0 ? ` · ${phaseInfo.daysToChamp}d to championship` : ''}
@@ -463,7 +463,7 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
                       {/* Actual filled bar */}
                       {w.actual != null && <View style={[styles.volumeActual, { height: actualH + '%', backgroundColor: barColor }]} />}
                     </View>
-                    <Text style={[styles.volumeWeekLabel, w.isCurrent && { color: BRAND, fontWeight: FONT_WEIGHT.bold }]}>
+                    <Text numberOfLines={1} style={[styles.volumeWeekLabel, w.isCurrent && { color: BRAND, fontWeight: FONT_WEIGHT.bold }]}>
                       {w.isCurrent ? 'Now' : `W${i + 1}`}
                     </Text>
                   </View>
@@ -540,7 +540,7 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
                           {/* Actual easy % bar */}
                           {w.easyPct != null && <View style={[styles.volumeActual, { height: barH, backgroundColor: barColor }]} />}
                         </View>
-                        <Text style={[styles.volumeWeekLabel, w.isCurrent && { color: BRAND, fontWeight: FONT_WEIGHT.bold }]}>
+                        <Text numberOfLines={1} style={[styles.volumeWeekLabel, w.isCurrent && { color: BRAND, fontWeight: FONT_WEIGHT.bold }]}>
                           {w.isCurrent ? 'Now' : `W${i + 1}`}
                         </Text>
                       </View>
@@ -823,13 +823,13 @@ const styles = StyleSheet.create({
   phaseChipText:  { fontSize: 10, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.body },
   volumeSummary:  { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginTop: SPACE.md },
   volumeChartScroll: { flexDirection: 'row', alignItems: 'flex-end', gap: 3, paddingVertical: SPACE.md, minHeight: 130 },
-  volumeBar:      { width: 24, alignItems: 'center' },
-  volumeBarCurrent: { borderWidth: 1.5, borderColor: BRAND, borderRadius: RADIUS.sm, padding: 1 },
+  volumeBar:      { width: 24, alignItems: 'center', borderWidth: 1.5, borderColor: 'transparent', borderRadius: RADIUS.sm, padding: 1 },
+  volumeBarCurrent: { borderColor: BRAND },
   volumeBarInner: { height: 80, width: 18, justifyContent: 'flex-end', position: 'relative' },
   volumeTarget:   { position: 'absolute', bottom: 0, width: '100%', backgroundColor: NEUTRAL.bg, borderWidth: 1, borderColor: NEUTRAL.border, borderRadius: 2 },
   volumeActual:   { width: '100%', borderRadius: 2 },
   intensityTargetLine: { position: 'absolute', left: -2, right: -2, height: 2, backgroundColor: NEUTRAL.muted, borderRadius: 1, zIndex: 1 },
-  volumeWeekLabel:{ fontSize: 9, color: NEUTRAL.muted, marginTop: 2 },
+  volumeWeekLabel:{ fontSize: 9, color: NEUTRAL.muted, marginTop: 2, minWidth: 30, textAlign: 'center' },
   volumeLegend:   { flexDirection: 'row', gap: SPACE.lg, marginTop: SPACE.sm },
   legendItem:     { flexDirection: 'row', alignItems: 'center', gap: SPACE.xs },
   legendDot:      { width: 8, height: 8, borderRadius: 4 },

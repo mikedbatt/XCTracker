@@ -22,12 +22,15 @@ import {
   parseBirthdate,
 } from '../zoneConfig';
 import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
+import RunDetailModal from './RunDetailModal';
 
 export default function TeammateProfile({ athlete, school, onBack }) {
   const [runs,            setRuns]            = useState([]);
   const [loading,         setLoading]         = useState(true);
   const [totalMiles,      setTotalMiles]       = useState(0);
   const [teamZoneSettings, setTeamZoneSettings] = useState(null);
+  const [selectedRun,     setSelectedRun]     = useState(null);
+  const [runDetailVisible, setRunDetailVisible] = useState(false);
 
   const primaryColor = school?.primaryColor || '#213f96';
   const myUid = auth.currentUser?.uid;
@@ -300,7 +303,12 @@ export default function TeammateProfile({ athlete, school, onBack }) {
               weekday: 'short', month: 'short', day: 'numeric'
             });
             return (
-              <View key={run.id} style={styles.runCard}>
+              <TouchableOpacity
+                key={run.id}
+                style={styles.runCard}
+                activeOpacity={0.7}
+                onPress={() => { setSelectedRun(run); setRunDetailVisible(true); }}
+              >
                 <View style={styles.runTop}>
                   <View style={styles.runLeft}>
                     <Text style={styles.runMiles}>{run.miles} mi</Text>
@@ -308,21 +316,32 @@ export default function TeammateProfile({ athlete, school, onBack }) {
                   </View>
                   <View style={styles.runMiddle}>
                     {run.duration && <Text style={styles.runDetail}>{run.duration}</Text>}
-                    {run.heartRate && <Text style={styles.runDetail}>{run.heartRate} bpm avg</Text>}
-                    {run.hasStreamData && (
-                      <View style={[styles.zoneBadge, { backgroundColor: '#e8edf8' }]}>
-                        <Text style={[styles.zoneBadgeText, { color: '#213f96' }]}>HR zones ✓</Text>
-                      </View>
-                    )}
                   </View>
+                  {run.effort != null && (
+                    <View style={styles.runRight}>
+                      <Text style={styles.effortLabelSmall}>Effort</Text>
+                      <Text style={styles.effortValue}>{run.effort}/10</Text>
+                    </View>
+                  )}
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })}
         </View>
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      <RunDetailModal
+        run={selectedRun}
+        visible={runDetailVisible}
+        onClose={() => { setRunDetailVisible(false); setSelectedRun(null); }}
+        primaryColor={primaryColor}
+        athleteAge={athleteAge}
+        zoneSettings={teamZoneSettings}
+        showHRZones={false}
+        trainingPaces={trainingPaces}
+      />
     </View>
   );
 }
@@ -370,6 +389,7 @@ const styles = StyleSheet.create({
   runDate:            { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
   runMiddle:          { flex: 1, gap: 4 },
   runDetail:          { fontSize: 14, color: '#555' },
-  zoneBadge:          { alignSelf: 'flex-start', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-  zoneBadgeText:      { fontSize: 11, fontWeight: '700' },
+  runRight:           { alignItems: 'flex-end' },
+  effortLabelSmall:   { fontSize: 11, color: '#9CA3AF' },
+  effortValue:        { fontSize: 14, fontWeight: '700', color: '#111827' },
 });

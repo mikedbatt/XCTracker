@@ -76,11 +76,14 @@ export function stravaActivityToRun(activity, userId, schoolId) {
   const miles = (activity.distance / 1609.344);
   if (miles < 0.1) return null; // skip tiny activities
 
-  // Convert seconds to MM:SS
+  // Convert seconds to MM:SS, or HH:MM:SS for runs ≥ 1 hour
   const totalSeconds = activity.moving_time;
-  const mins = Math.floor(totalSeconds / 60);
-  const secs = totalSeconds % 60;
-  const duration = `${mins}:${secs.toString().padStart(2, '0')}`;
+  const hours = Math.floor(totalSeconds / 3600);
+  const mins  = Math.floor((totalSeconds % 3600) / 60);
+  const secs  = totalSeconds % 60;
+  const duration = hours > 0
+    ? `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+    : `${mins}:${secs.toString().padStart(2, '0')}`;
 
   // Calculate average pace from speed (sec/mile)
   const averagePace = activity.average_speed > 0

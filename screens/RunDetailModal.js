@@ -265,16 +265,27 @@ export default function RunDetailModal({
       Alert.alert('Missing info', 'Please enter miles for this run.');
       return;
     }
+    let normalizedDuration = editDuration;
     if (editDuration) {
       const parts = editDuration.split(':');
-      const validFormat =
-        (parts.length === 2 || parts.length === 3) &&
-        parts.every(p => /^\d+$/.test(p)) &&
-        parseInt(parts[parts.length - 1]) < 60 &&
-        parseInt(parts[parts.length - 2]) < 60;
+      const allDigits = parts.every(p => /^\d+$/.test(p));
+      // MM:SS — minutes can exceed 60 (legacy Strava sync stored "90:00" for 90-min runs).
+      // HH:MM:SS — minutes and seconds must be < 60.
+      const validFormat = allDigits && (
+        (parts.length === 2 && parseInt(parts[1]) < 60) ||
+        (parts.length === 3 && parseInt(parts[1]) < 60 && parseInt(parts[2]) < 60)
+      );
       if (!validFormat) {
         Alert.alert('Invalid duration', 'Please use MM:SS or HH:MM:SS format (e.g. 42:30 or 1:05:00).');
         return;
+      }
+      // Normalize MM:SS with MM >= 60 → HH:MM:SS so it displays correctly
+      if (parts.length === 2 && parseInt(parts[0]) >= 60) {
+        const totalSecs = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+        const h = Math.floor(totalSecs / 3600);
+        const m = Math.floor((totalSecs % 3600) / 60);
+        const s = totalSecs % 60;
+        normalizedDuration = `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
       }
     }
     setSaving(true);
@@ -283,7 +294,7 @@ export default function RunDetailModal({
       const diff     = newMiles - (run.miles || 0);
       await updateDoc(doc(db, 'runs', run.id), {
         miles:     newMiles,
-        duration:  editDuration || null,
+        duration:  normalizedDuration || null,
         heartRate: editHR ? parseInt(editHR) : null,
         effort:    editEffort,
         notes:     editNotes || null,
@@ -382,13 +393,13 @@ export default function RunDetailModal({
         </KeyboardAvoidingView>
       ) : (
         <View style={styles.container}>
-          <View style={[styles.header, { backgroundColor: primaryColor }]}>
+          <View style={styles.header}>
             <View style={styles.headerTop}>
               <TouchableOpacity onPress={onClose}>
-                <Text style={styles.closeText}>✕ Close</Text>
+                <Text style={[styles.closeText, { color: primaryColor }]}>✕ Close</Text>
               </TouchableOpacity>
               {isOwner && (
-                <TouchableOpacity onPress={handleStartEdit} style={styles.editBtn}>
+                <TouchableOpacity onPress={handleStartEdit} style={[styles.editBtn, { backgroundColor: primaryColor }]}>
                   <Text style={styles.editBtnText}>✏️ Edit</Text>
                 </TouchableOpacity>
               )}
@@ -505,15 +516,15 @@ export default function RunDetailModal({
 }
 
 const styles = StyleSheet.create({
-  container:        { flex: 1, backgroundColor: '#F5F6FA' },
-  header:           { paddingTop: 60, paddingBottom: 24, paddingHorizontal: 24 },
+  container:        { flex: 1, backgroundColor: NEUTRAL.bg },
+  header:           { backgroundColor: NEUTRAL.card, paddingTop: Platform.OS === 'ios' ? SPACE['5xl'] : SPACE['3xl'], paddingBottom: SPACE['2xl'], paddingHorizontal: SPACE['2xl'], borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
   headerTop:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  closeText:        { color: 'rgba(255,255,255,0.85)', fontSize: 15 },
-  editBtn:          { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
+  closeText:        { fontSize: 15, fontWeight: '600' },
+  editBtn:          { borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
   editBtnText:      { color: '#fff', fontWeight: '700', fontSize: 14 },
-  headerMiles:      { fontSize: 42, fontWeight: 'bold', color: '#fff' },
-  headerDate:       { fontSize: 16, color: 'rgba(255,255,255,0.85)', marginTop: 4 },
-  headerDuration:   { fontSize: 22, color: 'rgba(255,255,255,0.9)', marginTop: 6, fontWeight: '600' },
+  headerMiles:      { fontSize: 42, fontWeight: 'bold', color: BRAND_DARK },
+  headerDate:       { fontSize: 16, color: NEUTRAL.body, marginTop: 4 },
+  headerDuration:   { fontSize: 22, color: NEUTRAL.text, marginTop: 6, fontWeight: '600' },
   scroll:           { flex: 1 },
   section:          { backgroundColor: '#fff', borderRadius: 14, margin: 16, marginBottom: 0, padding: 16 },
   sectionTitle:     { fontSize: 13, fontWeight: '700', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 14 },
