@@ -23,7 +23,7 @@ import {
   FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE,
 } from '../constants/design';
 
-export default function AthleteJoinScreen({ onJoinComplete }) {
+export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
   const [joinCode, setJoinCode] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -229,10 +229,12 @@ export default function AthleteJoinScreen({ onJoinComplete }) {
         </View>
       )}
 
-      {/* Skip option */}
+      {/* Skip option — drops the athlete into the dashboard without a
+          school. Uses the dedicated onSkip path so AppNavigator's
+          refreshUser doesn't immediately re-route back here. */}
       <TouchableOpacity
         style={styles.skipButton}
-        onPress={() => onJoinComplete && onJoinComplete()}
+        onPress={() => (onSkip || onJoinComplete)?.()}
       >
         <Text style={styles.skipText}>Skip for now — I'll join a school later</Text>
       </TouchableOpacity>

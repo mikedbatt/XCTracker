@@ -14,7 +14,7 @@ import {
 } from '../constants/design';
 import { getActiveSeason, getPhaseForSeason, SPORTS } from './SeasonPlanner';
 
-export default function TrainingHub({ school, athletes, groups, trainingItems, nextMeet, onNavigate }) {
+export default function TrainingHub({ school, athletes, pendingAthletes: pendingAthletesList = [], groups, trainingItems, nextMeet, onNavigate }) {
   // Groups summary
   const groupCount = groups.length;
   const athleteCount = athletes.filter(a => a.groupId).length;
@@ -44,9 +44,12 @@ export default function TrainingHub({ school, athletes, groups, trainingItems, n
   }).length;
 
   // Roster card summary — show pending count (if any) so the head coach
-  // notices unapproved athletes without having to drill in.
-  const pendingAthletes = (athletes || []).filter(a => a.status === 'pending').length;
-  const totalAthletes   = (athletes || []).length;
+  // notices unapproved athletes without having to drill in. CoachDashboard
+  // keeps pending athletes in a separate state from approved ones, so we
+  // accept them as a dedicated prop rather than trying to derive from
+  // `athletes` (which is approved-only).
+  const pendingAthletes = pendingAthletesList.length;
+  const totalAthletes   = (athletes || []).length + pendingAthletes;
 
   const cards = [
     {
@@ -59,11 +62,12 @@ export default function TrainingHub({ school, athletes, groups, trainingItems, n
     },
     {
       key: 'roster',
-      icon: 'person-remove-outline',
+      icon: 'person-add-outline',
       title: 'Roster',
       subtitle: totalAthletes > 0
-        ? `${totalAthletes} athlete${totalAthletes !== 1 ? 's' : ''}${pendingAthletes > 0 ? `  ·  ${pendingAthletes} pending` : ''}`
-        : 'Add or remove athletes from your team',
+        ? `${totalAthletes} athlete${totalAthletes !== 1 ? 's' : ''}${pendingAthletes > 0 ? `  ·  ${pendingAthletes} awaiting approval` : ''}`
+        : 'Approve, view, or remove athletes',
+      badge: pendingAthletes,
     },
     {
       key: 'seasons',
@@ -112,6 +116,11 @@ export default function TrainingHub({ school, athletes, groups, trainingItems, n
             <View style={styles.cardLeft}>
               <View style={styles.iconCircle}>
                 <Ionicons name={card.icon} size={24} color={BRAND} />
+                {card.badge > 0 && (
+                  <View style={styles.cardBadge}>
+                    <Text style={styles.cardBadgeText}>{card.badge > 99 ? '99+' : card.badge}</Text>
+                  </View>
+                )}
               </View>
               <View style={styles.cardText}>
                 <Text style={styles.cardTitle}>{card.title}</Text>
@@ -135,6 +144,8 @@ const styles = StyleSheet.create({
   card:         { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', ...SHADOW.sm },
   cardLeft:     { flexDirection: 'row', alignItems: 'center', flex: 1, gap: SPACE.md },
   iconCircle:   { width: 44, height: 44, borderRadius: RADIUS.full, backgroundColor: BRAND_LIGHT, alignItems: 'center', justifyContent: 'center' },
+  cardBadge:    { position: 'absolute', top: -4, right: -4, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: '#dc2626', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5, borderWidth: 2, borderColor: '#fff' },
+  cardBadgeText:{ color: '#fff', fontSize: 11, fontWeight: FONT_WEIGHT.bold },
   cardText:     { flex: 1 },
   cardTitle:    { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: 2 },
   cardSubtitle: { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, lineHeight: 18 },

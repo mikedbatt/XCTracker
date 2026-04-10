@@ -123,7 +123,7 @@ function buildZoneBreakdown(runs, maxHR, boundaries, athleteAge, customMaxHR) {
   return { breakdown, hasStreamData: hasAnyStreamData };
 }
 
-export default function AthleteDashboard({ userData: userDataProp, refreshUser }) {
+export default function AthleteDashboard({ userData: userDataProp, refreshUser, goToJoinScreen }) {
   const [userOverrides,        setUserOverrides]        = useState({});
   const userData = { ...userDataProp, ...userOverrides };
   const [school,               setSchool]               = useState(null);
@@ -185,6 +185,11 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser }
   const [hrZonePref,   setHrZonePref]   = useState(userData.showHRZones);
   const [myGroup,      setMyGroup]      = useState(null);
   const [leaderboardFilter, setLeaderboardFilter] = useState('all');
+  // Bottom nav height is measured at runtime so the sub-screen overlay sits
+  // exactly on top of it (no sliver of the underlying dashboard showing
+  // through). Initial value is a sensible iOS fallback used only for the
+  // first frame before onLayout fires.
+  const [navHeight, setNavHeight] = useState(Platform.OS === 'ios' ? 82 : 56);
 
   // Load reviewed seasons from Firestore on mount
   useEffect(() => {
@@ -513,7 +518,13 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser }
   if (loading) return <View style={styles.loading}><ActivityIndicator size="large" color={BRAND} /></View>;
 
   const primaryColor = school?.primaryColor || BRAND;
-  const isApproved = userData.status === 'approved';
+  // Three distinct states for an athlete:
+  //   - !hasSchool                            → not on a team (skipped or removed)
+  //   - hasSchool && status === 'pending'     → awaiting coach approval
+  //   - hasSchool && status === 'approved'    → fully on the team
+  const hasSchool  = !!userData.schoolId;
+  const isPending  = hasSchool && userData.status === 'pending';
+  const isApproved = hasSchool && userData.status === 'approved';
   const targetPct = weeklyTarget > 0 ? Math.min(weeklyMiles / weeklyTarget, 1) : 0;
   const rawPct = weeklyTarget > 0 ? weeklyMiles / weeklyTarget : 0;
   const overPct = rawPct > 1 ? Math.round((rawPct - 1) * 100) : 0;
@@ -592,11 +603,21 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser }
             <View style={[styles.profileAvatar, { backgroundColor: avatarColor }]}>
               <Text style={styles.profileAvatarText}>{userData.firstName?.[0]}{userData.lastName?.[0]}</Text>
             </View>
-            {pendingParents.length > 0 && (
-              <View style={styles.profileBadge}>
-                <Text style={styles.profileBadgeText}>{pendingParents.length}</Text>
-              </View>
-            )}
+            {(() => {
+              // Show the dashboard avatar badge only for parent connections
+              // the athlete has not yet acknowledged. seenParentIds is
+              // written to the user doc by AthleteProfile when the athlete
+              // visits the Connections tab; the override gets refreshed by
+              // the profile onClose handler below.
+              const seenIds = userData.seenParentIds || [];
+              const unseen = pendingParents.filter(p => !seenIds.includes(p.id)).length;
+              if (unseen === 0) return null;
+              return (
+                <View style={styles.profileBadge}>
+                  <Text style={styles.profileBadgeText}>{unseen}</Text>
+                </View>
+              );
+            })()}
           </TouchableOpacity>
         </View>
       </View>
@@ -626,10 +647,20 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser }
           </View>
         )}
 
-        {!isApproved && (
+        {isPending && (
           <View style={styles.pendingBanner}>
             <Text style={styles.pendingText}>Awaiting coach approval — you can log runs in the meantime!</Text>
           </View>
+        )}
+
+        {!hasSchool && (
+          <TouchableOpacity style={styles.noSchoolBanner} activeOpacity={0.85} onPress={() => goToJoinScreen && goToJoinScreen()}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.noSchoolTitle}>You're not on a team yet</Text>
+              <Text style={styles.noSchoolDesc}>Find your school to share runs with your coach and teammates.</Text>
+            </View>
+            <Text style={styles.noSchoolCta}>Find school ›</Text>
+          </TouchableOpacity>
         )}
 
         {/* ── Weekly miles card (compact) ── */}
@@ -1051,27 +1082,27 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser }
       {/* ── Persistent bottom nav ── */}
       {/* ── Sub-screens rendered over content but under nav ── */}
       {seasonReviewVisible && seasonReviewSeason && (
-        <View style={styles.subScreen}>
+        <View style={[styles.subScreen, { bottom: navHeight }]}>
           <SeasonReview season={seasonReviewSeason} school={school} userData={userData} onClose={() => { setSeasonReviewVisible(false); setSeasonReviewSeason(null); }} />
         </View>
       )}
       {calendarVisible && (
-        <View style={styles.subScreen}>
+        <View style={[styles.subScreen, { bottom: navHeight }]}>
           <CalendarScreen userData={userData} school={school} trainingPaces={userData.trainingPaces || null} onClose={() => setCalendarVisible(false)} />
         </View>
       )}
       {stravaVisible && (
-        <View style={styles.subScreen}>
+        <View style={[styles.subScreen, { bottom: navHeight }]}>
           <StravaConnect userData={userData} school={school} onClose={() => { setStravaVisible(false); loadDashboard(); }} onSynced={() => { setStravaVisible(false); setStravaLinked(true); loadDashboard(); }} />
         </View>
       )}
       {feedVisible && (
-        <View style={styles.subScreen}>
+        <View style={[styles.subScreen, { bottom: navHeight }]}>
           <ChannelList userData={userData} school={school} onClose={() => { setFeedVisible(false); loadDashboard(); }} onUnreadChange={(count) => setUnreadFeedCount(count)} />
         </View>
       )}
       {statsVisible && (
-        <View style={styles.subScreen}>
+        <View style={[styles.subScreen, { bottom: navHeight }]}>
           <AthleteAnalytics
             userData={userData}
             school={school}
@@ -1083,8 +1114,8 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser }
         </View>
       )}
       {profileVisible && (
-        <View style={styles.subScreen}>
-          <AthleteProfile userData={userData} school={school} coachDisabledHR={coachDisabledHR} refreshUser={refreshUser} onClose={async () => {
+        <View style={[styles.subScreen, { bottom: navHeight }]}>
+          <AthleteProfile userData={userData} school={school} coachDisabledHR={coachDisabledHR} refreshUser={refreshUser} goToJoinScreen={goToJoinScreen} onClose={async () => {
             try {
               const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
               if (userDoc.exists()) {
@@ -1096,6 +1127,10 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser }
                   vdot: d.vdot, vdotDistance: d.vdotDistance, vdotTime: d.vdotTime,
                   trainingPaces: d.trainingPaces, vdotUpdatedAt: d.vdotUpdatedAt,
                   avatarColor: d.avatarColor,
+                  // Pick up the latest seenParentIds so the dashboard avatar
+                  // badge clears as soon as the profile closes after the
+                  // athlete visited the Connections tab.
+                  seenParentIds: d.seenParentIds,
                 }));
               }
             } catch (e) { console.warn('Failed to refresh user prefs:', e); }
@@ -1109,7 +1144,13 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser }
       )}
 
       {/* ── Persistent bottom nav (rendered last = on top) ── */}
-      <View style={styles.bottomNav}>
+      <View
+        style={styles.bottomNav}
+        onLayout={(e) => {
+          const h = e.nativeEvent.layout.height;
+          if (h > 0 && h !== navHeight) setNavHeight(h);
+        }}
+      >
         <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setStravaVisible(false); setFeedVisible(false); setProfileVisible(false); setStatsVisible(false); }}>
           <Ionicons name="home-outline" size={24} color={!calendarVisible && !stravaVisible && !feedVisible && !profileVisible && !statsVisible ? BRAND : NEUTRAL.muted} />
           <Text style={[styles.bottomNavLabel, !calendarVisible && !stravaVisible && !feedVisible && !profileVisible && !statsVisible && { color: BRAND }]}>Home</Text>
@@ -1161,6 +1202,10 @@ const styles = StyleSheet.create({
   syncingText:         { color: NEUTRAL.body, fontSize: FONT_SIZE.xs },
   pendingBanner:       { backgroundColor: STATUS.warningBg, borderRadius: RADIUS.md, padding: SPACE.md, marginHorizontal: SPACE.lg, marginTop: SPACE.md, alignItems: 'center', borderLeftWidth: 3, borderLeftColor: STATUS.warning },
   pendingText:         { color: '#92400e', fontSize: FONT_SIZE.sm, textAlign: 'center' },
+  noSchoolBanner:      { backgroundColor: BRAND_LIGHT, borderRadius: RADIUS.md, padding: SPACE.lg, marginHorizontal: SPACE.lg, marginTop: SPACE.md, flexDirection: 'row', alignItems: 'center', gap: SPACE.md, borderLeftWidth: 3, borderLeftColor: BRAND },
+  noSchoolTitle:       { color: BRAND_DARK, fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold },
+  noSchoolDesc:        { color: NEUTRAL.body, fontSize: FONT_SIZE.xs, marginTop: 2 },
+  noSchoolCta:         { color: BRAND, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold },
   heroCard:            { marginHorizontal: SPACE.lg, marginTop: SPACE.md, backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, ...SHADOW.sm },
   heroTopRow:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACE.xs },
   heroLabel:           { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.muted, textTransform: 'uppercase', letterSpacing: 0.5 },

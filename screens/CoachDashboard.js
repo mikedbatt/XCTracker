@@ -292,6 +292,11 @@ export default function CoachDashboard({ userData }) {
   const [groups,              setGroups]              = useState([]);
   const [groupFilter,         setGroupFilter]         = useState('all');
   const [trainingSection,     setTrainingSection]     = useState(null); // null | 'hub' | 'groups' | 'roster' | 'seasons' | 'weekly' | 'calendar' | 'races'
+  // Bottom nav height is measured at runtime so the sub-screen overlay sits
+  // exactly on top of it (no sliver of the underlying dashboard showing
+  // through). Initial value is a sensible iOS fallback used only for the
+  // first frame before onLayout fires.
+  const [navHeight,           setNavHeight]           = useState(Platform.OS === 'ios' ? 82 : 56);
   const [nextMeet,            setNextMeet]            = useState(null);
   const [addFromDashboard,    setAddFromDashboard]    = useState(false);
   const [pendingWorkout,      setPendingWorkout]      = useState(null);
@@ -1240,10 +1245,11 @@ export default function CoachDashboard({ userData }) {
       {/* ── Sub-screens rendered over content but under nav ── */}
       {/* Training Hub (shown when Training tab active but no sub-section) */}
       {trainingSection === 'hub' && (
-        <View style={styles.subScreen}>
+        <View style={[styles.subScreen, { bottom: navHeight }]}>
           <TrainingHub
             school={school}
             athletes={athletes}
+            pendingAthletes={pendingAthletes}
             groups={groups}
             trainingItems={trainingItems}
             nextMeet={nextMeet}
@@ -1253,7 +1259,7 @@ export default function CoachDashboard({ userData }) {
       )}
       {/* Training > Manage Groups */}
       {trainingSection === 'groups' && (
-        <View style={styles.subScreen}>
+        <View style={[styles.subScreen, { bottom: navHeight }]}>
           <ManageGroups
             schoolId={userData.schoolId}
             athletes={athletes}
@@ -1263,17 +1269,23 @@ export default function CoachDashboard({ userData }) {
       )}
       {/* Training > Roster */}
       {trainingSection === 'roster' && (
-        <View style={styles.subScreen}>
+        <View style={[styles.subScreen, { bottom: navHeight }]}>
           <ManageRoster
             schoolId={userData.schoolId}
             groups={groups}
+            onPendingResolved={(athleteId) => {
+              // Drop the athlete from the dashboard's pending state right
+              // away so the Program nav + Roster card badges clear without
+              // waiting for the slow loadDashboard refresh on close.
+              setPendingAthletes(prev => prev.filter(a => a.id !== athleteId));
+            }}
             onClose={() => { setTrainingSection('hub'); loadDashboard(); }}
           />
         </View>
       )}
       {/* Training > Manage Seasons */}
       {trainingSection === 'seasons' && (
-        <View style={styles.subScreen}>
+        <View style={[styles.subScreen, { bottom: navHeight }]}>
           <ManageSeasons
             school={school}
             schoolId={userData.schoolId}
@@ -1287,7 +1299,7 @@ export default function CoachDashboard({ userData }) {
       )}
       {/* Training > Races */}
       {trainingSection === 'races' && (
-        <View style={styles.subScreen}>
+        <View style={[styles.subScreen, { bottom: navHeight }]}>
           <RaceManager
             schoolId={userData.schoolId}
             school={school}
@@ -1299,7 +1311,7 @@ export default function CoachDashboard({ userData }) {
       )}
       {/* Training > Weekly Plans */}
       {(trainingSection === 'weekly' && !addFromDashboard) && (
-        <View style={styles.subScreen}>
+        <View style={[styles.subScreen, { bottom: navHeight }]}>
           <WeeklyPlanner
             schoolId={userData.schoolId}
             userData={userData}
@@ -1312,7 +1324,7 @@ export default function CoachDashboard({ userData }) {
       )}
       {/* Training > Calendar */}
       {(trainingSection === 'calendar' || addFromDashboard) && (
-        <View style={styles.subScreen}>
+        <View style={[styles.subScreen, { bottom: navHeight }]}>
           <CalendarScreen
             userData={userData} school={school}
             groups={groups}
@@ -1323,12 +1335,12 @@ export default function CoachDashboard({ userData }) {
         </View>
       )}
       {feedVisible && (
-        <View style={styles.subScreen}>
+        <View style={[styles.subScreen, { bottom: navHeight }]}>
           <ChannelList userData={userData} school={school} groups={groups} athletes={athletes} onClose={() => { setFeedVisible(false); loadDashboard(); }} onUnreadChange={(count) => setUnreadFeedCount(count)} />
         </View>
       )}
       {zonesVisible && (
-        <View style={styles.subScreen}>
+        <View style={[styles.subScreen, { bottom: navHeight }]}>
           <ZoneSettings
             school={school}
             schoolId={userData.schoolId}
@@ -1342,7 +1354,7 @@ export default function CoachDashboard({ userData }) {
         </View>
       )}
       {profileVisible && (
-        <View style={styles.subScreen}>
+        <View style={[styles.subScreen, { bottom: navHeight }]}>
           <CoachProfile
             userData={userData}
             school={school}
@@ -1355,7 +1367,7 @@ export default function CoachDashboard({ userData }) {
         </View>
       )}
       {analyticsVisible && (
-        <View style={styles.subScreen}>
+        <View style={[styles.subScreen, { bottom: navHeight }]}>
           <CoachAnalytics
             athletes={athletes}
             athleteWeeklyMiles={athleteWeeklyMiles}
@@ -1376,7 +1388,7 @@ export default function CoachDashboard({ userData }) {
 
       {/* ── Persistent bottom nav ── */}
       {seasonReviewVisible && seasonReviewSeason && (
-        <View style={styles.subScreen}>
+        <View style={[styles.subScreen, { bottom: navHeight }]}>
           <SeasonReview season={seasonReviewSeason} school={school} userData={userData} athletes={athletes} onClose={() => { setSeasonReviewVisible(false); setSeasonReviewSeason(null); }} />
         </View>
       )}
@@ -1389,14 +1401,27 @@ export default function CoachDashboard({ userData }) {
         groups={groups}
       />
 
-      <View style={styles.bottomNav}>
+      <View
+        style={styles.bottomNav}
+        onLayout={(e) => {
+          const h = e.nativeEvent.layout.height;
+          if (h > 0 && h !== navHeight) setNavHeight(h);
+        }}
+      >
         <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setTrainingSection(null); setFeedVisible(false); setZonesVisible(false); setProfileVisible(false); setAnalyticsVisible(false); setAddFromDashboard(false); }}>
           <Ionicons name="home-outline" size={24} color={!trainingSection && !feedVisible && !zonesVisible && !profileVisible && !analyticsVisible && !addFromDashboard ? BRAND : NEUTRAL.muted} />
           <Text style={[styles.bottomNavLabel, !trainingSection && !feedVisible && !zonesVisible && !profileVisible && !analyticsVisible && !addFromDashboard && { color: BRAND }]}>Home</Text>
         </TouchableOpacity>
         {hasTrainingAccess && (
         <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setFeedVisible(false); setZonesVisible(false); setProfileVisible(false); setAnalyticsVisible(false); setAddFromDashboard(false); setTrainingSection('hub'); }}>
-          <Ionicons name="calendar-outline" size={24} color={trainingSection || addFromDashboard ? BRAND : NEUTRAL.muted} />
+          <View>
+            <Ionicons name="calendar-outline" size={24} color={trainingSection || addFromDashboard ? BRAND : NEUTRAL.muted} />
+            {pendingAthletes.length > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{pendingAthletes.length > 99 ? '99+' : pendingAthletes.length}</Text>
+              </View>
+            )}
+          </View>
           <Text style={[styles.bottomNavLabel, (trainingSection || addFromDashboard) && { color: BRAND }]}>Program</Text>
         </TouchableOpacity>
         )}
@@ -1418,9 +1443,9 @@ export default function CoachDashboard({ userData }) {
         <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setTrainingSection(null); setFeedVisible(false); setZonesVisible(false); setAnalyticsVisible(false); setAddFromDashboard(false); setProfileVisible(true); }}>
           <View>
             <Ionicons name="person-outline" size={24} color={profileVisible ? BRAND : NEUTRAL.muted} />
-            {(pendingAthletes.length + pendingCoachCount) > 0 && (
+            {pendingCoachCount > 0 && (
               <View style={styles.badge}>
-                <Text style={styles.badgeText}>{pendingAthletes.length + pendingCoachCount}</Text>
+                <Text style={styles.badgeText}>{pendingCoachCount}</Text>
               </View>
             )}
           </View>

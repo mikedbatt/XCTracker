@@ -58,17 +58,17 @@ service cloud.firestore {
       allow read:   if isSignedIn(); // athletes need to read school during join flow
       // Coaches at the school have full update access. Anyone else who is
       // signed in may update ONLY the pendingAthleteIds / pendingCoachIds
-      // arrays, and only to ADD entries — needed by the athlete + assistant
-      // coach join flows so they can request to join.
+      // arrays — needed by the athlete + assistant coach join flows to
+      // request to join, AND by the "Leave team" flow to remove themselves
+      // from a pending list when they pick the wrong school. Both additions
+      // and removals are permitted; the worst-case griefing risk (a hostile
+      // user removing someone else's pending entry) is minor since the
+      // affected user can simply re-request to join.
       allow update: if isCoachAtSchool(schoolId)
         || (
           isSignedIn()
           && request.resource.data.diff(resource.data).affectedKeys()
                .hasOnly(['pendingAthleteIds', 'pendingCoachIds'])
-          && request.resource.data.get('pendingAthleteIds', [])
-               .hasAll(resource.data.get('pendingAthleteIds', []))
-          && request.resource.data.get('pendingCoachIds', [])
-               .hasAll(resource.data.get('pendingCoachIds', []))
         );
       allow delete: if false;
     }

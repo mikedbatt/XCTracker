@@ -419,27 +419,7 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
           </View>
         </View>
 
-        {pendingAthletes.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.pendingTitle}>Pending Approvals ({pendingAthletes.length})</Text>
-            {pendingAthletes.map(athlete => (
-              <View key={athlete.id} style={styles.pendingCard}>
-                <View style={styles.pendingInfo}>
-                  <Text style={styles.pendingName}>{athlete.firstName} {athlete.lastName}</Text>
-                  <Text style={styles.pendingEmail}>{athlete.email}</Text>
-                </View>
-                <View style={styles.pendingBtns}>
-                  <TouchableOpacity style={styles.approveBtn} onPress={() => onApproveAthlete && onApproveAthlete(athlete)}>
-                    <Text style={styles.approveBtnText}>Approve</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.denyBtn} onPress={() => onDenyAthlete && onDenyAthlete(athlete)}>
-                    <Text style={styles.denyBtnText}>Deny</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
+        {/* Pending athlete approvals moved to Program → Roster. */}
 
         {/* Pending coach approvals (admin only) */}
         {isAdmin && pendingCoaches.length > 0 && (

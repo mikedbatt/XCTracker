@@ -217,7 +217,7 @@ export default function LoginScreen({ onAuthSuccess }) {
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.title}>TeamBase</Text>
-          <Text style={styles.subtitle}>Cross Country Training App</Text>
+          <Text style={styles.subtitle}>Building Championship Teams</Text>
         </View>
 
         {/* Role Selector - only on sign up */}

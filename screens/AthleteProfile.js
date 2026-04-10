@@ -26,7 +26,7 @@ import {
 import { calcVDOT, getTrainingPaces, formatPace, parseTimeToSeconds, RACE_DISTANCES } from '../utils/vdotUtils';
 import StravaConnect from './StravaConnect';
 
-export default function AthleteProfile({ userData, school, coachDisabledHR = false, onClose, onUpdated, refreshUser }) {
+export default function AthleteProfile({ userData, school, coachDisabledHR = false, onClose, onUpdated, refreshUser, goToJoinScreen }) {
   const [firstName,     setFirstName]     = useState(userData.firstName || '');
   const [lastName,      setLastName]      = useState(userData.lastName  || '');
   const [email,         setEmail]         = useState(userData.email     || '');
@@ -41,6 +41,11 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
   const [hrZoneLoaded,  setHrZoneLoaded]  = useState(false);
   const [avatarColor,   setAvatarColor]   = useState(userData.avatarColor || BRAND);
   const [linkedParents, setLinkedParents] = useState([]);
+  // Tracks which connected parent IDs the athlete has already acknowledged.
+  // Persisted on the user doc so the badge stays cleared across sessions.
+  // When a new parent connects, their ID won't be in this list yet, so the
+  // unseen badge appears until the athlete visits the Connections tab.
+  const [seenParentIds, setSeenParentIds] = useState(userData.seenParentIds || []);
   const [vdotDistance, setVdotDistance] = useState(userData.vdotDistance || '5K');
   const [vdotTimeStr, setVdotTimeStr] = useState(userData.vdotTime || '');
   const [vdotScore, setVdotScore] = useState(userData.vdot || null);
@@ -173,6 +178,35 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
     }
     setSavingVdot(false);
   };
+
+  // Compute how many of the currently-loaded parents the athlete has not
+  // yet acknowledged. Used to show the badge on the Connections tab AND
+  // on the Connected Parents section header.
+  const unseenParentCount = linkedParents.filter(p => !seenParentIds.includes(p.id)).length;
+
+  // Write the current parent IDs into the user doc as "seen". Called when
+  // the athlete opens the Connections tab — this is the moment we treat as
+  // acknowledgment. Idempotent: bails if there are no new IDs to add.
+  const markParentsSeen = async () => {
+    if (linkedParents.length === 0) return;
+    const allIds = linkedParents.map(p => p.id);
+    const hasNew = allIds.some(id => !seenParentIds.includes(id));
+    if (!hasNew) return;
+    setSeenParentIds(allIds);
+    try {
+      await updateDoc(doc(db, 'users', auth.currentUser.uid), { seenParentIds: allIds });
+    } catch (e) { console.warn('Failed to mark parents seen:', e); }
+  };
+
+  // Mark seen as soon as the user lands on the Connections tab AND parents
+  // have finished loading. Re-runs if the loaded parent list changes (e.g.
+  // a new parent connects while the user is on the tab).
+  useEffect(() => {
+    if (activeSection === 'connections' && linkedParents.length > 0) {
+      markParentsSeen();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection, linkedParents]);
 
   const loadLinkedParents = async () => {
     try {
@@ -329,9 +363,9 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
                 {sectionLabels[s]}
                 {s === 'messages' && messages.length > 0 ? ` (${messages.length})` : ''}
               </Text>
-              {s === 'connections' && linkedParents.length > 0 && (
+              {s === 'connections' && unseenParentCount > 0 && (
                 <View style={{ backgroundColor: STATUS.error, borderRadius: 9, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}>
-                  <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>{linkedParents.length}</Text>
+                  <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>{unseenParentCount}</Text>
                 </View>
               )}
             </View>
@@ -603,7 +637,14 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
             </View>
 
             {/* Connected Parents */}
-            <Text style={[styles.sectionTitle, { marginTop: SPACE.xl }]}>Connected parents</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginTop: SPACE.xl }}>
+              <Text style={styles.sectionTitle}>Connected parents</Text>
+              {unseenParentCount > 0 && (
+                <View style={{ backgroundColor: STATUS.error, borderRadius: 9, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}>
+                  <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>{unseenParentCount}</Text>
+                </View>
+              )}
+            </View>
             {linkedParents.length === 0 ? (
               <View style={styles.emptyCard}>
                 <Text style={styles.emptyTitle}>No parents connected</Text>
@@ -640,6 +681,23 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
             />
             <Text style={styles.signOutHint}>
               Removes you from {school.name} so you can join a different school. You'll keep your account and runs.
+            </Text>
+          </View>
+        )}
+
+        {/* Find a school — shown when the athlete has no school yet (skipped
+            the join flow, or was removed by their coach). Routes them back
+            into AthleteJoinScreen via the AppNavigator-level callback. */}
+        {!userData.schoolId && goToJoinScreen && (
+          <View style={styles.signOutSection}>
+            <Button
+              label="Find a school"
+              variant="primary"
+              onPress={() => { onClose && onClose(); goToJoinScreen(); }}
+              style={{ paddingHorizontal: SPACE['4xl'] }}
+            />
+            <Text style={styles.signOutHint}>
+              Search for your school by name or enter a join code from your coach.
             </Text>
           </View>
         )}

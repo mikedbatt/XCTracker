@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import {
-  arrayRemove, collection, doc, getDocs, query, updateDoc, where,
+  arrayRemove, arrayUnion, collection, doc, getDocs, query, updateDoc, where,
 } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
@@ -19,7 +19,7 @@ import {
 // athleteIds + pendingAthleteIds arrays. The athlete's runs stay in
 // Firestore — we just unlink them from the school.
 
-export default function ManageRoster({ schoolId, groups = [], onClose }) {
+export default function ManageRoster({ schoolId, groups = [], onClose, onPendingResolved }) {
   const [loading, setLoading] = useState(true);
   const [athletes, setAthletes] = useState([]);
   const [removing, setRemoving] = useState(null); // athlete id currently being removed
@@ -49,6 +49,50 @@ export default function ManageRoster({ schoolId, groups = [], onClose }) {
       console.warn('Failed to load roster:', e);
     }
     setLoading(false);
+  };
+
+  const handleApprove = async (athlete) => {
+    setRemoving(athlete.id);
+    try {
+      await updateDoc(doc(db, 'users', athlete.id), { status: 'approved' });
+      await updateDoc(doc(db, 'schools', schoolId), {
+        pendingAthleteIds: arrayRemove(athlete.id),
+        athleteIds: arrayUnion(athlete.id),
+      });
+      // Update local state immediately so the row flips from pending → active
+      setAthletes(prev => prev.map(a => a.id === athlete.id ? { ...a, status: 'approved' } : a));
+      // Tell the parent to drop this athlete from its pending state, so the
+      // Program nav badge and TrainingHub Roster card badge clear right
+      // away instead of waiting for the full loadDashboard refresh.
+      if (onPendingResolved) onPendingResolved(athlete.id);
+    } catch (e) {
+      console.warn('Approve athlete failed:', e);
+      Alert.alert('Could not approve', 'Something went wrong. Please try again.');
+    }
+    setRemoving(null);
+  };
+
+  const handleDeny = (athlete) => {
+    const fullName = `${athlete.firstName || ''} ${athlete.lastName || ''}`.trim() || 'this athlete';
+    Alert.alert('Deny request?', `Deny ${fullName}'s request to join the team?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Deny', style: 'destructive', onPress: async () => {
+        setRemoving(athlete.id);
+        try {
+          await updateDoc(doc(db, 'users', athlete.id), { status: 'denied', schoolId: null });
+          await updateDoc(doc(db, 'schools', schoolId), {
+            pendingAthleteIds: arrayRemove(athlete.id),
+          });
+          setAthletes(prev => prev.filter(a => a.id !== athlete.id));
+          // Drop from parent's pending list so the badges clear immediately.
+          if (onPendingResolved) onPendingResolved(athlete.id);
+        } catch (e) {
+          console.warn('Deny athlete failed:', e);
+          Alert.alert('Could not deny', 'Something went wrong. Please try again.');
+        }
+        setRemoving(null);
+      }},
+    ]);
   };
 
   const handleRemove = (athlete) => {
@@ -142,7 +186,7 @@ export default function ManageRoster({ schoolId, groups = [], onClose }) {
           </View>
         ) : athletes.map(a => {
           const isPending = a.status === 'pending';
-          const isRemoving = removing === a.id;
+          const isBusy = removing === a.id;
           return (
             <View key={a.id} style={styles.row}>
               <View style={styles.rowMain}>
@@ -156,16 +200,38 @@ export default function ManageRoster({ schoolId, groups = [], onClose }) {
                 </View>
                 <Text style={styles.sub}>{groupName(a.groupId)}{a.email ? `  ·  ${a.email}` : ''}</Text>
               </View>
-              <TouchableOpacity
-                style={styles.removeBtn}
-                onPress={() => handleRemove(a)}
-                disabled={isRemoving}
-              >
-                {isRemoving
-                  ? <ActivityIndicator size="small" color={STATUS.error} />
-                  : <Text style={styles.removeBtnText}>Remove</Text>
-                }
-              </TouchableOpacity>
+              {isPending ? (
+                <View style={styles.actionGroup}>
+                  <TouchableOpacity
+                    style={styles.approveBtn}
+                    onPress={() => handleApprove(a)}
+                    disabled={isBusy}
+                  >
+                    {isBusy
+                      ? <ActivityIndicator size="small" color="#fff" />
+                      : <Text style={styles.approveBtnText}>Approve</Text>
+                    }
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.denyBtn}
+                    onPress={() => handleDeny(a)}
+                    disabled={isBusy}
+                  >
+                    <Text style={styles.denyBtnText}>Deny</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.removeBtn}
+                  onPress={() => handleRemove(a)}
+                  disabled={isBusy}
+                >
+                  {isBusy
+                    ? <ActivityIndicator size="small" color={STATUS.error} />
+                    : <Text style={styles.removeBtnText}>Remove</Text>
+                  }
+                </TouchableOpacity>
+              )}
             </View>
           );
         })}
@@ -197,4 +263,9 @@ const styles = StyleSheet.create({
   pendingBadgeText:{ fontSize: 10, color: '#c2410c', fontWeight: FONT_WEIGHT.bold },
   removeBtn:      { paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm, borderRadius: RADIUS.md, borderWidth: 1, borderColor: STATUS.error, minWidth: 84, alignItems: 'center' },
   removeBtnText:  { fontSize: FONT_SIZE.sm, color: STATUS.error, fontWeight: FONT_WEIGHT.bold },
+  actionGroup:    { flexDirection: 'row', gap: SPACE.xs },
+  approveBtn:     { paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm, borderRadius: RADIUS.md, backgroundColor: STATUS.success, minWidth: 76, alignItems: 'center' },
+  approveBtnText: { fontSize: FONT_SIZE.sm, color: '#fff', fontWeight: FONT_WEIGHT.bold },
+  denyBtn:        { paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm, borderRadius: RADIUS.md, borderWidth: 1, borderColor: NEUTRAL.border, alignItems: 'center' },
+  denyBtnText:    { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, fontWeight: FONT_WEIGHT.bold },
 });

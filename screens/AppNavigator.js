@@ -69,6 +69,11 @@ export default function AppNavigator() {
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [onboardingStep, setOnboardingStep] = useState(null);
+  // Set when an athlete explicitly taps "Skip for now" on AthleteJoinScreen.
+  // While true, refreshUser() will not auto-route them back into the join
+  // flow even though they have no schoolId. Cleared whenever they actually
+  // join a school. Lives in component state so it resets on app restart.
+  const [skippedSchoolJoin, setSkippedSchoolJoin] = useState(false);
   const notificationListener = useRef();
   const responseListener = useRef();
 
@@ -143,20 +148,59 @@ export default function AppNavigator() {
   };
 
   const handleOnboardingComplete = async () => {
-    // Refresh user data and re-evaluate onboarding step
+    // Refresh user data and re-evaluate the onboarding step. This is also
+    // used as the `refreshUser` callback passed down to dashboards so that
+    // destructive profile actions (e.g. "Leave team") can trigger a full
+    // re-route — for example back to AthleteJoinScreen when an athlete
+    // clears their schoolId. Mirrors the same logic as the onAuthStateChanged
+    // useEffect above.
     if (user) {
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       if (userDoc.exists()) {
         const data = userDoc.data();
         setUserData(data);
-        // Re-check if assistant is still pending
-        if (data.role === 'assistant_coach' && data.schoolId && data.status === 'pending') {
+
+        // The athlete now has a school — clear any "skipped" flag so future
+        // re-routes work correctly if they later leave the team.
+        if (data.schoolId && skippedSchoolJoin) setSkippedSchoolJoin(false);
+
+        // No school yet → route into the per-role onboarding flow, UNLESS
+        // the athlete previously tapped "Skip for now" in this session.
+        if (!data.schoolId) {
+          if (data.role === 'athlete' && skippedSchoolJoin) {
+            setOnboardingStep(null);
+            return;
+          }
+          if (data.role === 'admin_coach')         { setOnboardingStep('coach_setup');   return; }
+          if (data.role === 'assistant_coach')     { setOnboardingStep('assistant_join'); return; }
+          if (data.role === 'athlete')             { setOnboardingStep('athlete_join');   return; }
+          if (data.role === 'parent')              { setOnboardingStep('parent_link');    return; }
+        }
+        // Has a school but assistant is still awaiting approval
+        if (data.role === 'assistant_coach' && data.status === 'pending') {
           setOnboardingStep('assistant_pending');
           return;
         }
       }
     }
     setOnboardingStep(null);
+  };
+
+  // Called when the athlete explicitly taps "Skip for now" on
+  // AthleteJoinScreen. Drops them onto the dashboard without a school and
+  // remembers the choice so refreshUser doesn't immediately route them back.
+  const handleSkipSchoolJoin = () => {
+    setSkippedSchoolJoin(true);
+    setOnboardingStep(null);
+  };
+
+  // Called from the AthleteDashboard / AthleteProfile when a school-less
+  // athlete wants to (re-)join a school. Clears the skipped flag so they
+  // don't bounce right back out, and forces the onboarding step to the
+  // join screen.
+  const handleGoToJoinScreen = () => {
+    setSkippedSchoolJoin(false);
+    setOnboardingStep('athlete_join');
   };
 
   // Loading spinner
@@ -207,7 +251,7 @@ export default function AppNavigator() {
     );
   }
   if (onboardingStep === 'athlete_join') {
-    return <AthleteJoinScreen onJoinComplete={handleOnboardingComplete} />;
+    return <AthleteJoinScreen onJoinComplete={handleOnboardingComplete} onSkip={handleSkipSchoolJoin} />;
   }
   if (onboardingStep === 'parent_link') {
     return <ParentLinkScreen onLinkComplete={handleOnboardingComplete} />;
@@ -225,7 +269,7 @@ export default function AppNavigator() {
   if (role === 'parent') {
     return <ParentDashboard userData={userData} refreshUser={handleOnboardingComplete} />;
   }
-  return <AthleteDashboard userData={userData} refreshUser={handleOnboardingComplete} />;
+  return <AthleteDashboard userData={userData} refreshUser={handleOnboardingComplete} goToJoinScreen={handleGoToJoinScreen} />;
 }
 
 const styles = StyleSheet.create({
