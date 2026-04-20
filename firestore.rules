@@ -186,6 +186,20 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ── Attendance ────────────────────────────────────────────────────────────
+    // Doc ID format: schoolId_athleteId_YYYY-MM-DD.
+    // Coaches at the school write. Signed-in users read (athletes see their own
+    // attendance in-app, parents see their linked athletes', coaches see all).
+    // Keeping read open mirrors the pattern used for runs/checkins since the
+    // in-app UI filters to the requester's relevant scope.
+    match /attendance/{attendanceId} {
+      allow read:   if isSignedIn();
+      allow create, update: if isSignedIn()
+        && isCoachAtSchool(request.resource.data.schoolId);
+      allow delete: if isSignedIn()
+        && isCoachAtSchool(resource.data.schoolId);
+    }
+
     // ── Workout Library ───────────────────────────────────────────────────────
     match /workoutLibrary/{workoutId} {
       allow read:   if isSignedIn()

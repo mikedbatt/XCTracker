@@ -97,6 +97,12 @@ export default function TrainingHub({ school, athletes, pendingAthletes: pending
         ? `Next: ${nextMeet.name} · ${new Date(nextMeet.date?.toDate ? nextMeet.date.toDate() : nextMeet.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
         : 'Manage meets and race results',
     },
+    {
+      key: 'attendance',
+      icon: 'checkmark-circle-outline',
+      title: 'Attendance',
+      subtitle: 'Take roll for today\'s practice',
+    },
   ];
 
   return (

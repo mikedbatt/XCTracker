@@ -67,6 +67,7 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
   const [races, setRaces] = useState([]);
   const [raceMeets, setRaceMeets] = useState([]);
   const [athleteGroup, setAthleteGroup] = useState(null);
+  const [attendance, setAttendance] = useState([]);
 
   const primaryColor = school?.primaryColor || BRAND;
 
@@ -86,7 +87,7 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
     try {
       const schoolId = athlete.schoolId || school?.id;
 
-      const [runsSnap, checkinsSnap, resultsSnap, racesSnap, meetsSnap] = await Promise.all([
+      const [runsSnap, checkinsSnap, resultsSnap, racesSnap, meetsSnap, attendanceSnap] = await Promise.all([
         getDocs(query(collection(db, 'runs'), where('userId', '==', athlete.id), orderBy('date', 'desc'))),
         getDocs(query(collection(db, 'checkins'), where('userId', '==', athlete.id)))
           .catch(() => ({ docs: [] })),
@@ -98,6 +99,8 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
         schoolId
           ? getDocs(query(collection(db, 'raceMeets'), where('schoolId', '==', schoolId))).catch(() => ({ docs: [] }))
           : { docs: [] },
+        getDocs(query(collection(db, 'attendance'), where('athleteId', '==', athlete.id)))
+          .catch(() => ({ docs: [] })),
       ]);
 
       setAllRuns(runsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -112,6 +115,7 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
       setRaceResults(resultsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       setRaces(racesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       setRaceMeets(meetsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setAttendance(attendanceSnap.docs.map(d => d.data()));
 
       // Resolve athlete's group
       if (athlete.groupId && groups?.length > 0) {
@@ -787,6 +791,65 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
             </View>
           )}
 
+          {/* ── Attendance ── */}
+          {(() => {
+            if (attendance.length === 0) return null;
+            const present = attendance.filter(a => a.status === 'present').length;
+            const absent  = attendance.filter(a => a.status === 'absent').length;
+            const excused = attendance.filter(a => a.status === 'excused').length;
+            const rate    = Math.round((present / attendance.length) * 100);
+            const rateColor = rate >= 90 ? STATUS.success : rate >= 75 ? STATUS.warning : STATUS.error;
+            // Last 14 days, newest first
+            const fourteenAgo = new Date();
+            fourteenAgo.setDate(fourteenAgo.getDate() - 14);
+            const recent = [...attendance]
+              .filter(a => a.date && new Date(a.date) >= fourteenAgo)
+              .sort((a, b) => a.date.localeCompare(b.date));
+            const dotColor = (s) => s === 'present' ? STATUS.success : s === 'absent' ? STATUS.error : STATUS.warning;
+            return (
+              <TouchableOpacity style={styles.section} onPress={() => toggle('attendance')} activeOpacity={0.8}>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionNum}>{parentMode ? '5' : '6'}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.sectionTitle}>Attendance</Text>
+                    <Text style={styles.sectionSub}>
+                      <Text style={{ color: rateColor, fontWeight: FONT_WEIGHT.bold }}>{rate}%</Text>
+                      {' · '}{present} present · {absent} absent{excused ? ` · ${excused} excused` : ''}
+                    </Text>
+                  </View>
+                  <Ionicons name={expandedSection === 'attendance' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />
+                </View>
+
+                {expandedSection === 'attendance' && (
+                  <View style={styles.detail}>
+                    <Text style={styles.sectionSub}>Last 14 days</Text>
+                    <View style={styles.attDotRow}>
+                      {recent.length === 0
+                        ? <Text style={styles.detailEmpty}>No records in the last 14 days.</Text>
+                        : recent.map((a, i) => (
+                            <View key={a.date + i} style={styles.attDotWrap}>
+                              <View style={[styles.attDot, { backgroundColor: dotColor(a.status) }]} />
+                              <Text style={styles.attDotLabel}>{a.date.slice(5)}</Text>
+                            </View>
+                          ))}
+                    </View>
+                    <View style={styles.attLegendRow}>
+                      <View style={styles.attLegendItem}>
+                        <View style={[styles.attDot, { backgroundColor: STATUS.success }]} /><Text style={styles.attLegendText}>Present</Text>
+                      </View>
+                      <View style={styles.attLegendItem}>
+                        <View style={[styles.attDot, { backgroundColor: STATUS.error }]} /><Text style={styles.attLegendText}>Absent</Text>
+                      </View>
+                      <View style={styles.attLegendItem}>
+                        <View style={[styles.attDot, { backgroundColor: STATUS.warning }]} /><Text style={styles.attLegendText}>Excused</Text>
+                      </View>
+                    </View>
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })()}
+
         </ScrollView>
       )}
 
@@ -927,4 +990,11 @@ const styles = StyleSheet.create({
   chip:           { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.label, borderWidth: 1, borderColor: NEUTRAL.border, borderRadius: RADIUS.sm, paddingHorizontal: SPACE.sm, paddingVertical: 3 },
   runNote:        { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, fontStyle: 'italic', marginTop: 4 },
   moreRunsText:   { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, textAlign: 'center', paddingVertical: SPACE.md },
+  attDotRow:      { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.sm, marginTop: SPACE.sm, marginBottom: SPACE.md },
+  attDotWrap:     { alignItems: 'center', gap: 4, minWidth: 40 },
+  attDot:         { width: 16, height: 16, borderRadius: 8 },
+  attDotLabel:    { fontSize: 10, color: NEUTRAL.muted },
+  attLegendRow:   { flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.sm },
+  attLegendItem:  { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  attLegendText:  { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted },
 });

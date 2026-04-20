@@ -33,6 +33,7 @@ import {
   FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS, STRAVA_ORANGE,
 } from '../constants/design';
 import AthleteDetailScreen from '../screens/AthleteDetailScreen';
+import AttendanceScreen from '../screens/AttendanceScreen';
 import CoachAnalytics from '../screens/CoachAnalytics';
 import CoachProfile from '../screens/CoachProfile';
 import CalendarScreen from '../screens/CalendarScreen';
@@ -49,6 +50,7 @@ import TimeframePicker, { TIMEFRAMES, getDateRange } from '../screens/TimeframeP
 import TrainingHub from '../screens/TrainingHub';
 import WorkoutDetailModal from '../screens/WorkoutDetailModal';
 import ZoneSettings from '../screens/ZoneSettings';
+import { ACWR_STATUS, calcACWR, getACWRColor, getACWRColorBg } from '../utils/acwrUtils';
 import { batchDocsByIds } from '../utils/batchDocsByIds';
 import { computeVolumeCompliance, getCurrentWeekPace, getAthleteWeeklyTarget } from '../utils/complianceUtils';
 import { calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
@@ -116,7 +118,7 @@ function getDailyTip(phaseName) {
 // ── Overtraining detection ────────────────────────────────────────────────────
 // Uses Monday-aligned weeks and compares this week vs 3-week rolling average
 // to avoid false positives from rolling 7-day window misalignment.
-async function checkOvertraining(athleteId) {
+async function checkOvertraining(athleteId, attendanceStats = null) {
   try {
     const now = new Date();
     const day = now.getDay();
@@ -167,10 +169,23 @@ async function checkOvertraining(athleteId) {
 
     const signals = [];
 
-    // Flag if this week is >15% above the 3-week average
-    if (avg3wk > 0 && thisWeekMiles > avg3wk * 1.15) {
-      const pctOver = Math.round(((thisWeekMiles - avg3wk) / avg3wk) * 100);
-      signals.push({ text: `Miles up ${pctOver}% vs 3-week avg (${Math.round(avg3wk)} mi/wk)`, solo: true });
+    // ACWR-based load-spike signal (replaces the old "miles up 15%" heuristic).
+    // ACWR >1.5 is a well-established injury-risk threshold; >1.3 is elevated.
+    const acwr = calcACWR(allRuns, now);
+    if (acwr.status === ACWR_STATUS.SPIKE) {
+      signals.push({ text: `Training load spike (ACWR ${acwr.ratio.toFixed(2)})`, solo: true });
+    } else if (acwr.status === ACWR_STATUS.ELEVATED) {
+      signals.push({ text: `Elevated training load (ACWR ${acwr.ratio.toFixed(2)})` });
+    }
+
+    // Attendance absence signal — only fires if enough recent days have been
+    // recorded to make the rate meaningful (≥4), avoiding false positives
+    // when a coach has only taken roll once in the window.
+    if (attendanceStats
+        && attendanceStats.recentRecorded >= 4
+        && attendanceStats.recentAbsenceRate >= 0.25) {
+      const pct = Math.round(attendanceStats.recentAbsenceRate * 100);
+      signals.push({ text: `Missed ${pct}% of recent practices` });
     }
 
     const highEffortDays = thisWeekRuns.filter(r => (r.effort || 0) >= 8).length;
@@ -283,6 +298,8 @@ export default function CoachDashboard({ userData }) {
   const [athlete3WeekAvg,     setAthlete3WeekAvg]     = useState({});
   const [athleteWeeklyBreakdown, setAthleteWeeklyBreakdown] = useState({});
   const [athleteZonePct,      setAthleteZonePct]      = useState({});
+  const [athleteACWR,         setAthleteACWR]         = useState({});
+  const [athleteAttendance,   setAthleteAttendance]   = useState({});
   const [athletePaceEasyPct,  setAthletePaceEasyPct]  = useState({});
   const [pendingAthletes,     setPendingAthletes]     = useState([]);
   const [pendingCoachCount,   setPendingCoachCount]   = useState(0);
@@ -324,6 +341,7 @@ export default function CoachDashboard({ userData }) {
   const [seasonReviewSeason,  setSeasonReviewSeason]  = useState(null);
   const [reviewDismissed,     setReviewDismissed]     = useState({});
   const [paceComplianceExpanded, setPaceComplianceExpanded] = useState(false);
+  const [acwrExpanded,        setAcwrExpanded]        = useState(false);
   const [paceComplianceData, setPaceComplianceData] = useState({ runningEasy: [], tooHard: [], noPaces: 0, noPacesAthletes: [] });
 
   // Load reviewed seasons from Firestore on mount
@@ -349,6 +367,7 @@ export default function CoachDashboard({ userData }) {
       weekStart.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
       weekStart.setHours(0, 0, 0, 0);
       const todayKey = now.toISOString().split('T')[0];
+      const thirtyDaysAgoKey = new Date(now.getTime() - 30 * 86400000).toISOString().split('T')[0];
 
       // ── Phase 1: All independent top-level queries in parallel ──
       const [
@@ -364,6 +383,7 @@ export default function CoachDashboard({ userData }) {
         meetsSnap,
         tipDoc,
         checkinSnap,
+        attendanceSnap,
       ] = await Promise.all([
         getDoc(doc(db, 'schools', userData.schoolId)),
         getDoc(doc(db, 'teamZoneSettings', userData.schoolId))
@@ -407,6 +427,11 @@ export default function CoachDashboard({ userData }) {
           where('schoolId', '==', userData.schoolId),
           where('date', '>=', weekStart)
         )).catch(e => { console.warn('Team pulse check-in query failed:', e); return null; }),
+        getDocs(query(
+          collection(db, 'attendance'),
+          where('schoolId', '==', userData.schoolId),
+          where('date', '>=', thirtyDaysAgoKey)
+        )).catch(e => { console.warn('Attendance query failed:', e); return null; }),
       ]);
 
       // School + zone + groups
@@ -443,6 +468,36 @@ export default function CoachDashboard({ userData }) {
 
       if (tipDoc) setTodayTipSent(tipDoc.exists());
 
+      // ── Build per-athlete attendance stats ──
+      // Rate = present / recorded-days (NOT calendar days — a day with no
+      // attendance record is not a data point, so coach isn't penalized for
+      // non-practice days and athlete isn't penalized for un-recorded days).
+      // Recent (last 14 days) drives the absence signal for overtraining.
+      const attendanceByAthlete = {};
+      const twoWeeksAgoKey = new Date(now.getTime() - 14 * 86400000).toISOString().split('T')[0];
+      if (attendanceSnap) {
+        const allRecords = attendanceSnap.docs.map(d => d.data());
+        approvedAthletes.forEach(a => {
+          const theirs = allRecords.filter(r => r.athleteId === a.id);
+          const present = theirs.filter(r => r.status === 'present').length;
+          const absent  = theirs.filter(r => r.status === 'absent').length;
+          const excused = theirs.filter(r => r.status === 'excused').length;
+          const recent  = theirs.filter(r => r.date >= twoWeeksAgoKey);
+          const recentAbsent = recent.filter(r => r.status === 'absent').length;
+          attendanceByAthlete[a.id] = {
+            totalRecorded:     theirs.length,
+            presentCount:      present,
+            absentCount:       absent,
+            excusedCount:      excused,
+            attendanceRate:    theirs.length > 0 ? present / theirs.length : null,
+            recentRecorded:    recent.length,
+            recentAbsentCount: recentAbsent,
+            recentAbsenceRate: recent.length > 0 ? recentAbsent / recent.length : 0,
+          };
+        });
+      }
+      setAthleteAttendance(attendanceByAthlete);
+
       // ── Phase 2: Athlete-dependent queries in parallel ──
       // Single batched `where-in` query for all athlete runs replaces the old
       // serial per-athlete loop (70 athletes × 1 query → ~3 batched queries).
@@ -450,7 +505,7 @@ export default function CoachDashboard({ userData }) {
       const [runsResult, alertsEntries] = await Promise.all([
         batchDocsByIds({ collectionName: 'runs', field: 'userId', ids: athleteIds }),
         Promise.all(approvedAthletes.map(a =>
-          checkOvertraining(a.id).then(result => [a.id, result])
+          checkOvertraining(a.id, attendanceByAthlete[a.id]).then(result => [a.id, result])
         )),
       ]);
 
@@ -467,6 +522,7 @@ export default function CoachDashboard({ userData }) {
       const zonePctMap       = {};
       const paceEasyPctMap   = {};
       const lastRunDateMap   = {};
+      const acwrMap          = {};
 
       for (const athlete of approvedAthletes) {
         try {
@@ -534,6 +590,7 @@ export default function CoachDashboard({ userData }) {
             });
             zonePctMap[athlete.id] = calcAthleteZonePct(recentRuns, age, currentZoneSettings);
             paceEasyPctMap[athlete.id] = calcAthletePaceEasyPct(recentRuns, athlete.trainingPaces);
+            acwrMap[athlete.id] = calcACWR(allRuns, now);
           } catch (e) { console.warn('Zone pct calc failed for athlete:', e); }
 
         } catch (e) {
@@ -551,6 +608,7 @@ export default function CoachDashboard({ userData }) {
       setAthleteZonePct(zonePctMap);
       setAthletePaceEasyPct(paceEasyPctMap);
       setAthleteLastRunDate(lastRunDateMap);
+      setAthleteACWR(acwrMap);
 
       // Compliance computation
       const compliance = computeVolumeCompliance(approvedAthletes, loadedGroups, threeWeekAvgMap, weekBreakdownMap);
@@ -915,68 +973,6 @@ export default function CoachDashboard({ userData }) {
           </View>
         </View>
 
-        {/* ── Injury / illness alert card ── */}
-        {(() => {
-          const injuredAthletes = athletes.filter(a => overtTrainingAlerts[a.id]?.todayInjury || overtTrainingAlerts[a.id]?.todayIllness);
-          if (injuredAthletes.length === 0) return null;
-          const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-          const formatWhen = (d) => {
-            if (!d) return '';
-            if (d >= todayStart) return 'today';
-            const daysAgo = Math.ceil((todayStart - d) / 86400000);
-            return daysAgo === 1 ? 'yesterday' : `${daysAgo}d ago`;
-          };
-          return (
-            <View style={styles.injuryAlertCard}>
-              <TouchableOpacity style={styles.injuryAlertHeader} onPress={() => setInjuryCardExpanded(prev => !prev)}>
-                <Ionicons name="warning" size={20} color={STATUS.error} />
-                <Text style={styles.injuryAlertTitle}>
-                  {injuredAthletes.length} athlete{injuredAthletes.length > 1 ? 's' : ''} reporting injury or illness
-                </Text>
-                <Ionicons name={injuryCardExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={STATUS.error} />
-              </TouchableOpacity>
-              {injuryCardExpanded && injuredAthletes.map(athlete => {
-                const alerts = overtTrainingAlerts[athlete.id];
-                const inj = alerts?.todayInjury;
-                const ill = alerts?.todayIllness;
-                const when = formatWhen(alerts?.injuryCheckinDate);
-                const worstSeverity = [inj?.severity, ill?.severity]
-                  .filter(Boolean)
-                  .reduce((w, s) => s === 'severe' || w === 'severe' ? 'severe' : s === 'moderate' || w === 'moderate' ? 'moderate' : 'mild', 'mild');
-                const sevColor = worstSeverity === 'severe' ? STATUS.error : worstSeverity === 'moderate' ? STATUS.warning : NEUTRAL.label;
-                const rec = worstSeverity === 'severe' ? 'Recommend rest day'
-                  : worstSeverity === 'moderate' ? 'Consider modified workout'
-                  : 'Monitor during practice';
-                return (
-                  <TouchableOpacity key={athlete.id} style={styles.injuryAlertRow} onPress={() => setSelectedAthlete(athlete)}>
-                    <View style={[styles.avatar, { backgroundColor: athlete.avatarColor || BRAND, width: 32, height: 32 }]}>
-                      <Text style={[styles.avatarText, { fontSize: FONT_SIZE.xs }]}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.injuryAlertName}>{athlete.firstName} {athlete.lastName}{when ? <Text style={styles.injuryAlertWhen}> — reported {when}</Text> : ''}</Text>
-                      {inj && (
-                        <Text style={styles.injuryAlertDetail}>
-                          🩹 {inj.perLocation
-                            ? inj.perLocation.map(p => `${p.location.charAt(0).toUpperCase() + p.location.slice(1)} (${p.severity})`).join(', ')
-                            : `${inj.locations?.map(l => l.charAt(0).toUpperCase() + l.slice(1)).join(', ')} — ${inj.severity}`
-                          }{inj.note ? ` — "${inj.note}"` : ''}
-                        </Text>
-                      )}
-                      {ill && (
-                        <Text style={styles.injuryAlertDetail}>
-                          🤒 {ill.symptoms?.map(s => s.replace(/_/g, ' ')).join(', ')} — <Text style={{ color: sevColor, fontWeight: FONT_WEIGHT.bold }}>{ill.severity}</Text>
-                        </Text>
-                      )}
-                      <Text style={[styles.injuryAlertRec, { color: sevColor }]}>{rec}</Text>
-                    </View>
-                    <Text style={styles.chevron}>›</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          );
-        })()}
-
         {/* ── Season in Review banner ── */}
         {(() => {
           if (!school) return null;
@@ -1139,6 +1135,146 @@ export default function CoachDashboard({ userData }) {
           </View>
         )}
 
+        {/* ── Self-Reported Injury / Illness alert card ── */}
+        {(() => {
+          const injuredAthletes = athletes.filter(a => overtTrainingAlerts[a.id]?.todayInjury || overtTrainingAlerts[a.id]?.todayIllness);
+          if (injuredAthletes.length === 0) return null;
+          const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+          const formatWhen = (d) => {
+            if (!d) return '';
+            if (d >= todayStart) return 'today';
+            const daysAgo = Math.ceil((todayStart - d) / 86400000);
+            return daysAgo === 1 ? 'yesterday' : `${daysAgo}d ago`;
+          };
+          return (
+            <View style={styles.injuryAlertCard}>
+              <TouchableOpacity style={styles.injuryAlertHeader} onPress={() => setInjuryCardExpanded(prev => !prev)}>
+                <Ionicons name="warning" size={20} color={STATUS.error} />
+                <Text style={styles.injuryAlertTitle}>
+                  {injuredAthletes.length} athlete{injuredAthletes.length > 1 ? 's' : ''} reporting injury or illness
+                </Text>
+                <Ionicons name={injuryCardExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={STATUS.error} />
+              </TouchableOpacity>
+              {injuryCardExpanded && injuredAthletes.map(athlete => {
+                const alerts = overtTrainingAlerts[athlete.id];
+                const inj = alerts?.todayInjury;
+                const ill = alerts?.todayIllness;
+                const when = formatWhen(alerts?.injuryCheckinDate);
+                const worstSeverity = [inj?.severity, ill?.severity]
+                  .filter(Boolean)
+                  .reduce((w, s) => s === 'severe' || w === 'severe' ? 'severe' : s === 'moderate' || w === 'moderate' ? 'moderate' : 'mild', 'mild');
+                const sevColor = worstSeverity === 'severe' ? STATUS.error : worstSeverity === 'moderate' ? STATUS.warning : NEUTRAL.label;
+                const rec = worstSeverity === 'severe' ? 'Recommend rest day'
+                  : worstSeverity === 'moderate' ? 'Consider modified workout'
+                  : 'Monitor during practice';
+                return (
+                  <TouchableOpacity key={athlete.id} style={styles.injuryAlertRow} onPress={() => setSelectedAthlete(athlete)}>
+                    <View style={[styles.avatar, { backgroundColor: athlete.avatarColor || BRAND, width: 32, height: 32 }]}>
+                      <Text style={[styles.avatarText, { fontSize: FONT_SIZE.xs }]}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.injuryAlertName}>{athlete.firstName} {athlete.lastName}{when ? <Text style={styles.injuryAlertWhen}> — reported {when}</Text> : ''}</Text>
+                      {inj && (
+                        <Text style={styles.injuryAlertDetail}>
+                          🩹 {inj.perLocation
+                            ? inj.perLocation.map(p => `${p.location.charAt(0).toUpperCase() + p.location.slice(1)} (${p.severity})`).join(', ')
+                            : `${inj.locations?.map(l => l.charAt(0).toUpperCase() + l.slice(1)).join(', ')} — ${inj.severity}`
+                          }{inj.note ? ` — "${inj.note}"` : ''}
+                        </Text>
+                      )}
+                      {ill && (
+                        <Text style={styles.injuryAlertDetail}>
+                          🤒 {ill.symptoms?.map(s => s.replace(/_/g, ' ')).join(', ')} — <Text style={{ color: sevColor, fontWeight: FONT_WEIGHT.bold }}>{ill.severity}</Text>
+                        </Text>
+                      )}
+                      <Text style={[styles.injuryAlertRec, { color: sevColor }]}>{rec}</Text>
+                    </View>
+                    <Text style={styles.chevron}>›</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          );
+        })()}
+
+        {/* ── Injury Risk (ACWR) card ── */}
+        {(() => {
+          const buckets = { spike: [], elevated: [], sweet: [], under: [], insufficient: 0 };
+          filteredAthletes.forEach(a => {
+            const data = athleteACWR[a.id];
+            if (!data) { buckets.insufficient++; return; }
+            if (data.status === ACWR_STATUS.SPIKE)         buckets.spike.push({ ...a, acwr: data });
+            else if (data.status === ACWR_STATUS.ELEVATED) buckets.elevated.push({ ...a, acwr: data });
+            else if (data.status === ACWR_STATUS.SWEET_SPOT) buckets.sweet.push({ ...a, acwr: data });
+            else if (data.status === ACWR_STATUS.UNDERTRAINING) buckets.under.push({ ...a, acwr: data });
+            else buckets.insufficient++;
+          });
+          // Only render the card if there's anything to flag beyond "need more data"
+          const hasSignal = buckets.spike.length || buckets.elevated.length
+            || buckets.sweet.length || buckets.under.length;
+          if (!hasSignal) return null;
+          const summary = [
+            buckets.sweet.length    && `${buckets.sweet.length} sweet spot`,
+            buckets.elevated.length && `${buckets.elevated.length} elevated`,
+            buckets.spike.length    && `${buckets.spike.length} spike`,
+            buckets.under.length    && `${buckets.under.length} ramping up`,
+          ].filter(Boolean).join(' · ');
+          const renderRow = (a) => (
+            <TouchableOpacity key={a.id} style={styles.complianceRow} onPress={() => setSelectedAthlete(a)}>
+              <View style={[styles.avatar, { backgroundColor: a.avatarColor || BRAND, width: 28, height: 28 }]}>
+                <Text style={[styles.avatarText, { fontSize: 10 }]}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
+              </View>
+              <Text style={styles.complianceRowName}>{a.firstName} {a.lastName}</Text>
+              <View style={[styles.acwrBadge, { backgroundColor: getACWRColorBg(a.acwr.status) }]}>
+                <Text style={[styles.acwrBadgeText, { color: getACWRColor(a.acwr.status) }]}>
+                  {a.acwr.ratio.toFixed(2)}
+                </Text>
+              </View>
+              <Text style={styles.acwrAcute}>{Math.round(a.acwr.acute)}/{Math.round(a.acwr.chronic)} mi</Text>
+            </TouchableOpacity>
+          );
+          return (
+            <View style={styles.complianceCard}>
+              <TouchableOpacity style={styles.complianceHeader} onPress={() => setAcwrExpanded(prev => !prev)}>
+                <Ionicons name="shield-checkmark-outline" size={20} color={BRAND} />
+                <Text style={styles.complianceTitle}>Injury Risk — {summary}</Text>
+                <Ionicons name={acwrExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={NEUTRAL.muted} />
+              </TouchableOpacity>
+              {acwrExpanded && (
+                <View style={{ marginTop: SPACE.sm }}>
+                  {buckets.spike.length > 0 && (
+                    <View style={{ marginBottom: SPACE.sm }}>
+                      <Text style={[styles.complianceGroupLabel, { color: STATUS.error }]}>Spike ({'>'}1.5) — high injury risk</Text>
+                      {buckets.spike.map(renderRow)}
+                    </View>
+                  )}
+                  {buckets.elevated.length > 0 && (
+                    <View style={{ marginBottom: SPACE.sm }}>
+                      <Text style={[styles.complianceGroupLabel, { color: STATUS.warning }]}>Elevated (1.3–1.5)</Text>
+                      {buckets.elevated.map(renderRow)}
+                    </View>
+                  )}
+                  {buckets.under.length > 0 && (
+                    <View style={{ marginBottom: SPACE.sm }}>
+                      <Text style={[styles.complianceGroupLabel, { color: STATUS.info }]}>Ramping up ({'<'}0.8)</Text>
+                      {buckets.under.map(renderRow)}
+                    </View>
+                  )}
+                  {buckets.sweet.length > 0 && (
+                    <View style={{ marginBottom: SPACE.sm }}>
+                      <Text style={[styles.complianceGroupLabel, { color: STATUS.success }]}>Sweet spot (0.8–1.3)</Text>
+                      {buckets.sweet.map(renderRow)}
+                    </View>
+                  )}
+                  <Text style={styles.acwrInfo}>
+                    ACWR compares last-7-day miles to the 4-week average. Ratios above 1.5 indicate a load spike vs. the athlete's adapted baseline — the strongest predictor of soft-tissue injury.
+                  </Text>
+                </View>
+              )}
+            </View>
+          );
+        })()}
+
         {/* ── Team ── */}
         <View style={styles.section}>
 
@@ -1279,6 +1415,16 @@ export default function CoachDashboard({ userData }) {
         <View style={[styles.subScreen, { bottom: navHeight }]}>
           <ManageGroups
             schoolId={userData.schoolId}
+            athletes={athletes}
+            onClose={() => { setTrainingSection('hub'); loadDashboard(); }}
+          />
+        </View>
+      )}
+      {/* Training > Attendance */}
+      {trainingSection === 'attendance' && (
+        <View style={[styles.subScreen, { bottom: navHeight }]}>
+          <AttendanceScreen
+            userData={userData}
             athletes={athletes}
             onClose={() => { setTrainingSection('hub'); loadDashboard(); }}
           />
@@ -1614,6 +1760,10 @@ const styles = StyleSheet.create({
   complianceUnder:      { color: STATUS.error },
   complianceOver:       { color: STATUS.warning },
   complianceTarget:     { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, minWidth: 40, textAlign: 'right' },
+  acwrBadge:            { paddingHorizontal: SPACE.sm, paddingVertical: 2, borderRadius: RADIUS.sm, minWidth: 44, alignItems: 'center' },
+  acwrBadgeText:        { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
+  acwrAcute:            { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, minWidth: 64, textAlign: 'right' },
+  acwrInfo:             { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, fontStyle: 'italic', marginTop: SPACE.sm, lineHeight: 16 },
   pulseRow:             { flexDirection: 'row', marginHorizontal: SPACE.lg, marginTop: SPACE.md, gap: SPACE.sm },
   pulseCard:            { flex: 1, backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.md, alignItems: 'center', borderWidth: 1, borderColor: NEUTRAL.border, ...SHADOW.sm },
   pulseValue:           { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },

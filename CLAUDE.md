@@ -57,13 +57,17 @@ zoneConfig.js     # HR zone math, boundary validation, birthdate parsing
 - `screens/SeasonReview.js` — post-season visual recap
 
 ### Coach-facing
-- `screens/CoachDashboard.js` — team view, athlete cards, overtraining flags
+- `screens/CoachDashboard.js` — team view, athlete cards, overtraining flags,
+  injury-risk (ACWR) card
 - `screens/CoachAnalytics.js` — team-wide compliance and zone distribution
 - `screens/ManageRoster.js` / `ManageGroups.js` / `ManageSeasons.js` — roster
   and structural management
 - `screens/WorkoutLibrary.js` / `WorkoutDetailModal.js` / `WeeklyPlanner.js`
   / `SeasonPlanner.js` — workout prescription
 - `screens/ZoneSettings.js` — custom HR/pace zone boundaries per team
+- `screens/AttendanceScreen.js` — take roll for a given date, sort by first
+  or last name, writes to `attendance` collection (docId:
+  `{schoolId}_{athleteId}_{YYYY-MM-DD}`)
 - `screens/RaceManager.js` / `RaceResults.js` / `RaceResultsEntry.js`
   / `MeetDetail.js` — race and meet management
 
@@ -86,6 +90,10 @@ zoneConfig.js     # HR zone math, boundary validation, birthdate parsing
   pace-zone-related should use this.
 - `utils/raceUtils.js` — race sorting, filtering, CSV import helpers
 - `utils/complianceUtils.js` — training compliance scoring
+- `utils/acwrUtils.js` — Acute:Chronic Workload Ratio. Injury-risk metric
+  comparing last-7-day miles to 28-day average. Sweet spot 0.8–1.3; >1.5 is
+  a spike. Used on CoachDashboard's Injury Risk card and in the overtraining
+  alert system.
 
 ### Server-side
 - `functions/index.js` — Cloud Functions: push notification scheduling

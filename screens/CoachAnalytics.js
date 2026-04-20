@@ -33,8 +33,52 @@ export default function CoachAnalytics({
   const [raceResults, setRaceResults] = useState([]);
   const [races, setRaces] = useState([]);
   const [loadingRaces, setLoadingRaces] = useState(false);
+  const [attendanceData, setAttendanceData] = useState(null);
+  const [loadingAttendance, setLoadingAttendance] = useState(true);
 
-  useEffect(() => { loadWellnessData(); loadRaceData(); }, []);
+  useEffect(() => { loadWellnessData(); loadRaceData(); loadAttendanceData(); }, []);
+
+  const loadAttendanceData = async () => {
+    setLoadingAttendance(true);
+    try {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const cutoff = thirtyDaysAgo.toISOString().split('T')[0];
+
+      const snap = await getDocs(query(
+        collection(db, 'attendance'),
+        where('schoolId', '==', schoolId),
+        where('date', '>=', cutoff),
+      ));
+      const records = snap.docs.map(d => d.data());
+
+      const byAthlete = {};
+      athletes.forEach(a => {
+        const theirs = records.filter(r => r.athleteId === a.id);
+        const present = theirs.filter(r => r.status === 'present').length;
+        const absent  = theirs.filter(r => r.status === 'absent').length;
+        const excused = theirs.filter(r => r.status === 'excused').length;
+        byAthlete[a.id] = {
+          totalRecorded: theirs.length,
+          present, absent, excused,
+          rate: theirs.length > 0 ? present / theirs.length : null,
+        };
+      });
+
+      const totalRecorded = records.length;
+      const totalPresent  = records.filter(r => r.status === 'present').length;
+      const teamRate      = totalRecorded > 0 ? totalPresent / totalRecorded : null;
+      const practiceDays  = new Set(records.map(r => r.date)).size;
+      const concernCount  = athletes.filter(a => {
+        const s = byAthlete[a.id];
+        return s && s.totalRecorded > 0 && s.rate < 0.90;
+      }).length;
+      const noRecordsCount = athletes.filter(a => !byAthlete[a.id] || byAthlete[a.id].totalRecorded === 0).length;
+
+      setAttendanceData({ byAthlete, totalRecorded, teamRate, practiceDays, concernCount, noRecordsCount });
+    } catch (e) { console.warn('Failed to load attendance analytics:', e); }
+    setLoadingAttendance(false);
+  };
 
   const loadRaceData = async () => {
     setLoadingRaces(true);
@@ -555,10 +599,93 @@ export default function CoachAnalytics({
           </View>
         )}
 
-        {/* ── 4. Pack Compression ── */}
-        <TouchableOpacity style={styles.section} onPress={() => toggle('pack')} activeOpacity={0.8}>
+        {/* ── 4. Attendance ── */}
+        <TouchableOpacity style={styles.section} onPress={() => toggle('attendance')} activeOpacity={0.8}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionNum}>4</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sectionTitle}>Attendance</Text>
+              <Text style={styles.sectionSub}>
+                {attendanceData?.practiceDays
+                  ? `Last 30 days — ${attendanceData.practiceDays} practice day${attendanceData.practiceDays !== 1 ? 's' : ''}`
+                  : 'Take attendance from Program tab to see data'}
+              </Text>
+            </View>
+            <Ionicons name={expandedSection === 'attendance' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />
+          </View>
+          {loadingAttendance ? (
+            <ActivityIndicator color={BRAND} style={{ marginVertical: SPACE.md }} />
+          ) : attendanceData?.totalRecorded > 0 ? (
+            <View style={styles.summaryRow}>
+              <View style={[styles.summaryCard, {
+                backgroundColor: attendanceData.teamRate >= 0.9 ? STATUS.successBg
+                  : attendanceData.teamRate >= 0.75 ? STATUS.warningBg : STATUS.errorBg,
+              }]}>
+                <Text style={[styles.summaryNum, {
+                  color: attendanceData.teamRate >= 0.9 ? STATUS.success
+                    : attendanceData.teamRate >= 0.75 ? STATUS.warning : STATUS.error,
+                }]}>
+                  {Math.round(attendanceData.teamRate * 100)}%
+                </Text>
+                <Text style={styles.summaryLabel}>Team rate</Text>
+              </View>
+              <View style={[styles.summaryCard, {
+                backgroundColor: attendanceData.concernCount === 0 ? STATUS.successBg : STATUS.warningBg,
+              }]}>
+                <Text style={[styles.summaryNum, {
+                  color: attendanceData.concernCount === 0 ? STATUS.success : STATUS.warning,
+                }]}>
+                  {attendanceData.concernCount}
+                </Text>
+                <Text style={styles.summaryLabel}>{'<'}90%</Text>
+              </View>
+            </View>
+          ) : null}
+        </TouchableOpacity>
+        {expandedSection === 'attendance' && (
+          <View style={styles.detail}>
+            {!attendanceData || attendanceData.totalRecorded === 0 ? (
+              <Text style={styles.detailEmpty}>No attendance recorded in the last 30 days.</Text>
+            ) : (
+              <>
+                {athletes
+                  .map(a => ({ ...a, ...attendanceData.byAthlete[a.id] }))
+                  .filter(a => a.totalRecorded > 0)
+                  .sort((a, b) => a.rate - b.rate)
+                  .map(a => {
+                    const pct = Math.round(a.rate * 100);
+                    const rowColor = pct >= 90 ? STATUS.success : pct >= 75 ? STATUS.warning : STATUS.error;
+                    return (
+                      <View key={a.id} style={styles.detailRow}>
+                        <View style={[styles.detailAvatar, { backgroundColor: a.avatarColor || BRAND }]}>
+                          <Text style={styles.detailAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.detailName}>{a.firstName} {a.lastName}</Text>
+                          <Text style={styles.detailSub}>
+                            <Text style={{ color: rowColor, fontWeight: FONT_WEIGHT.bold }}>{pct}%</Text>
+                            {' · '}{a.present}/{a.totalRecorded} present
+                            {a.absent  > 0 ? ` · ${a.absent} absent`   : ''}
+                            {a.excused > 0 ? ` · ${a.excused} excused` : ''}
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                {attendanceData.noRecordsCount > 0 && (
+                  <Text style={styles.signalText}>
+                    • {attendanceData.noRecordsCount} athlete{attendanceData.noRecordsCount !== 1 ? 's' : ''} without recorded attendance in this window
+                  </Text>
+                )}
+              </>
+            )}
+          </View>
+        )}
+
+        {/* ── 5. Pack Compression ── */}
+        <TouchableOpacity style={styles.section} onPress={() => toggle('pack')} activeOpacity={0.8}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionNum}>5</Text>
             <View style={{ flex: 1 }}>
               <Text style={styles.sectionTitle}>Pack Compression</Text>
               <Text style={styles.sectionSub}>Top 5 spread and bench depth</Text>
@@ -630,10 +757,10 @@ export default function CoachAnalytics({
           </View>
         )}
 
-        {/* ── 5. Wellness Trends ── */}
+        {/* ── 6. Wellness Trends ── */}
         <TouchableOpacity style={styles.section} onPress={() => toggle('wellness')} activeOpacity={0.8}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionNum}>5</Text>
+            <Text style={styles.sectionNum}>6</Text>
             <View style={{ flex: 1 }}>
               <Text style={styles.sectionTitle}>Wellness & Readiness</Text>
               <Text style={styles.sectionSub}>Last 7 days — {wellnessAthletes.length}/{athletes.length} athletes reporting</Text>
