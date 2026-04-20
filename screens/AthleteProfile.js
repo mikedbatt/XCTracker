@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import { signOut, updateEmail } from 'firebase/auth';
 import {
-  arrayRemove, doc, getDoc, updateDoc
+  arrayRemove, collection, doc, getDoc, getDocs, orderBy, query, updateDoc, where
 } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
@@ -82,19 +82,19 @@ export default function AthleteProfile({ userData, school, coachDisabledHR = fal
     try {
       if (!userData.schoolId) { setLoadingMsgs(false); return; }
 
-      // Build keys for last 30 days and fetch each one directly
-      const msgs = [];
-      const now = new Date();
-      for (let i = 0; i < 30; i++) {
-        const d = new Date(now);
-        d.setDate(now.getDate() - i);
-        const dateStr = d.toISOString().split('T')[0];
-        const key = `${userData.schoolId}_${dateStr}`;
-        try {
-          const msgDoc = await getDoc(doc(db, 'dailyMessages', key));
-          if (msgDoc.exists()) msgs.push({ id: msgDoc.id, date: dateStr, ...msgDoc.data() });
-        } catch { /* no message for this day */ }
-      }
+      // Single range query replaces 30 serial getDoc calls.
+      // Needs a composite index on (schoolId, date) — Firestore will prompt on first run.
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const cutoff = thirtyDaysAgo.toISOString().split('T')[0];
+
+      const snap = await getDocs(query(
+        collection(db, 'dailyMessages'),
+        where('schoolId', '==', userData.schoolId),
+        where('date', '>=', cutoff),
+        orderBy('date', 'desc')
+      ));
+      const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setMessages(msgs);
     } catch (e) { console.warn('Messages load:', e); }
     setLoadingMsgs(false);

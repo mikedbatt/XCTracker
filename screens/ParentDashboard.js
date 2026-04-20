@@ -21,6 +21,7 @@ import AthleteDetailScreen from './AthleteDetailScreen';
 import CalendarScreen from './CalendarScreen';
 import ChannelList from './ChannelList';
 import ParentLinkScreen from './ParentLinkScreen';
+import { useStaleRefresh } from '../hooks/useStaleRefresh';
 
 export default function ParentDashboard({ userData }) {
   const [athletes, setAthletes] = useState([]);
@@ -30,26 +31,23 @@ export default function ParentDashboard({ userData }) {
   const [groups, setGroups] = useState([]);
   const [athleteRuns, setAthleteRuns] = useState([]);
   const [upcomingMeets, setUpcomingMeets] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('home');
   const [unreadFeedCount, setUnreadFeedCount] = useState(0);
   const [feedSchool, setFeedSchool] = useState(null);
 
-  useEffect(() => { loadDashboard(); }, []);
-
   const loadDashboard = async () => {
-    setLoading(true);
     try {
       const parentSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
       const parentData = parentSnap.exists() ? parentSnap.data() : userData;
       const linkedIds = parentData.linkedAthleteIds || [];
 
       if (linkedIds.length > 0) {
-        const athleteData = [];
-        for (const athleteId of linkedIds) {
-          const athleteDoc = await getDoc(doc(db, 'users', athleteId));
-          if (athleteDoc.exists()) athleteData.push({ id: athleteDoc.id, ...athleteDoc.data() });
-        }
+        const athleteDocs = await Promise.all(
+          linkedIds.map(id => getDoc(doc(db, 'users', id)))
+        );
+        const athleteData = athleteDocs
+          .filter(d => d.exists())
+          .map(d => ({ id: d.id, ...d.data() }));
         setAthletes(athleteData);
         const first = athleteData[0];
         if (first) {
@@ -60,8 +58,11 @@ export default function ParentDashboard({ userData }) {
     } catch (error) {
       console.error('Parent dashboard error:', error);
     }
-    setLoading(false);
   };
+
+  // Stale-while-revalidate: first load shows spinner; return-to-dashboard is
+  // instant with any refresh running silently in the background.
+  const { loading } = useStaleRefresh(loadDashboard, []);
 
   const loadAthleteData = async (athlete) => {
     try {

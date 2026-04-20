@@ -12,6 +12,7 @@ import { auth, db } from '../firebaseConfig';
 import {
   BRAND, BRAND_ACCENT, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE,
 } from '../constants/design';
+import { batchDocsByIds } from '../utils/batchDocsByIds';
 import { formatPace } from '../utils/vdotUtils';
 
 export default function ManageGroups({ schoolId, athletes, onClose }) {
@@ -51,25 +52,32 @@ export default function ManageGroups({ schoolId, athletes, onClose }) {
     const week1Start = new Date(weekStart);
     const week2Start = new Date(weekStart); week2Start.setDate(weekStart.getDate() - 7);
     const week3Start = new Date(weekStart); week3Start.setDate(weekStart.getDate() - 14);
+    const oneMonthAgo = new Date(now); oneMonthAgo.setDate(now.getDate() - 30);
+
+    // One batched query for every athlete's runs (30 IDs per batch, in parallel)
+    // replaces the old per-athlete serial loop.
+    const athleteIds = athletes.map(a => a.id);
+    let runsByAthlete = {};
+    try {
+      const result = await batchDocsByIds({
+        collectionName: 'runs',
+        field: 'userId',
+        ids: athleteIds,
+      });
+      runsByAthlete = result.byField;
+    } catch (e) {
+      console.warn('Failed to batch-load athlete stats:', e);
+    }
 
     for (const athlete of athletes) {
-      try {
-        const runsSnap = await getDocs(query(
-          collection(db, 'runs'),
-          where('userId', '==', athlete.id),
-          orderBy('date', 'desc')
-        ));
-        const runs = runsSnap.docs.map(d => ({ ...d.data(), date: d.data().date?.toDate?.() }));
-        const w1 = runs.filter(r => r.date && r.date >= week1Start).reduce((s, r) => s + (r.miles || 0), 0);
-        const w2 = runs.filter(r => r.date && r.date >= week2Start && r.date < week1Start).reduce((s, r) => s + (r.miles || 0), 0);
-        const w3 = runs.filter(r => r.date && r.date >= week3Start && r.date < week2Start).reduce((s, r) => s + (r.miles || 0), 0);
-        const avg3 = Math.round(((w1 + w2 + w3) / 3) * 10) / 10;
-        const oneMonthAgo = new Date(now); oneMonthAgo.setDate(now.getDate() - 30);
-        const last30 = runs.filter(r => r.date && r.date >= oneMonthAgo).reduce((s, r) => s + (r.miles || 0), 0);
-        stats[athlete.id] = { avg3wk: avg3, last30: Math.round(last30 * 10) / 10 };
-      } catch {
-        stats[athlete.id] = { avg3wk: 0, last30: 0 };
-      }
+      const rawRuns = runsByAthlete[athlete.id] || [];
+      const runs = rawRuns.map(r => ({ ...r, date: r.date?.toDate?.() }));
+      const w1 = runs.filter(r => r.date && r.date >= week1Start).reduce((s, r) => s + (r.miles || 0), 0);
+      const w2 = runs.filter(r => r.date && r.date >= week2Start && r.date < week1Start).reduce((s, r) => s + (r.miles || 0), 0);
+      const w3 = runs.filter(r => r.date && r.date >= week3Start && r.date < week2Start).reduce((s, r) => s + (r.miles || 0), 0);
+      const avg3 = Math.round(((w1 + w2 + w3) / 3) * 10) / 10;
+      const last30 = runs.filter(r => r.date && r.date >= oneMonthAgo).reduce((s, r) => s + (r.miles || 0), 0);
+      stats[athlete.id] = { avg3wk: avg3, last30: Math.round(last30 * 10) / 10 };
     }
     setAthleteStats(stats);
   };

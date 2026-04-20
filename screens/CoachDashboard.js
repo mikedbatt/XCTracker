@@ -49,8 +49,10 @@ import TimeframePicker, { TIMEFRAMES, getDateRange } from '../screens/TimeframeP
 import TrainingHub from '../screens/TrainingHub';
 import WorkoutDetailModal from '../screens/WorkoutDetailModal';
 import ZoneSettings from '../screens/ZoneSettings';
+import { batchDocsByIds } from '../utils/batchDocsByIds';
 import { computeVolumeCompliance, getCurrentWeekPace, getAthleteWeeklyTarget } from '../utils/complianceUtils';
 import { calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
+import { useStaleRefresh } from '../hooks/useStaleRefresh';
 import {
   DEFAULT_ZONE_BOUNDARIES,
   calcMaxHR,
@@ -286,7 +288,6 @@ export default function CoachDashboard({ userData }) {
   const [pendingCoachCount,   setPendingCoachCount]   = useState(0);
   const [unreadFeedCount,     setUnreadFeedCount]     = useState(0);
   const [trainingItems,       setTrainingItems]       = useState([]);
-  const [loading,             setLoading]             = useState(true);
   const [activeTab,           setActiveTab]           = useState('team');
   const [profileVisible,      setProfileVisible]      = useState(false);
   const [groups,              setGroups]              = useState([]);
@@ -338,81 +339,151 @@ export default function CoachDashboard({ userData }) {
   }, []);
 
   const loadDashboard = useCallback(async () => {
-    setLoading(true);
+    if (!userData.schoolId) return;
+
     try {
-      if (!userData.schoolId) { setLoading(false); return; }
-
-      const schoolDoc = await getDoc(doc(db, 'schools', userData.schoolId));
-      const schoolData = schoolDoc.exists() ? schoolDoc.data() : null;
-      if (schoolData) setSchool(schoolData);
-
-      // Load team-wide zone settings — needed before per-athlete zone calc
-      let currentZoneSettings = null;
-      try {
-        const zoneDoc = await getDoc(doc(db, 'teamZoneSettings', userData.schoolId));
-        if (zoneDoc.exists()) {
-          currentZoneSettings = zoneDoc.data();
-          setTeamZoneSettings(currentZoneSettings);
-        }
-      } catch (e) { console.warn('Failed to load team zone settings, using defaults:', e); }
-
-      // Load training groups
-      let loadedGroups = [];
-      try {
-        const groupsSnap = await getDocs(query(
-          collection(db, 'groups'),
-          where('schoolId', '==', userData.schoolId)
-        ));
-        loadedGroups = groupsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        loadedGroups.sort((a, b) => (a.order || 0) - (b.order || 0));
-        setGroups(loadedGroups);
-      } catch (e) { console.warn('Failed to load groups:', e); }
-
-      const activeSeason = schoolData ? getActiveSeason(schoolData) : null;
-      setActiveSeasonData(activeSeason);
-      const { start: cutoff, end: cutoffEnd } = getDateRange(selectedTimeframe, activeSeason, null, null);
-
-      const approvedSnap = await getDocs(query(
-        collection(db, 'users'),
-        where('schoolId', '==', userData.schoolId),
-        where('role', '==', 'athlete'),
-        where('status', '==', 'approved')
-      ));
-      const approvedAthletes = approvedSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setAthletes(approvedAthletes);
-
+      const isAdmin = userData.role === 'admin_coach';
       const now = new Date();
       const dayOfWeek = now.getDay();
       const weekStart = new Date(now);
       weekStart.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
       weekStart.setHours(0, 0, 0, 0);
+      const todayKey = now.toISOString().split('T')[0];
 
-      const milesMap        = {};
-      const weeklyMilesMap  = {};
-      const threeWeekAvgMap = {};
+      // ── Phase 1: All independent top-level queries in parallel ──
+      const [
+        schoolDoc,
+        zoneDoc,
+        groupsSnap,
+        approvedSnap,
+        pendingSnap,
+        freshUserDoc,
+        postsSnap,
+        trainingEventsSnap,
+        trainingEventsFallbackSnap,
+        meetsSnap,
+        tipDoc,
+        checkinSnap,
+      ] = await Promise.all([
+        getDoc(doc(db, 'schools', userData.schoolId)),
+        getDoc(doc(db, 'teamZoneSettings', userData.schoolId))
+          .catch(e => { console.warn('Failed to load team zone settings, using defaults:', e); return null; }),
+        getDocs(query(collection(db, 'groups'), where('schoolId', '==', userData.schoolId)))
+          .catch(e => { console.warn('Failed to load groups:', e); return null; }),
+        getDocs(query(
+          collection(db, 'users'),
+          where('schoolId', '==', userData.schoolId),
+          where('role', '==', 'athlete'),
+          where('status', '==', 'approved')
+        )),
+        isAdmin
+          ? getDocs(query(
+              collection(db, 'users'),
+              where('schoolId', '==', userData.schoolId),
+              where('role', '==', 'athlete'),
+              where('status', '==', 'pending')
+            )).catch(() => null)
+          : Promise.resolve(null),
+        getDoc(doc(db, 'users', auth.currentUser.uid)).catch(() => null),
+        getDocs(query(collection(db, 'teamPosts'), where('schoolId', '==', userData.schoolId)))
+          .catch(e => { console.warn('Unread feed count failed:', e); return null; }),
+        getDocs(query(
+          collection(db, 'events'),
+          where('schoolId', '==', userData.schoolId),
+          where('category', '==', 'Training'),
+          orderBy('date', 'asc')
+        )).catch(() => null),
+        getDocs(query(
+          collection(db, 'events'),
+          where('schoolId', '==', userData.schoolId),
+          orderBy('date', 'asc')
+        )).catch(() => null),
+        getDocs(query(collection(db, 'raceMeets'), where('schoolId', '==', userData.schoolId)))
+          .catch(() => null),
+        getDoc(doc(db, 'dailyMessages', `${userData.schoolId}_${todayKey}`))
+          .catch(e => { console.warn('Failed to check daily tip status:', e); return null; }),
+        getDocs(query(
+          collection(db, 'checkins'),
+          where('schoolId', '==', userData.schoolId),
+          where('date', '>=', weekStart)
+        )).catch(e => { console.warn('Team pulse check-in query failed:', e); return null; }),
+      ]);
+
+      // School + zone + groups
+      const schoolData = schoolDoc.exists() ? schoolDoc.data() : null;
+      if (schoolData) setSchool(schoolData);
+
+      let currentZoneSettings = null;
+      if (zoneDoc && zoneDoc.exists()) {
+        currentZoneSettings = zoneDoc.data();
+        setTeamZoneSettings(currentZoneSettings);
+      }
+
+      let loadedGroups = [];
+      if (groupsSnap) {
+        loadedGroups = groupsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        loadedGroups.sort((a, b) => (a.order || 0) - (b.order || 0));
+        setGroups(loadedGroups);
+      }
+
+      const activeSeason = schoolData ? getActiveSeason(schoolData) : null;
+      setActiveSeasonData(activeSeason);
+      const { start: cutoff, end: cutoffEnd } = getDateRange(selectedTimeframe, activeSeason, null, null);
+
+      const approvedAthletes = approvedSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setAthletes(approvedAthletes);
+
+      if (isAdmin) {
+        if (pendingSnap) {
+          setPendingAthletes(pendingSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        }
+        const pendingCoachIds = schoolData?.pendingCoachIds || [];
+        setPendingCoachCount(pendingCoachIds.length);
+      }
+
+      if (tipDoc) setTodayTipSent(tipDoc.exists());
+
+      // ── Phase 2: Athlete-dependent queries in parallel ──
+      // Single batched `where-in` query for all athlete runs replaces the old
+      // serial per-athlete loop (70 athletes × 1 query → ~3 batched queries).
+      const athleteIds = approvedAthletes.map(a => a.id);
+      const [runsResult, alertsEntries] = await Promise.all([
+        batchDocsByIds({ collectionName: 'runs', field: 'userId', ids: athleteIds }),
+        Promise.all(approvedAthletes.map(a =>
+          checkOvertraining(a.id).then(result => [a.id, result])
+        )),
+      ]);
+
+      setOvertTrainingAlerts(Object.fromEntries(alertsEntries));
+
+      // ── Phase 3: Process athlete run data client-side (no network) ──
+      const runsByAthlete = runsResult.byField;
+      const getRunDate = (r) => r.date?.toDate?.() ?? (r.date ? new Date(r.date) : null);
+
+      const milesMap         = {};
+      const weeklyMilesMap   = {};
+      const threeWeekAvgMap  = {};
       const weekBreakdownMap = {};
-      const zonePctMap      = {};
-      const paceEasyPctMap  = {};
-      const lastRunDateMap  = {};
+      const zonePctMap       = {};
+      const paceEasyPctMap   = {};
+      const lastRunDateMap   = {};
 
       for (const athlete of approvedAthletes) {
         try {
-          const runsSnap = await getDocs(query(
-            collection(db, 'runs'),
-            where('userId', '==', athlete.id),
-            orderBy('date', 'desc')
-          ));
-          const allRuns = runsSnap.docs.map(d => ({ ...d.data() }));
+          // Sort desc by date (batch `in` query doesn't preserve order)
+          const allRuns = (runsByAthlete[athlete.id] || [])
+            .slice()
+            .sort((a, b) => (getRunDate(b) || 0) - (getRunDate(a) || 0));
 
           // Track most recent run date for inactive detection
           if (allRuns.length > 0) {
-            const d = allRuns[0].date?.toDate?.();
+            const d = getRunDate(allRuns[0]);
             if (d) lastRunDateMap[athlete.id] = d;
           }
 
           // Timeframe filter for period miles
           const filtered = allRuns.filter(r => {
-            const d = r.date?.toDate?.();
+            const d = getRunDate(r);
             if (!d) return false;
             if (cutoff && d < cutoff) return false;
             if (cutoffEnd && d > cutoffEnd) return false;
@@ -422,7 +493,7 @@ export default function CoachDashboard({ userData }) {
 
           // Current week miles
           const weekFiltered = allRuns.filter(r => {
-            const d = r.date?.toDate?.();
+            const d = getRunDate(r);
             return d && d >= weekStart;
           });
           weeklyMilesMap[athlete.id] = Math.round(
@@ -435,13 +506,13 @@ export default function CoachDashboard({ userData }) {
           const week3Start = new Date(weekStart); week3Start.setDate(week3Start.getDate() - 14);
           const week4Start = new Date(weekStart); week4Start.setDate(week4Start.getDate() - 21);
 
-          const w1 = allRuns.filter(r => { const d = r.date?.toDate?.(); return d && d >= week1Start; })
+          const w1 = allRuns.filter(r => { const d = getRunDate(r); return d && d >= week1Start; })
             .reduce((s, r) => s + (r.miles || 0), 0);
-          const w2 = allRuns.filter(r => { const d = r.date?.toDate?.(); return d && d >= week2Start && d < week1Start; })
+          const w2 = allRuns.filter(r => { const d = getRunDate(r); return d && d >= week2Start && d < week1Start; })
             .reduce((s, r) => s + (r.miles || 0), 0);
-          const w3 = allRuns.filter(r => { const d = r.date?.toDate?.(); return d && d >= week3Start && d < week2Start; })
+          const w3 = allRuns.filter(r => { const d = getRunDate(r); return d && d >= week3Start && d < week2Start; })
             .reduce((s, r) => s + (r.miles || 0), 0);
-          const w4 = allRuns.filter(r => { const d = r.date?.toDate?.(); return d && d >= week4Start && d < week3Start; })
+          const w4 = allRuns.filter(r => { const d = getRunDate(r); return d && d >= week4Start && d < week3Start; })
             .reduce((s, r) => s + (r.miles || 0), 0);
 
           threeWeekAvgMap[athlete.id] = Math.round(((w1 + w2 + w3) / 3) * 10) / 10;
@@ -458,13 +529,10 @@ export default function CoachDashboard({ userData }) {
               : 16;
             const thirtyDaysAgo = new Date(now - 30 * 86400000);
             const recentRuns = allRuns.filter(r => {
-              const d = r.date?.toDate?.();
+              const d = getRunDate(r);
               return d && d >= thirtyDaysAgo;
             });
-            // Store null explicitly so the card can show "No HR data" vs hiding
             zonePctMap[athlete.id] = calcAthleteZonePct(recentRuns, age, currentZoneSettings);
-
-            // Pace-based easy % (uses VDOT training paces instead of HR)
             paceEasyPctMap[athlete.id] = calcAthletePaceEasyPct(recentRuns, athlete.trainingPaces);
           } catch (e) { console.warn('Zone pct calc failed for athlete:', e); }
 
@@ -484,11 +552,11 @@ export default function CoachDashboard({ userData }) {
       setAthletePaceEasyPct(paceEasyPctMap);
       setAthleteLastRunDate(lastRunDateMap);
 
-      // ── Compliance computation ──
+      // Compliance computation
       const compliance = computeVolumeCompliance(approvedAthletes, loadedGroups, threeWeekAvgMap, weekBreakdownMap);
       setComplianceData(compliance);
 
-      // ── Pace compliance computation ──
+      // Pace compliance computation
       const paceComp = { runningEasy: [], tooHard: [], noPaces: 0, noPacesAthletes: [] };
       for (const a of approvedAthletes) {
         if (!a.trainingPaces) { paceComp.noPaces++; paceComp.noPacesAthletes.push(a); continue; }
@@ -510,13 +578,9 @@ export default function CoachDashboard({ userData }) {
       }
       setAthleteWeekPace(paceMap);
 
-      // ── Team Pulse: bulk check-in query for this week ──
-      try {
-        const checkinSnap = await getDocs(query(
-          collection(db, 'checkins'),
-          where('schoolId', '==', userData.schoolId),
-          where('date', '>=', weekStart)
-        ));
+      // Team Pulse
+      const threeDaysAgo = new Date(now - 3 * 86400000);
+      if (checkinSnap) {
         const checkinsByAthlete = {};
         let moodSum = 0;
         let moodCount = 0;
@@ -525,21 +589,13 @@ export default function CoachDashboard({ userData }) {
           checkinsByAthlete[data.userId] = true;
           if (data.mood) { moodSum += data.mood; moodCount++; }
         });
-        const checkinCount = Object.keys(checkinsByAthlete).length;
-        const threeDaysAgo = new Date(now - 3 * 86400000);
-        const inactiveCount = approvedAthletes.filter(a => {
-          const lastRun = lastRunDateMap[a.id];
-          return !lastRun || lastRun < threeDaysAgo;
-        }).length;
         setTeamPulse({
-          checkinCount,
+          checkinCount: Object.keys(checkinsByAthlete).length,
           totalAthletes: approvedAthletes.length,
           teamAvgMood: moodCount > 0 ? Math.round((moodSum / moodCount) * 10) / 10 : null,
-          inactiveCount,
+          inactiveCount: approvedAthletes.filter(a => !lastRunDateMap[a.id] || lastRunDateMap[a.id] < threeDaysAgo).length,
         });
-      } catch (e) {
-        console.warn('Team pulse check-in query failed:', e);
-        const threeDaysAgo = new Date(now - 3 * 86400000);
+      } else {
         setTeamPulse({
           checkinCount: 0,
           totalAthletes: approvedAthletes.length,
@@ -548,41 +604,15 @@ export default function CoachDashboard({ userData }) {
         });
       }
 
-      const alertsMap = {};
-      for (const athlete of approvedAthletes) {
-        alertsMap[athlete.id] = await checkOvertraining(athlete.id);
-      }
-      setOvertTrainingAlerts(alertsMap);
-
-      if (userData.role === 'admin_coach') {
-        const pendingSnap = await getDocs(query(
-          collection(db, 'users'),
-          where('schoolId', '==', userData.schoolId),
-          where('role', '==', 'athlete'),
-          where('status', '==', 'pending')
-        ));
-        setPendingAthletes(pendingSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-
-        // Count pending assistant coaches
-        const pendingCoachIds = schoolData?.pendingCoachIds || [];
-        setPendingCoachCount(pendingCoachIds.length);
-      }
-
-      // Count total unread across channels the user belongs to
-      try {
-        const freshUserDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+      // Unread feed count
+      if (postsSnap && freshUserDoc && freshUserDoc.exists()) {
         const lastSeenChannels = freshUserDoc.data()?.lastSeenChannels || {};
         if (!lastSeenChannels.whole_team && freshUserDoc.data()?.lastSeenFeed) {
           lastSeenChannels.whole_team = freshUserDoc.data().lastSeenFeed;
         }
-        // Build set of channels this coach belongs to
         const myChannelKeys = new Set(['whole_team', 'boys', 'girls', 'parents', 'coaches']);
         loadedGroups.forEach(g => myChannelKeys.add(`group_${g.id}`));
 
-        const postsSnap = await getDocs(query(
-          collection(db, 'teamPosts'),
-          where('schoolId', '==', userData.schoolId)
-        ));
         let totalUnread = 0;
         postsSnap.docs.forEach(d => {
           const data = d.data();
@@ -594,33 +624,19 @@ export default function CoachDashboard({ userData }) {
           if (created > lastSeenDate && data.authorId !== auth.currentUser.uid) totalUnread++;
         });
         setUnreadFeedCount(totalUnread);
-      } catch (e) { console.warn('Unread feed count failed:', e); setUnreadFeedCount(0); }
-
-      try {
-        const trainingSnap = await getDocs(query(
-          collection(db, 'events'),
-          where('schoolId', '==', userData.schoolId),
-          where('category', '==', 'Training'),
-          orderBy('date', 'asc')
-        ));
-        setTrainingItems(trainingSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      } catch {
-        try {
-          const allSnap = await getDocs(query(
-            collection(db, 'events'),
-            where('schoolId', '==', userData.schoolId),
-            orderBy('date', 'asc')
-          ));
-          setTrainingItems(allSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(i => i.category === 'Training'));
-        } catch (e2) { console.error('Training load error:', e2.message); }
+      } else {
+        setUnreadFeedCount(0);
       }
 
-      // Load next upcoming meet for Training Hub card
-      try {
-        const meetsSnap = await getDocs(query(
-          collection(db, 'raceMeets'),
-          where('schoolId', '==', userData.schoolId)
-        ));
+      // Training events (prefer indexed query; fall back to post-filter if index missing)
+      if (trainingEventsSnap) {
+        setTrainingItems(trainingEventsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } else if (trainingEventsFallbackSnap) {
+        setTrainingItems(trainingEventsFallbackSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(i => i.category === 'Training'));
+      }
+
+      // Next meet
+      if (meetsSnap) {
         const allMeets = meetsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
         const upcoming = allMeets
@@ -631,21 +647,16 @@ export default function CoachDashboard({ userData }) {
             return aD - bD;
           });
         setNextMeet(upcoming[0] || null);
-      } catch { setNextMeet(null); }
-
-      try {
-        const today = new Date().toISOString().split('T')[0];
-        const tipDoc = await getDoc(doc(db, 'dailyMessages', `${userData.schoolId}_${today}`));
-        setTodayTipSent(tipDoc.exists());
-      } catch (e) { console.warn('Failed to check daily tip status:', e); }
-
+      } else {
+        setNextMeet(null);
+      }
     } catch (error) { console.error('Coach dashboard error:', error); }
-    setLoading(false);
-  }, [selectedTimeframe, userData.schoolId]);
+  }, [selectedTimeframe, userData.schoolId, userData.role]);
 
-  useEffect(() => {
-    if (!trainingSection && !addFromDashboard) loadDashboard();
-  }, [selectedTimeframe, trainingSection, addFromDashboard]);
+  // Stale-while-revalidate: first load shows the full-screen spinner; subsequent
+  // loads (timeframe change) keep cached data visible and surface a small inline
+  // "Updating…" indicator in the leaderboard section instead.
+  const { loading, refreshing } = useStaleRefresh(loadDashboard, [selectedTimeframe, userData.schoolId]);
 
   // ── Share leaderboard ────────────────────────────────────────────────────
   const handleShareLeaderboard = async () => {
@@ -1183,6 +1194,12 @@ export default function CoachDashboard({ userData }) {
             </TouchableOpacity>
           )}
 
+            {refreshing && (
+              <View style={styles.refreshingRow}>
+                <ActivityIndicator size="small" color={BRAND} />
+                <Text style={styles.refreshingText}>Updating…</Text>
+              </View>
+            )}
             {filteredAthletes.length === 0 ? (
               <View style={styles.emptyCard}>
                 <Text style={styles.emptyText}>No approved athletes yet.</Text>
@@ -1542,6 +1559,8 @@ const styles = StyleSheet.create({
   genderRow:            { flexDirection: 'row', gap: SPACE.sm, marginBottom: SPACE.md },
   genderBtn:            { flex: 1, borderRadius: RADIUS.md, paddingVertical: SPACE.md, alignItems: 'center', backgroundColor: NEUTRAL.card, borderWidth: 1.5, borderColor: NEUTRAL.border },
   genderBtnText:        { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.body },
+  refreshingRow:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm, paddingVertical: SPACE.sm },
+  refreshingText:       { color: NEUTRAL.muted, fontSize: FONT_SIZE.sm },
   emptyCard:            { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.xl, alignItems: 'center', gap: SPACE.md, ...SHADOW.sm },
   emptyText:            { color: NEUTRAL.muted, fontSize: FONT_SIZE.sm, textAlign: 'center' },
   emptySubText:         { color: NEUTRAL.muted, fontSize: FONT_SIZE.sm },

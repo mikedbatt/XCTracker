@@ -11,7 +11,7 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert,
   Animated,
@@ -41,6 +41,8 @@ import {
   formatMinutes,
   parseBirthdate,
 } from '../zoneConfig';
+import { batchDocsByIds } from '../utils/batchDocsByIds';
+import { useStaleRefresh } from '../hooks/useStaleRefresh';
 import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020, formatPace } from '../utils/vdotUtils';
 import AthleteProfile from './AthleteProfile';
 import CalendarScreen from './CalendarScreen';
@@ -59,6 +61,14 @@ import AthleteAnalytics from './AthleteAnalytics';
 
 const EFFORT_LABELS = DESIGN_EFFORT_LABELS;
 const EFFORT_COLORS = DESIGN_EFFORT_COLORS;
+
+// Memoized sub-screen wrappers. Since we keep these mounted across nav taps
+// (see calendarMounted/statsMounted/feedMounted), wrapping in React.memo means
+// they skip re-rendering when their props haven't changed — which is the case
+// on every bottom-nav tap. Callbacks passed in must be stable refs (useCallback).
+const MemoCalendarScreen   = memo(CalendarScreen);
+const MemoAthleteAnalytics = memo(AthleteAnalytics);
+const MemoChannelList      = memo(ChannelList);
 
 function calcWeeklyTarget(recentRuns) {
   if (!recentRuns || recentRuns.length === 0) return 20;
@@ -136,7 +146,6 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
   const [totalMiles,           setTotalMiles]           = useState(0);
   const [teamMiles,            setTeamMiles]            = useState({});
   const [pendingParents,       setPendingParents]       = useState([]);
-  const [loading,              setLoading]              = useState(true);
   const [autoSyncing,          setAutoSyncing]          = useState(false);
   const [calendarVisible,      setCalendarVisible]      = useState(false);
   const [selectedTimeframe,    setSelectedTimeframe]    = useState(TIMEFRAMES[0]);
@@ -153,6 +162,12 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
   const [profileVisible,       setProfileVisible]       = useState(false);
   const [statsVisible,         setStatsVisible]         = useState(false);
   const [feedVisible,          setFeedVisible]          = useState(false);
+  // Track which sub-screens have ever been opened. Once opened they stay mounted
+  // (hidden with display: 'none' when inactive) so returning to them is instant
+  // instead of remounting with a fresh spinner + full data refetch.
+  const [calendarMounted,      setCalendarMounted]      = useState(false);
+  const [statsMounted,         setStatsMounted]         = useState(false);
+  const [feedMounted,          setFeedMounted]          = useState(false);
   const [unreadFeedCount,      setUnreadFeedCount]      = useState(0);
   const [messageModalVisible,  setMessageModalVisible]  = useState(false);
   const [pendingWellness,      setPendingWellness]      = useState(null);
@@ -203,10 +218,8 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
     })();
   }, []);
 
-  useEffect(() => {
-    setZoneExpanded(false);
-    loadDashboard();
-  }, [selectedTimeframe]);
+  // Reset zone expansion UI when timeframe changes (separate from data load).
+  useEffect(() => { setZoneExpanded(false); }, [selectedTimeframe]);
 
   // Animate progress bar when weeklyMiles or target changes
   useEffect(() => {
@@ -243,7 +256,6 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
   };
 
   const loadDashboard = async () => {
-    setLoading(true);
     try {
       const user = auth.currentUser;
 
@@ -342,11 +354,12 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
         const allParentIds = [...(freshData.linkedParentIds || []), ...(freshData.pendingParentIds || [])];
         const uniqueParentIds = [...new Set(allParentIds)];
         if (uniqueParentIds.length > 0) {
-          const parentData = [];
-          for (const pid of uniqueParentIds) {
-            const pDoc = await getDoc(doc(db, 'users', pid));
-            if (pDoc.exists()) parentData.push({ id: pDoc.id, ...pDoc.data() });
-          }
+          const pDocs = await Promise.all(
+            uniqueParentIds.map(pid => getDoc(doc(db, 'users', pid)))
+          );
+          const parentData = pDocs
+            .filter(d => d.exists())
+            .map(d => ({ id: d.id, ...d.data() }));
           setPendingParents(parentData);
         } else {
           setPendingParents([]);
@@ -400,21 +413,31 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
           setTeamAthletes(athletes);
           const milesMap = {};
           milesMap[user.uid] = tMiles;
-          await Promise.all(athletes.map(async (athlete) => {
-            if (athlete.id === user.uid) return;
+          const otherIds = athletes.filter(a => a.id !== user.uid).map(a => a.id);
+          if (otherIds.length > 0) {
             try {
-              const snap = await getDocs(query(collection(db, 'runs'), where('userId', '==', athlete.id), orderBy('date', 'desc')));
-              const filtered = snap.docs.filter(d => {
-                if (!startDate && !endDate) return true;
-                const rd = d.data().date?.toDate?.();
-                if (!rd) return false;
-                if (startDate && rd < startDate) return false;
-                if (endDate && rd > endDate) return false;
-                return true;
+              const { byField } = await batchDocsByIds({
+                collectionName: 'runs',
+                field: 'userId',
+                ids: otherIds,
               });
-              milesMap[athlete.id] = Math.round(filtered.reduce((s, d) => s + (d.data().miles || 0), 0) * 10) / 10;
-            } catch (e) { console.warn('Failed to load miles for athlete:', e); milesMap[athlete.id] = 0; }
-          }));
+              for (const id of otherIds) {
+                const athleteRuns = byField[id] || [];
+                const filtered = athleteRuns.filter(r => {
+                  if (!startDate && !endDate) return true;
+                  const rd = r.date?.toDate?.();
+                  if (!rd) return false;
+                  if (startDate && rd < startDate) return false;
+                  if (endDate && rd > endDate) return false;
+                  return true;
+                });
+                milesMap[id] = Math.round(filtered.reduce((s, r) => s + (r.miles || 0), 0) * 10) / 10;
+              }
+            } catch (e) {
+              console.warn('Failed to batch-load team miles:', e);
+              otherIds.forEach(id => { milesMap[id] = 0; });
+            }
+          }
           setTeamMiles(milesMap);
         } catch (e) { console.warn('Team athletes:', e); }
       }
@@ -450,9 +473,26 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
         setUnreadFeedCount(totalUnread);
       }
     } catch (e) { console.warn('Unread feed count failed:', e); setUnreadFeedCount(0); }
-
-    setLoading(false);
   };
+
+  // Stale-while-revalidate: first load shows spinner; timeframe changes keep
+  // cached data visible and surface a small "Updating…" indicator in the team
+  // leaderboard section. Declared after loadDashboard so the function reference
+  // is defined (const arrow functions are not hoisted).
+  const { loading, refreshing } = useStaleRefresh(loadDashboard, [selectedTimeframe, customStart, customEnd]);
+
+  // Stable callbacks for memoized sub-screens. Without these, every render
+  // would pass new function identities and defeat React.memo. The Feed close
+  // handler calls loadDashboard, which changes identity every render, so we
+  // route through a ref that's kept current.
+  const loadDashboardRef = useRef(loadDashboard);
+  loadDashboardRef.current = loadDashboard;
+  const handleCloseCalendar = useCallback(() => setCalendarVisible(false), []);
+  const handleCloseStats    = useCallback(() => setStatsVisible(false), []);
+  const handleCloseFeed     = useCallback(() => {
+    setFeedVisible(false);
+    loadDashboardRef.current?.();
+  }, []);
 
   if (selectedTeammate) return <TeammateProfile athlete={selectedTeammate} school={school} onBack={() => setSelectedTeammate(null)} />;
 
@@ -915,6 +955,12 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
             <Text style={styles.sectionTitle}>
               {leaderboardFilter === 'mygroup' && myGroup ? myGroup.name : 'Team'} leaderboard — {selectedTimeframe.label?.toLowerCase() || 'selected period'}
             </Text>
+            {refreshing && (
+              <View style={styles.refreshingRow}>
+                <ActivityIndicator size="small" color={BRAND} />
+                <Text style={styles.refreshingText}>Updating…</Text>
+              </View>
+            )}
             {displayTeam.slice(0, 5).map((athlete, index) => {
               const isMe = athlete.id === auth.currentUser?.uid;
               const miles = teamMiles[athlete.id] || 0;
@@ -1086,9 +1132,9 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
           <SeasonReview season={seasonReviewSeason} school={school} userData={userData} onClose={() => { setSeasonReviewVisible(false); setSeasonReviewSeason(null); }} />
         </View>
       )}
-      {calendarVisible && (
-        <View style={[styles.subScreen, { bottom: navHeight }]}>
-          <CalendarScreen userData={userData} school={school} trainingPaces={userData.trainingPaces || null} onClose={() => setCalendarVisible(false)} />
+      {calendarMounted && (
+        <View style={[styles.subScreen, { bottom: navHeight }, !calendarVisible && { display: 'none' }]}>
+          <MemoCalendarScreen userData={userData} school={school} trainingPaces={userData.trainingPaces || null} onClose={handleCloseCalendar} />
         </View>
       )}
       {stravaVisible && (
@@ -1096,20 +1142,20 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
           <StravaConnect userData={userData} school={school} onClose={() => { setStravaVisible(false); loadDashboard(); }} onSynced={() => { setStravaVisible(false); setStravaLinked(true); loadDashboard(); }} />
         </View>
       )}
-      {feedVisible && (
-        <View style={[styles.subScreen, { bottom: navHeight }]}>
-          <ChannelList userData={userData} school={school} onClose={() => { setFeedVisible(false); loadDashboard(); }} onUnreadChange={(count) => setUnreadFeedCount(count)} />
+      {feedMounted && (
+        <View style={[styles.subScreen, { bottom: navHeight }, !feedVisible && { display: 'none' }]}>
+          <MemoChannelList userData={userData} school={school} onClose={handleCloseFeed} onUnreadChange={setUnreadFeedCount} />
         </View>
       )}
-      {statsVisible && (
-        <View style={[styles.subScreen, { bottom: navHeight }]}>
-          <AthleteAnalytics
+      {statsMounted && (
+        <View style={[styles.subScreen, { bottom: navHeight }, !statsVisible && { display: 'none' }]}>
+          <MemoAthleteAnalytics
             userData={userData}
             school={school}
             myGroup={myGroup}
             athleteAge={athleteAge}
             teamZoneSettings={teamZoneSettings}
-            onClose={() => setStatsVisible(false)}
+            onClose={handleCloseStats}
           />
         </View>
       )}
@@ -1159,15 +1205,15 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
           <Ionicons name="add-circle-outline" size={24} color={NEUTRAL.muted} />
           <Text style={styles.bottomNavLabel}>Log run</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setStravaVisible(false); setFeedVisible(false); setProfileVisible(false); setStatsVisible(false); setCalendarVisible(true); }}>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setStravaVisible(false); setFeedVisible(false); setProfileVisible(false); setStatsVisible(false); setCalendarMounted(true); setCalendarVisible(true); }}>
           <Ionicons name="calendar-outline" size={24} color={calendarVisible ? BRAND : NEUTRAL.muted} />
           <Text style={[styles.bottomNavLabel, calendarVisible && { color: BRAND }]}>Calendar</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setStravaVisible(false); setFeedVisible(false); setProfileVisible(false); setStatsVisible(true); }}>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setStravaVisible(false); setFeedVisible(false); setProfileVisible(false); setStatsMounted(true); setStatsVisible(true); }}>
           <Ionicons name="stats-chart-outline" size={24} color={statsVisible ? BRAND : NEUTRAL.muted} />
           <Text style={[styles.bottomNavLabel, statsVisible && { color: BRAND }]}>Stats</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setStravaVisible(false); setProfileVisible(false); setStatsVisible(false); setFeedVisible(true); }}>
+        <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setCalendarVisible(false); setStravaVisible(false); setProfileVisible(false); setStatsVisible(false); setFeedMounted(true); setFeedVisible(true); }}>
           <View>
             <Ionicons name="chatbubbles-outline" size={24} color={feedVisible ? BRAND : NEUTRAL.muted} />
             {unreadFeedCount > 0 && (
@@ -1263,6 +1309,8 @@ const styles = StyleSheet.create({
   periodMilesLabel:    { fontSize: FONT_SIZE.sm, color: NEUTRAL.body },
   section:             { padding: SPACE.lg },
   sectionTitle:        { fontSize: 17, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.md },
+  refreshingRow:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm, paddingVertical: SPACE.sm },
+  refreshingText:      { color: NEUTRAL.muted, fontSize: FONT_SIZE.sm },
   workoutCard:         { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg - 2, marginBottom: SPACE.md, flexDirection: 'row', alignItems: 'center', gap: SPACE.md, ...SHADOW.sm },
   workoutBadge:        { borderRadius: RADIUS.sm, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm, alignSelf: 'flex-start' },
   workoutBadgeText:    { color: '#fff', fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
