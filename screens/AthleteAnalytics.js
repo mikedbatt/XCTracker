@@ -73,11 +73,7 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
   const toggle = (section) => setExpandedSection(expandedSection === section ? null : section);
 
   // ── Season & phase info ──
-  // TEMP DEBUG: remove once season-detection issue is diagnosed
-  console.log('[SEASON DEBUG] school.id:', school?.id, '| seasons count:', school?.seasons?.length);
-  console.log('[SEASON DEBUG] seasons array:', JSON.stringify(school?.seasons, null, 2));
   const activeSeason = getActiveSeason(school);
-  console.log('[SEASON DEBUG] getActiveSeason returned:', JSON.stringify(activeSeason, null, 2));
   const phaseInfo = getPhaseForSeason(activeSeason);
   const totalWeeks = activeSeason ? Math.ceil((new Date(activeSeason.championshipDate) - new Date(activeSeason.seasonStart)) / (7 * 86400000)) : null;
 
