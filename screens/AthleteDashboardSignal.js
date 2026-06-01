@@ -761,13 +761,13 @@ export default function AthleteDashboardSignal({ userData: userDataProp, refresh
                   {weeklyMiles}
                 </Text>
                 <Text style={styles.heroMilesOf}>/ {weeklyTarget} mi</Text>
+                <View style={{ flex: 1 }} />
                 <View style={styles.heroProgressBg}>
                   <Animated.View style={[styles.heroProgressFill, {
                     width: progressAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'], extrapolate: 'clamp' }),
                     backgroundColor: isOverWarning ? SIGNAL.color.coral : isOverBuffer ? SIGNAL.color.amber : SIGNAL.color.indigo,
                   }]} />
                 </View>
-                <View style={{ flex: 1 }} />
               </View>
             </View>
 
