@@ -1019,11 +1019,11 @@ export default function AthleteDashboardSignal({ userData: userDataProp, refresh
                     onPress={() => { setSelectedWorkout(workout); setWorkoutDetailVisible(true); }}
                     activeOpacity={0.85}
                   >
+                    <View style={[styles.workoutChip, { backgroundColor: `${c}${SIGNAL.tint.chip}` }]}>
+                      <View style={[styles.workoutChipDot, { backgroundColor: c }]} />
+                      <Text style={[styles.workoutChipText, { color: c }]}>{workout.type}</Text>
+                    </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
-                      <View style={[styles.workoutChip, { backgroundColor: `${c}${SIGNAL.tint.chip}` }]}>
-                        <View style={[styles.workoutChipDot, { backgroundColor: c }]} />
-                        <Text style={[styles.workoutChipText, { color: c }]}>{workout.type}</Text>
-                      </View>
                       <Text style={styles.workoutTitle}>
                         {workout.title}
                         {wkMiles ? <Text style={styles.workoutTitleSub}> — {wkMiles} mi</Text> : null}
@@ -1516,16 +1516,15 @@ const styles = StyleSheet.create({
   },
   headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   greeting: {
-    fontFamily: SIGNAL.font.displayItalic,
+    fontFamily: SIGNAL.font.display,
     fontSize: 32,
     lineHeight: 34,
-    color: SIGNAL.color.ink,
+    color: SIGNAL.color.indigo,
     letterSpacing: -0.64,
   },
   greetingAccent: {
-    fontFamily: SIGNAL.font.displayItalic,
+    fontFamily: SIGNAL.font.display,
     color: SIGNAL.color.indigo,
-    fontStyle: 'italic',
   },
   eyebrow: {
     ...SIGNAL.style.eyebrow,
@@ -1735,11 +1734,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18, paddingTop: 22, paddingBottom: 8,
   },
   sectionTitle: {
-    fontFamily: SIGNAL.font.display, fontSize: 22, color: SIGNAL.color.ink,
+    fontFamily: SIGNAL.font.display, fontSize: 22, color: SIGNAL.color.indigo,
     letterSpacing: SIGNAL.letter.titleTight,
   },
   sectionTitleAccent: {
-    fontFamily: SIGNAL.font.displayItalic, color: SIGNAL.color.indigo, fontStyle: 'italic',
+    fontFamily: SIGNAL.font.display, color: SIGNAL.color.indigo,
   },
   sectionSub: {
     fontFamily: SIGNAL.font.bodyMedium, fontSize: 11.5, color: SIGNAL.color.mute,
@@ -1768,7 +1767,6 @@ const styles = StyleSheet.create({
     ...SIGNAL.border.hairline,
   },
   workoutChip: {
-    alignSelf: 'flex-start',
     flexDirection: 'row', alignItems: 'center', gap: 5,
     paddingHorizontal: 9, paddingVertical: 3,
     borderRadius: SIGNAL.radius.chip,
@@ -1777,7 +1775,6 @@ const styles = StyleSheet.create({
   workoutChipText: { fontFamily: SIGNAL.font.bodySemi, fontSize: 11 },
   workoutTitle: {
     fontFamily: SIGNAL.font.bodySemi, fontSize: 14, color: SIGNAL.color.ink,
-    marginTop: 5,
   },
   workoutTitleSub: { fontFamily: SIGNAL.font.body, color: SIGNAL.color.mute },
   workoutPace: {
