@@ -761,12 +761,13 @@ export default function AthleteDashboardSignal({ userData: userDataProp, refresh
                   {weeklyMiles}
                 </Text>
                 <Text style={styles.heroMilesOf}>/ {weeklyTarget} mi</Text>
-              </View>
-              <View style={styles.heroProgressBg}>
-                <Animated.View style={[styles.heroProgressFill, {
-                  width: progressAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'], extrapolate: 'clamp' }),
-                  backgroundColor: isOverWarning ? SIGNAL.color.coral : isOverBuffer ? SIGNAL.color.amber : SIGNAL.color.indigo,
-                }]} />
+                <View style={{ flex: 1 }} />
+                <View style={styles.heroProgressBg}>
+                  <Animated.View style={[styles.heroProgressFill, {
+                    width: progressAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'], extrapolate: 'clamp' }),
+                    backgroundColor: isOverWarning ? SIGNAL.color.coral : isOverBuffer ? SIGNAL.color.amber : SIGNAL.color.indigo,
+                  }]} />
+                </View>
               </View>
             </View>
 
@@ -784,9 +785,6 @@ export default function AthleteDashboardSignal({ userData: userDataProp, refresh
                     ))}
                   </View>
                   <Text style={styles.zoneToggleText}>Pace zones</Text>
-                  <View style={styles.gpsBadge}>
-                    <Text style={styles.gpsBadgeText}>GPS</Text>
-                  </View>
                   <Ionicons
                     name={zoneExpanded ? 'chevron-up' : 'chevron-down'}
                     size={14}
@@ -1593,8 +1591,10 @@ const styles = StyleSheet.create({
   },
   heroMilesOf: { fontFamily: SIGNAL.font.body, fontSize: 14, color: SIGNAL.color.mute },
   heroProgressBg: {
-    height: 8, backgroundColor: SIGNAL.color.line,
-    borderRadius: SIGNAL.radius.chip, marginTop: 14, overflow: 'hidden',
+    width: 110, height: 8,
+    backgroundColor: SIGNAL.color.line,
+    borderRadius: SIGNAL.radius.chip, overflow: 'hidden',
+    alignSelf: 'center',
   },
   heroProgressFill: { height: '100%', borderRadius: SIGNAL.radius.chip },
   heroOverRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
@@ -1613,13 +1613,6 @@ const styles = StyleSheet.create({
   zoneStackedSegment: { height: '100%' },
   zoneToggleText: {
     fontFamily: SIGNAL.font.bodySemi, fontSize: 11.5, color: SIGNAL.color.inkSoft,
-  },
-  gpsBadge: {
-    backgroundColor: `${SIGNAL.color.emerald}${SIGNAL.tint.chip}`,
-    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5,
-  },
-  gpsBadgeText: {
-    fontFamily: SIGNAL.font.bodyBold, fontSize: 9, color: SIGNAL.color.emerald, letterSpacing: 0.5,
   },
   zoneDropdown: {
     paddingHorizontal: 18, paddingVertical: 12,
