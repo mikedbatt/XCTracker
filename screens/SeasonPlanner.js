@@ -173,7 +173,7 @@ export function getActiveSeason(school) {
   const now = new Date();
   const active = seasons.find(s => {
     const start = new Date(s.seasonStart);
-    const end   = new Date(new Date(s.championshipDate).getTime() + 7 * 86400000);
+    const end   = new Date(s.championshipDate);
     return now >= start && now <= end;
   });
   if (!active) {
@@ -190,8 +190,7 @@ export function getCompletedSeasons(school) {
   const now = new Date();
   return school.seasons.filter(s => {
     if (!s.championshipDate) return false;
-    const champEnd = new Date(new Date(s.championshipDate).getTime() + 7 * 86400000);
-    return now > champEnd;
+    return now > new Date(s.championshipDate);
   }).sort((a, b) => new Date(b.championshipDate) - new Date(a.championshipDate));
 }
 
