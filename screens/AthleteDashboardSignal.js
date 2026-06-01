@@ -1728,8 +1728,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18, paddingTop: 22, paddingBottom: 8,
   },
   sectionTitle: {
-    fontFamily: SIGNAL.font.bodySemi, fontSize: 22, color: SIGNAL.color.indigo,
-    letterSpacing: SIGNAL.letter.titleTight,
+    fontFamily: SIGNAL.font.bodySemi, fontSize: 18, color: SIGNAL.color.indigo,
+    letterSpacing: -0.36,
   },
   sectionTitleAccent: {
     fontFamily: SIGNAL.font.bodySemi, color: SIGNAL.color.indigo,
