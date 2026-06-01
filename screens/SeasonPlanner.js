@@ -166,6 +166,14 @@ function toSeasonDate(val) {
   return null;
 }
 
+// Strip time-of-day so "season starts June 1" matches any time on June 1.
+// Date pickers commonly save with the time-of-day at the moment the user tapped
+// save, which would otherwise make a season "not started yet" for part of the
+// start day. We compare at day granularity throughout the season helpers.
+function startOfDay(d) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
 export function getActiveSeason(school) {
   if (!school) return null;
   const seasons = school.seasons || [];
@@ -185,19 +193,21 @@ export function getActiveSeason(school) {
     return null;
   }
 
-  const now = new Date();
+  const today = startOfDay(new Date());
 
   // Active = season has started AND championship hasn't passed.
   // A season with no championshipDate set yet is treated as ongoing (open-ended)
   // so coaches can plan a season before they know the exact championship date.
+  // Day-level comparisons so a saved start of "June 1 at 3pm" counts as
+  // started for the whole day of June 1.
   // Tiebreak: when multiple seasons match, prefer the most recently started.
   const active = seasons
     .filter(s => {
       const start = toSeasonDate(s.seasonStart);
-      if (!start || now < start) return false;
+      if (!start || today < startOfDay(start)) return false;
       const end = toSeasonDate(s.championshipDate);
       if (!end) return true; // ongoing — no end set yet
-      return now <= end;
+      return today <= startOfDay(end);
     })
     .sort((a, b) => {
       const aStart = toSeasonDate(a.seasonStart);
@@ -211,7 +221,7 @@ export function getActiveSeason(school) {
   const upcoming = [...seasons]
     .filter(s => {
       const start = toSeasonDate(s.seasonStart);
-      return start && start > now;
+      return start && startOfDay(start) > today;
     })
     .sort((a, b) => {
       const aStart = toSeasonDate(a.seasonStart);
@@ -224,11 +234,11 @@ export function getActiveSeason(school) {
 
 export function getCompletedSeasons(school) {
   if (!school?.seasons?.length) return [];
-  const now = new Date();
+  const today = startOfDay(new Date());
   return school.seasons
     .filter(s => {
       const end = toSeasonDate(s.championshipDate);
-      return end && now > end;
+      return end && today > startOfDay(end);
     })
     .sort((a, b) => {
       const aEnd = toSeasonDate(a.championshipDate);
@@ -249,16 +259,18 @@ export function getPhaseForSeason(season) {
     return { name: 'Pre-Season', color: sportDef?.color || '#607d8b', icon: sportDef?.icon || '📋', tip: 'Set season dates to activate phase tracking.', weekNum: null, daysToChamp: null, isPreSeason: true, sport, phases };
   }
 
-  const now   = new Date();
-  const start = new Date(season.seasonStart);
-  const champ = new Date(season.championshipDate);
-  const totalDays   = (champ - start) / 86400000;
-  const elapsed     = (now - start) / 86400000;
-  const daysToChamp = Math.ceil((champ - now) / 86400000);
+  // Day-level math: treat the entire start day as "season day 1" regardless of
+  // what time-of-day the picker happened to save.
+  const today    = startOfDay(new Date());
+  const startDay = startOfDay(new Date(season.seasonStart));
+  const champDay = startOfDay(new Date(season.championshipDate));
+  const totalDays   = Math.round((champDay - startDay) / 86400000);
+  const elapsed     = Math.round((today - startDay) / 86400000);
+  const daysToChamp = Math.round((champDay - today) / 86400000);
   const weekNum     = Math.max(1, Math.floor(elapsed / 7) + 1);
 
   if (elapsed < 0) {
-    const daysUntil = Math.ceil(-elapsed);
+    const daysUntil = -elapsed;
     return { name: 'Pre-Season', color: sportDef?.color || '#607d8b', icon: sportDef?.icon || '📋', tip: `${sportDef?.label} starts in ${daysUntil} days.`, weekNum: null, daysToChamp, isPreSeason: true, sport, phases };
   }
 
