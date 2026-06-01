@@ -55,10 +55,15 @@ in-place where possible to keep one source of truth.
   felt crowded against the status bar safe area).
 
 ### Gradients
-- `expo-linear-gradient` is **not installed**. Use **solid `SIGNAL.color.indigo`**
-  for: the check-in card background, the hero progress fill, and the avatar
-  background. The README's metric-tolerant clause applies — install
-  `expo-linear-gradient` later if we want to bring gradients back.
+- `expo-linear-gradient` is **installed and used** for the check-in card
+  (indigo → violet, 135°) and the hero progress fill (indigo → cyan, 90°).
+- Avatar background is **NOT a gradient** in implementation — it uses the
+  athlete's selected `avatarColor` as a solid fill. The original spec's
+  emerald→cyan avatar gradient was overridden when we wired the avatar to
+  respect user customization (a single chosen color doesn't gradient cleanly).
+- For warn/over states on the progress bar (amber when over buffer, coral
+  when over warning), pass the same color twice as the gradient stops so the
+  bar renders as a solid alert color instead of a gradient.
 
 ### Bug-fix patterns to watch for in future translations
 - **Avatar color**: profile avatar must read from `userData.avatarColor` (or

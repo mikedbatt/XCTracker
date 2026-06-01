@@ -25,6 +25,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { auth, db } from '../firebaseConfig';
 import { autoSyncStrava } from '../stravaConfig';
 import {
@@ -765,8 +766,18 @@ export default function AthleteDashboardSignal({ userData: userDataProp, refresh
                 <View style={styles.heroProgressBg}>
                   <Animated.View style={[styles.heroProgressFill, {
                     width: progressAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'], extrapolate: 'clamp' }),
-                    backgroundColor: isOverWarning ? SIGNAL.color.coral : isOverBuffer ? SIGNAL.color.amber : SIGNAL.color.indigo,
-                  }]} />
+                  }]}>
+                    <LinearGradient
+                      colors={isOverWarning
+                        ? [SIGNAL.color.coral, SIGNAL.color.coral]
+                        : isOverBuffer
+                          ? [SIGNAL.color.amber, SIGNAL.color.amber]
+                          : [SIGNAL.color.indigo, SIGNAL.color.cyan]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={StyleSheet.absoluteFill}
+                    />
+                  </Animated.View>
                 </View>
               </View>
             </View>
@@ -877,7 +888,12 @@ export default function AthleteDashboardSignal({ userData: userDataProp, refresh
         {/* ── Daily wellness check-in prompt (indigo accent card) ── */}
         {!todayCheckinDone && !wellnessCardDismissed && (
           <View style={[styles.cardSpacer]}>
-            <View style={styles.checkinCard}>
+            <LinearGradient
+              colors={[SIGNAL.color.indigo, SIGNAL.color.violet]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.checkinCard}
+            >
               <TouchableOpacity
                 onPress={() => setWellnessCardDismissed(true)}
                 style={styles.checkinClose}
@@ -896,7 +912,7 @@ export default function AthleteDashboardSignal({ userData: userDataProp, refresh
                 <Text style={styles.checkinBtnText}>Check in</Text>
                 <Ionicons name="arrow-forward" size={14} color={SIGNAL.color.indigo} />
               </TouchableOpacity>
-            </View>
+            </LinearGradient>
           </View>
         )}
 
@@ -1637,9 +1653,8 @@ const styles = StyleSheet.create({
   },
   analysisText: { fontFamily: SIGNAL.font.bodySemi, fontSize: 11.5 },
 
-  // ── Daily check-in card (indigo) ────────────────────────────────────────────
+  // ── Daily check-in card (indigo → violet gradient) ─────────────────────────
   checkinCard: {
-    backgroundColor: SIGNAL.color.indigo,
     borderRadius: SIGNAL.radius.card,
     padding: 16, position: 'relative', overflow: 'hidden',
   },
