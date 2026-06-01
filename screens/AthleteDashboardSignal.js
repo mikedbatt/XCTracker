@@ -1515,10 +1515,10 @@ const styles = StyleSheet.create({
   headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   greeting: {
     fontFamily: SIGNAL.font.display,
-    fontSize: 26,
-    lineHeight: 30,
+    fontSize: 29,
+    lineHeight: 33,
     color: SIGNAL.color.indigo,
-    letterSpacing: -0.52,
+    letterSpacing: -0.58,
   },
   greetingAccent: {
     fontFamily: SIGNAL.font.display,
