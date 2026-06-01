@@ -45,7 +45,7 @@ import {
 import { batchDocsByIds } from '../utils/batchDocsByIds';
 import { useStaleRefresh } from '../hooks/useStaleRefresh';
 import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020, formatPace } from '../utils/vdotUtils';
-import AthleteProfile from './AthleteProfile';
+import AthleteProfile from './AthleteProfileSignal';
 import CalendarScreen from './CalendarScreen';
 import { SIGNAL_TYPE_COLORS, TYPE_COLORS, WORKOUT_PACE_ZONE } from '../constants/training';
 import DatePickerField from './DatePickerField';
@@ -57,8 +57,8 @@ import ChannelList from './ChannelList';
 import TeammateProfile from './TeammateProfile';
 import TimeframePicker, { TIMEFRAMES, getDateRange } from './TimeframePicker';
 import WellnessCheckIn from './WellnessCheckIn';
-import WorkoutDetailModal from './WorkoutDetailModal';
-import AthleteAnalytics from './AthleteAnalytics';
+import WorkoutDetailModal from './WorkoutDetailModalSignal';
+import AthleteAnalytics from './AthleteAnalyticsSignal';
 
 const EFFORT_LABELS = DESIGN_EFFORT_LABELS;
 const EFFORT_COLORS = DESIGN_EFFORT_COLORS;
