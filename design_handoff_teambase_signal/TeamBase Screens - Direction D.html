@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>TeamBase · Screens — Direction D</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; background: #EBECEF; height: 100%; }
+  body { font-family: 'Inter Tight', system-ui, sans-serif; overflow: hidden; }
+  #root { width: 100%; height: 100vh; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="components/ios-frame.jsx"></script>
+<script type="text/babel" src="components/design-canvas.jsx"></script>
+<script type="text/babel" src="components/coach-dashboard.jsx"></script>
+<script type="text/babel" src="components/coach-analytics.jsx"></script>
+<script type="text/babel" src="components/athlete-dashboard.jsx"></script>
+<script type="text/babel" src="components/athlete-stats.jsx"></script>
+<script type="text/babel" src="components/calendar.jsx"></script>
+<script type="text/babel" src="components/team-feed.jsx"></script>
+<script type="text/babel" src="components/athlete-actions.jsx"></script>
+<script type="text/babel" src="components/coach-tools.jsx"></script>
+<script type="text/babel" src="components/racing.jsx"></script>
+<script type="text/babel" src="components/planning.jsx"></script>
+<script type="text/babel" src="components/auth-parent.jsx"></script>
+
+<script type="text/babel" data-presets="react">
+function Phone({children}) {
+  return <window.IOSDevice width={402} height={874} dark={false}>{children}</window.IOSDevice>;
+}
+
+function App() {
+  const DC = window.DesignCanvas, Sec = window.DCSection, AB = window.DCArtboard;
+  return (
+    <DC docTitle="TeamBase · Screens — Direction D (faithful)" background="#EBECEF">
+      <Sec id="athlete" title="Athlete">
+        <AB id="a-home" label="Athlete · Dashboard" width={402} height={874}>
+          <Phone><window.AthleteDashboardFaithful /></Phone>
+        </AB>
+        <AB id="a-stats" label="Athlete · Stats" width={402} height={874}>
+          <Phone><window.AthleteStatsFaithful /></Phone>
+        </AB>
+      </Sec>
+      <Sec id="coach" title="Coach">
+        <AB id="c-home" label="Coach · Dashboard" width={402} height={874}>
+          <Phone><window.CoachDashboardFaithful /></Phone>
+        </AB>
+        <AB id="c-analytics" label="Coach · Analytics" width={402} height={874}>
+          <Phone><window.CoachAnalyticsFaithful /></Phone>
+        </AB>
+      </Sec>
+      <Sec id="shared" title="Shared">
+        <AB id="calendar" label="Team Calendar" width={402} height={874}>
+          <Phone><window.CalendarFaithful /></Phone>
+        </AB>
+        <AB id="feed" label="Team Feed" width={402} height={874}>
+          <Phone><window.TeamFeedFaithful /></Phone>
+        </AB>
+      </Sec>
+      <Sec id="actions" title="Athlete actions">
+        <AB id="workout-detail" label="Workout Detail" width={402} height={874}>
+          <Phone><window.WorkoutDetailFaithful /></Phone>
+        </AB>
+        <AB id="log-run" label="Log a Run" width={402} height={874}>
+          <Phone><window.LogRunFaithful /></Phone>
+        </AB>
+        <AB id="profile" label="Athlete Profile" width={402} height={874}>
+          <Phone><window.AthleteProfileFaithful /></Phone>
+        </AB>
+      </Sec>
+      <Sec id="more" title="Coach tools & flows">
+        <AB id="athlete-detail" label="Athlete Detail (coach)" width={402} height={874}>
+          <Phone><window.AthleteDetailFaithful /></Phone>
+        </AB>
+        <AB id="wellness" label="Wellness Check-in" width={402} height={874}>
+          <Phone><window.WellnessCheckInFaithful /></Phone>
+        </AB>
+        <AB id="library" label="Workout Library" width={402} height={874}>
+          <Phone><window.WorkoutLibraryFaithful /></Phone>
+        </AB>
+      </Sec>
+      <Sec id="racing" title="Racing">
+        <AB id="race-manager" label="Race Manager" width={402} height={874}>
+          <Phone><window.RaceManagerFaithful /></Phone>
+        </AB>
+        <AB id="meet-detail" label="Meet Detail" width={402} height={874}>
+          <Phone><window.MeetDetailFaithful /></Phone>
+        </AB>
+        <AB id="race-results" label="Race Results" width={402} height={874}>
+          <Phone><window.RaceResultsFaithful /></Phone>
+        </AB>
+      </Sec>
+      <Sec id="planning" title="Planning & roster">
+        <AB id="season-planner" label="Season Planner" width={402} height={874}>
+          <Phone><window.SeasonPlannerFaithful /></Phone>
+        </AB>
+        <AB id="weekly-planner" label="Weekly Planner" width={402} height={874}>
+          <Phone><window.WeeklyPlannerFaithful /></Phone>
+        </AB>
+        <AB id="manage-roster" label="Manage Roster" width={402} height={874}>
+          <Phone><window.ManageRosterFaithful /></Phone>
+        </AB>
+      </Sec>
+      <Sec id="onboarding" title="Onboarding & parent">
+        <AB id="login" label="Login / Sign up" width={402} height={874}>
+          <Phone><window.LoginFaithful /></Phone>
+        </AB>
+        <AB id="join" label="Find Your School" width={402} height={874}>
+          <Phone><window.AthleteJoinFaithful /></Phone>
+        </AB>
+        <AB id="parent" label="Parent Dashboard" width={402} height={874}>
+          <Phone><window.ParentDashboardFaithful /></Phone>
+        </AB>
+      </Sec>
+    </DC>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
