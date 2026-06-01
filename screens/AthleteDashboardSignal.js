@@ -663,7 +663,7 @@ export default function AthleteDashboardSignal({ userData: userDataProp, refresh
             <Text style={styles.eyebrow}>{school?.name || 'TeamBase'}</Text>
           </View>
           <TouchableOpacity onPress={() => { setActiveTab('home'); setProfileVisible(true); }} style={styles.profileBtn} activeOpacity={0.8}>
-            <View style={[styles.profileAvatar, { backgroundColor: SIGNAL.color.indigo }]}>
+            <View style={[styles.profileAvatar, { backgroundColor: avatarColor }]}>
               <Text style={styles.profileAvatarText}>
                 {userData.firstName?.[0]}{userData.lastName?.[0]}
               </Text>
