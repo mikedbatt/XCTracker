@@ -37,11 +37,6 @@
         { "fieldPath": "userId", "order": "ASCENDING" },
         { "fieldPath": "date",   "order": "DESCENDING" }
       ] },
-    { "collectionGroup": "runs", "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "UserId", "order": "ASCENDING" },
-        { "fieldPath": "date",   "order": "ASCENDING" }
-      ] },
     { "collectionGroup": "checkins", "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "schoolId", "order": "ASCENDING" },

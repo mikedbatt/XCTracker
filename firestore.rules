@@ -30,14 +30,6 @@ service cloud.firestore {
         && (user.role == 'admin_coach' || user.role == 'assistant_coach');
     }
 
-    // Check if user is the head coach at the given school
-    function isAdminCoachAtSchool(schoolId) {
-      let user = getUserData();
-      return isSignedIn()
-        && user.schoolId == schoolId
-        && user.role == 'admin_coach';
-    }
-
     // ── Users ─────────────────────────────────────────────────────────────────
     // Any signed-in user can read user docs. Needed for: parent link flow
     // (search by email), assistant coach join, teammate profiles, leaderboard.
