@@ -55,6 +55,7 @@ import { batchDocsByIds } from '../utils/batchDocsByIds';
 import { computeVolumeCompliance, getCurrentWeekPace, getAthleteWeeklyTarget } from '../utils/complianceUtils';
 import { calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
 import { useStaleRefresh } from '../hooks/useStaleRefresh';
+import { getRunDate } from '../utils/dateUtils';
 import {
   DEFAULT_ZONE_BOUNDARIES,
   calcMaxHR,
@@ -146,7 +147,6 @@ async function checkOvertraining(athleteId, attendanceStats = null) {
       .sort((a, b) => getCheckinDate(b) - getCheckinDate(a));
 
     // Bucket runs into Monday-aligned weeks
-    const getRunDate = (r) => r.date?.toDate ? r.date.toDate() : new Date(r.date);
     const thisWeekRuns = allRuns.filter(r => getRunDate(r) >= thisMonday);
     const thisWeekMiles = thisWeekRuns.reduce((s, r) => s + (r.miles || 0), 0);
 
@@ -513,7 +513,6 @@ export default function CoachDashboard({ userData }) {
 
       // ── Phase 3: Process athlete run data client-side (no network) ──
       const runsByAthlete = runsResult.byField;
-      const getRunDate = (r) => r.date?.toDate?.() ?? (r.date ? new Date(r.date) : null);
 
       const milesMap         = {};
       const weeklyMilesMap   = {};

@@ -89,6 +89,10 @@ zoneConfig.js     # HR zone math, boundary validation, birthdate parsing
 - `utils/vdotUtils.js` — **pace zone math** (VDOT methodology). Anything
   pace-zone-related should use this.
 - `utils/raceUtils.js` — race sorting, filtering, CSV import helpers
+- `utils/dateUtils.js` — `getMondayISO`, `getRunDate`, `groupRunsByWeek`.
+  Single source of truth for run/training date handling. `getRunDate` returns
+  `null` (not Invalid Date) for missing fields, so callers can chain
+  comparisons safely.
 - `utils/complianceUtils.js` — training compliance scoring
 - `utils/acwrUtils.js` — Acute:Chronic Workload Ratio. Injury-risk metric
   comparing last-7-day miles to 28-day average. Sweet spot 0.8–1.3; >1.5 is

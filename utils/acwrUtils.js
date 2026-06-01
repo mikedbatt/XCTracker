@@ -21,6 +21,7 @@
 //     denominators.
 
 import { STATUS } from '../constants/design';
+import { getRunDate } from './dateUtils';
 
 export const ACWR_STATUS = {
   INSUFFICIENT:  'insufficient',
@@ -32,10 +33,6 @@ export const ACWR_STATUS = {
 
 const MIN_DAYS_OF_HISTORY = 21;
 const LOW_BASELINE_MILES  = 5; // chronic avg under 5 mi/wk → flag as low baseline
-
-function getRunDate(r) {
-  return r.date?.toDate?.() ?? (r.date ? new Date(r.date) : null);
-}
 
 /**
  * Compute ACWR for a runner given their recent runs.

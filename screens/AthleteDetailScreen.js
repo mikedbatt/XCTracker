@@ -25,31 +25,7 @@ import { getActiveSeason, getPhaseForSeason, generateVolumeCurve } from './Seaso
 import { formatTime, calcPace, formatPace } from '../utils/raceUtils';
 import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
 import RunDetailModal from './RunDetailModal';
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function getMondayISO(date) {
-  const d = new Date(date);
-  const day = d.getDay();
-  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString().split('T')[0];
-}
-
-function getRunDate(r) {
-  return r.date?.toDate ? r.date.toDate() : new Date(r.date);
-}
-
-function groupRunsByWeek(runs) {
-  const weeks = {};
-  runs.forEach(r => {
-    const d = getRunDate(r);
-    const mon = getMondayISO(d);
-    if (!weeks[mon]) weeks[mon] = [];
-    weeks[mon].push(r);
-  });
-  return weeks;
-}
+import { getMondayISO, getRunDate, groupRunsByWeek } from '../utils/dateUtils';
 
 
 // ── Component ────────────────────────────────────────────────────────────────

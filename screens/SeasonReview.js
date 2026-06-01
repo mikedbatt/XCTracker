@@ -14,16 +14,9 @@ import {
 import { SPORTS } from './SeasonPlanner';
 import { formatTime } from '../utils/raceUtils';
 import { calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
+import { getMondayISO } from '../utils/dateUtils';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function getMondayISO(d) {
-  const date = new Date(d);
-  const day = date.getDay();
-  date.setDate(date.getDate() - (day === 0 ? 6 : day - 1));
-  date.setHours(0, 0, 0, 0);
-  return date.toISOString().split('T')[0];
-}
 
 function formatDateRange(start, end) {
   const s = new Date(start);
