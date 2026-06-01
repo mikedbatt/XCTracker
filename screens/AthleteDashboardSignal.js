@@ -1023,8 +1023,7 @@ export default function AthleteDashboardSignal({ userData: userDataProp, refresh
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={styles.workoutTitle}>
-                        {workout.title}
-                        {wkMiles ? <Text style={styles.workoutTitleSub}> — {wkMiles} mi</Text> : null}
+                        {workout.title}{wkMiles ? ` — ${wkMiles} mi` : ''}
                       </Text>
                       {paceText && (
                         <Text style={styles.workoutPace}>Target {paceText}</Text>
@@ -1770,7 +1769,6 @@ const styles = StyleSheet.create({
   workoutTitle: {
     fontFamily: SIGNAL.font.bodySemi, fontSize: 14, color: SIGNAL.color.ink,
   },
-  workoutTitleSub: { fontFamily: SIGNAL.font.body, color: SIGNAL.color.mute },
   workoutPace: {
     fontFamily: SIGNAL.font.mono, fontSize: 11, color: SIGNAL.color.indigo, marginTop: 2,
   },
