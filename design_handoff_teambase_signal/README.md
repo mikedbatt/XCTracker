@@ -15,6 +15,64 @@ Treat the HTML as the spec for *what it should look like*; implement it the RN w
 
 ---
 
+## Implementation Deltas
+
+Decisions made during implementation that override the original Signal spec.
+These supersede anything below; the rest of the document has been edited
+in-place where possible to keep one source of truth.
+
+### Typography
+- **Section headings ("Upcoming workouts", "Team leaderboard", "My runs"):**
+  use **Inter Tight SemiBold (600)** at **18pt**, **indigo color**.
+  *Original spec called for Instrument Serif with italic accent on the second
+  word.* Reason: italic serif headings felt too editorial / fancy for a
+  high-school audience. Greeting "Hey, [Name]" still uses serif for warmth.
+- **Greeting "Hey, [Name]":** **29pt** (was 32pt), **both words indigo**, no
+  italic on either word, uses `SIGNAL.font.display` (Instrument Serif Regular).
+  Original spec had the name italic + accented; unified treatment reads cleaner.
+- **Workout card title "Monday Easy — 5 mi":** entire string uses **one
+  style** (Inter Tight SemiBold, ink, 14pt). Don't nest a lighter-weight
+  Text for the mileage suffix — it's hard to read against the title.
+
+### Color
+- **No two-tone display headings.** Both the first and accent word in a
+  display heading are the same indigo color. Italic-accent treatment is
+  retired.
+
+### Layout
+- **Hero "weekly miles" card:** the progress bar lives **inline with the
+  mileage row** (right-aligned, ~3/4 width of the space after "/ N mi"),
+  not as its own row below. Saves vertical space and matches the legacy
+  pattern athletes already know.
+- **Hero card GPS badge:** **removed.** The badge in the spec was meant
+  to signal stream-derived (vs estimated) pace data, but the current
+  implementation always shows it. Bring back only as a conditional
+  indicator if/when the data source can be reliably detected.
+- **Workout cards:** **type chip sits to the LEFT** of the title block,
+  not above it. Cards are then a single row of content — much more compact.
+  Visual: `[chip] [title / pace / date] [›]` with the 3px colored left border.
+- **Header top padding:** **68pt iOS / 44pt Android** (the original 52/32
+  felt crowded against the status bar safe area).
+
+### Gradients
+- `expo-linear-gradient` is **not installed**. Use **solid `SIGNAL.color.indigo`**
+  for: the check-in card background, the hero progress fill, and the avatar
+  background. The README's metric-tolerant clause applies — install
+  `expo-linear-gradient` later if we want to bring gradients back.
+
+### Bug-fix patterns to watch for in future translations
+- **Avatar color**: profile avatar must read from `userData.avatarColor` (or
+  the `localAvatarColor` state the dashboard already computes), NOT hardcoded
+  `SIGNAL.color.indigo`. Athletes can pick their own avatar color in profile.
+- **Preserve unused conditional UI**: when re-skinning, every conditional
+  banner / modal / state in the original screen must remain. The reference
+  components only show happy-path layouts — modals, sync banners, pending
+  banners, no-school banners, season-review banner, VDOT/Strava prompts all
+  exist in the real screens and must be preserved with Signal styling
+  (white card, hairline border, eyebrow + body, indigo CTA).
+
+---
+
 ## Design Direction: "Signal"
 
 White-first surfaces. Color is **signal, not decoration** — every hue maps to a meaning (sport, workout type, effort zone, or status). Generous whitespace, hairline rules, large tabular numerals, and a serif-italic display face for warmth.
@@ -22,7 +80,8 @@ White-first surfaces. Color is **signal, not decoration** — every hue maps to 
 ### Typography
 | Role | Font | Usage | Notes |
 |---|---|---|---|
-| **Display** | **Instrument Serif** (italic for emphasis) | Screen titles, greetings, big headlines | `letter-spacing: -0.02em`, often `font-style: italic` on the accented word |
+| **Display (personal/warm)** | **Instrument Serif** Regular | Greeting "Hey, [Name]" | 29pt, indigo color, **no italic**. Both first word and name in same color/style — no two-tone accent. |
+| **Section heading** | **Inter Tight SemiBold (600)** | "Upcoming workouts", "Team leaderboard", "My runs" | 18pt, indigo color. *Replaces the original italic-serif section-heading treatment.* |
 | **Body / UI** | **Inter Tight** | All labels, buttons, body, list rows | weights 400/500/600/700, `letter-spacing: -0.01em` |
 | **Numbers** | **Inter Tight, tabular-nums** | Mileage, times, stats | `font-variant-numeric: tabular-nums; letter-spacing: -0.03em; font-weight: 600` |
 | **Mono / data** | **JetBrains Mono** | Paces, timestamps, codes, small data labels | tabular-nums |
