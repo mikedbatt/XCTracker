@@ -65,7 +65,8 @@
           "savePhotosPermission": "Allow TeamBase to save shared photos to your camera roll.",
           "isAccessMediaLocationEnabled": false
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true,
