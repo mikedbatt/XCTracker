@@ -20,7 +20,12 @@ Notifications.setNotificationHandler({
 });
 
 import AssistantJoinScreen from '../screens/AssistantJoinScreen';
-import AthleteDashboard from '../screens/AthleteDashboard';
+import AthleteDashboardLegacy from '../screens/AthleteDashboard';
+import AthleteDashboardSignal from '../screens/AthleteDashboardSignal';
+// Flip this to false to fall back to the legacy (pre-Signal) dashboard.
+// Lets you A/B compare during the redesign without re-routing or rebuilding.
+const USE_SIGNAL_DASHBOARD = true;
+const AthleteDashboard = USE_SIGNAL_DASHBOARD ? AthleteDashboardSignal : AthleteDashboardLegacy;
 import AthleteJoinScreen from '../screens/AthleteJoinScreen';
 import CoachDashboard from '../screens/CoachDashboard';
 import CoachSetupScreen from '../screens/CoachSetupScreen';
