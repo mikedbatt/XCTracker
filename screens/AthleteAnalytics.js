@@ -391,7 +391,11 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
             <View style={{ flex: 1 }}>
               <Text style={styles.sectionTitle}>Mileage Volume</Text>
               <Text style={styles.sectionSub}>
-                {phaseInfo.weekNum ? `Week ${phaseInfo.weekNum}${totalWeeks ? ` of ${totalWeeks}` : ''} · ${phaseInfo.name}` : 'No active season'}
+                {!activeSeason
+                  ? 'No active season'
+                  : phaseInfo.weekNum
+                    ? `Week ${phaseInfo.weekNum}${totalWeeks ? ` of ${totalWeeks}` : ''} · ${phaseInfo.name}`
+                    : phaseInfo.name /* e.g. "Pre-Season" before start date */}
                 {phaseInfo.daysToChamp != null && phaseInfo.daysToChamp > 0 ? ` · ${phaseInfo.daysToChamp}d to championship` : ''}
               </Text>
             </View>
