@@ -142,56 +142,99 @@ export function generateVolumeCurve(season, peakMiles, startingMiles = null) {
 }
 
 // ── Shared phase functions (used by dashboards) ───────────────────────────────
+
+// Forgiving date parser for season fields. Handles:
+//   - ISO strings (the format SeasonPlanner saves, via .toISOString())
+//   - Firestore Timestamp objects (have .toDate())
+//   - JS Date instances
+//   - missing / invalid → null
+// Centralized so getActiveSeason and getCompletedSeasons stay tolerant of any
+// of these shapes appearing in the seasons array.
+function toSeasonDate(val) {
+  if (!val) return null;
+  if (val instanceof Date) return isNaN(val) ? null : val;
+  if (typeof val?.toDate === 'function') {
+    try {
+      const d = val.toDate();
+      return isNaN(d) ? null : d;
+    } catch { return null; }
+  }
+  if (typeof val === 'string' || typeof val === 'number') {
+    const d = new Date(val);
+    return isNaN(d) ? null : d;
+  }
+  return null;
+}
+
 export function getActiveSeason(school) {
   if (!school) return null;
   const seasons = school.seasons || [];
 
-  // Helper to safely convert any date format
-  const toISO = (val) => {
-    if (!val) return null;
-    if (typeof val === 'string') return val;
-    if (val?.toDate) return val.toDate().toISOString();
-    if (val instanceof Date) return val.toISOString();
-    return null;
-  };
-
-  // Legacy fallback: old seasonStart / championshipDate fields
+  // Legacy fallback: old top-level seasonStart / championshipDate fields
   if (seasons.length === 0) {
-    const start = toISO(school.seasonStart);
-    const champ = toISO(school.championshipDate);
+    const start = toSeasonDate(school.seasonStart);
+    const champ = toSeasonDate(school.championshipDate);
     if (start && champ) {
       return {
         sport: 'cross_country',
-        name: `Cross Country ${new Date(start).getFullYear()}`,
-        seasonStart: start,
-        championshipDate: champ,
+        name: `Cross Country ${start.getFullYear()}`,
+        seasonStart: start.toISOString(),
+        championshipDate: champ.toISOString(),
       };
     }
     return null;
   }
 
   const now = new Date();
-  const active = seasons.find(s => {
-    const start = new Date(s.seasonStart);
-    const end   = new Date(s.championshipDate);
-    return now >= start && now <= end;
-  });
-  if (!active) {
-    const upcoming = [...seasons]
-      .filter(s => new Date(s.seasonStart) > now)
-      .sort((a, b) => new Date(a.seasonStart) - new Date(b.seasonStart))[0];
-    return upcoming || null;
-  }
-  return active;
+
+  // Active = season has started AND championship hasn't passed.
+  // A season with no championshipDate set yet is treated as ongoing (open-ended)
+  // so coaches can plan a season before they know the exact championship date.
+  // Tiebreak: when multiple seasons match, prefer the most recently started.
+  const active = seasons
+    .filter(s => {
+      const start = toSeasonDate(s.seasonStart);
+      if (!start || now < start) return false;
+      const end = toSeasonDate(s.championshipDate);
+      if (!end) return true; // ongoing — no end set yet
+      return now <= end;
+    })
+    .sort((a, b) => {
+      const aStart = toSeasonDate(a.seasonStart);
+      const bStart = toSeasonDate(b.seasonStart);
+      return (bStart?.getTime() || 0) - (aStart?.getTime() || 0);
+    })[0];
+
+  if (active) return active;
+
+  // Nothing active — return the next upcoming season if any.
+  const upcoming = [...seasons]
+    .filter(s => {
+      const start = toSeasonDate(s.seasonStart);
+      return start && start > now;
+    })
+    .sort((a, b) => {
+      const aStart = toSeasonDate(a.seasonStart);
+      const bStart = toSeasonDate(b.seasonStart);
+      return (aStart?.getTime() || 0) - (bStart?.getTime() || 0);
+    })[0];
+
+  return upcoming || null;
 }
 
 export function getCompletedSeasons(school) {
   if (!school?.seasons?.length) return [];
   const now = new Date();
-  return school.seasons.filter(s => {
-    if (!s.championshipDate) return false;
-    return now > new Date(s.championshipDate);
-  }).sort((a, b) => new Date(b.championshipDate) - new Date(a.championshipDate));
+  return school.seasons
+    .filter(s => {
+      const end = toSeasonDate(s.championshipDate);
+      return end && now > end;
+    })
+    .sort((a, b) => {
+      const aEnd = toSeasonDate(a.championshipDate);
+      const bEnd = toSeasonDate(b.championshipDate);
+      return (bEnd?.getTime() || 0) - (aEnd?.getTime() || 0);
+    });
 }
 
 export function getPhaseForSeason(season) {
