@@ -264,23 +264,31 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
         setAthleteAge(Math.floor((new Date() - birth) / (365.25 * 86400000)));
       }
 
-      if (userData.schoolId) {
-        try {
-          const teamZoneDoc = await getDoc(doc(db, 'teamZoneSettings', userData.schoolId));
-          if (teamZoneDoc.exists()) setTeamZoneSettings(teamZoneDoc.data());
-        } catch (e) { console.warn('Failed to load team zone settings, using defaults:', e); }
-      }
+      // Phase 1: parallelize the user doc with team-related docs (none depend on each other).
+      // teamZoneSettings is optional — inline catch keeps Promise.all from failing-fast on it.
+      const [userDoc, teamZoneDoc, schoolDoc] = await Promise.all([
+        getDoc(doc(db, 'users', user.uid)),
+        userData.schoolId
+          ? getDoc(doc(db, 'teamZoneSettings', userData.schoolId))
+              .catch(e => { console.warn('Failed to load team zone settings, using defaults:', e); return null; })
+          : Promise.resolve(null),
+        userData.schoolId
+          ? getDoc(doc(db, 'schools', userData.schoolId))
+          : Promise.resolve(null),
+      ]);
+
+      if (teamZoneDoc?.exists()) setTeamZoneSettings(teamZoneDoc.data());
 
       let currentSchool = school;
-      let loadedGroup = null;
-      if (userData.schoolId) {
-        const schoolDoc = await getDoc(doc(db, 'schools', userData.schoolId));
-        if (schoolDoc.exists()) { currentSchool = schoolDoc.data(); setSchool(currentSchool); }
+      if (schoolDoc?.exists()) { currentSchool = schoolDoc.data(); setSchool(currentSchool); }
 
-        // Load athlete's group and its weekly target
+      const userDocData = userDoc.exists() ? userDoc.data() : null;
+
+      // Phase 2: group lookup is sequential — needs groupId from the user doc above.
+      let loadedGroup = null;
+      if (userData.schoolId && userDocData) {
         try {
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
-          const groupId = userDoc.data()?.groupId;
+          const groupId = userDocData.groupId;
           if (groupId) {
             const groupDoc = await getDoc(doc(db, 'groups', groupId));
             if (groupDoc.exists()) {
@@ -347,11 +355,10 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
         setWeeklyTarget(calcWeeklyTarget(recentForTarget.docs.map(d => d.data())));
       }
 
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      if (userDoc.exists()) {
-        const freshData = userDoc.data();
-        setStravaLinked(!!freshData.stravaAccessToken);
-        const allParentIds = [...(freshData.linkedParentIds || []), ...(freshData.pendingParentIds || [])];
+      // Reuse the user doc already fetched in Phase 1 — avoids a duplicate Firestore read.
+      if (userDocData) {
+        setStravaLinked(!!userDocData.stravaAccessToken);
+        const allParentIds = [...(userDocData.linkedParentIds || []), ...(userDocData.pendingParentIds || [])];
         const uniqueParentIds = [...new Set(allParentIds)];
         if (uniqueParentIds.length > 0) {
           const pDocs = await Promise.all(
