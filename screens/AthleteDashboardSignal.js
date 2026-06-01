@@ -767,6 +767,7 @@ export default function AthleteDashboardSignal({ userData: userDataProp, refresh
                     backgroundColor: isOverWarning ? SIGNAL.color.coral : isOverBuffer ? SIGNAL.color.amber : SIGNAL.color.indigo,
                   }]} />
                 </View>
+                <View style={{ flex: 1 }} />
               </View>
             </View>
 
@@ -1590,7 +1591,7 @@ const styles = StyleSheet.create({
   },
   heroMilesOf: { fontFamily: SIGNAL.font.body, fontSize: 14, color: SIGNAL.color.mute },
   heroProgressBg: {
-    flex: 1, height: 8,
+    flex: 3, height: 8,
     marginLeft: 4,
     backgroundColor: SIGNAL.color.line,
     borderRadius: SIGNAL.radius.chip, overflow: 'hidden',
