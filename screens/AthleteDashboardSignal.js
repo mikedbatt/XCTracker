@@ -1508,17 +1508,17 @@ const styles = StyleSheet.create({
   // ── Header ──────────────────────────────────────────────────────────────────
   header: {
     backgroundColor: SIGNAL.color.paper2,
-    paddingTop: Platform.OS === 'ios' ? 56 : 32,
+    paddingTop: Platform.OS === 'ios' ? 68 : 44,
     paddingBottom: 14,
     paddingHorizontal: 18,
   },
   headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   greeting: {
     fontFamily: SIGNAL.font.display,
-    fontSize: 32,
-    lineHeight: 34,
+    fontSize: 26,
+    lineHeight: 30,
     color: SIGNAL.color.indigo,
-    letterSpacing: -0.64,
+    letterSpacing: -0.52,
   },
   greetingAccent: {
     fontFamily: SIGNAL.font.display,
