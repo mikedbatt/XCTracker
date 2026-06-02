@@ -1045,17 +1045,28 @@ export default function CoachDashboardSignal({ userData }) {
                 <Text style={styles.planEmptyText}>No training scheduled today.</Text>
               </View>
             )}
-            {isAdmin && !todayTipSent && (
-              <TouchableOpacity
-                style={styles.msgBtn}
-                onPress={() => handleOpenTip(currentPhase)}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.msgBtnText}>💬  Send daily message to team</Text>
-              </TouchableOpacity>
-            )}
           </View>
         </View>
+
+        {/* ── Send daily message (own card) ── */}
+        {isAdmin && !todayTipSent && (
+          <View style={styles.messageCardWrap}>
+            <TouchableOpacity
+              style={styles.messageCard}
+              onPress={() => handleOpenTip(currentPhase)}
+              activeOpacity={0.85}
+            >
+              <View style={styles.messageCardIcon}>
+                <Ionicons name="chatbubble-ellipses-outline" size={18} color={SIGNAL.color.indigo} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.messageCardTitle}>Send daily message</Text>
+                <Text style={styles.messageCardDesc}>Share a focus or note with your team.</Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* ── Season in Review banner ── */}
         {(() => {
@@ -1298,99 +1309,6 @@ export default function CoachDashboardSignal({ userData }) {
             </View>
           )}
 
-          {/* Injury / Illness alert */}
-          {injuredAthletes.length > 0 && (() => {
-            const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-            const formatWhen = (d) => {
-              if (!d) return '';
-              if (d >= todayStart) return 'today';
-              const daysAgo = Math.ceil((todayStart - d) / 86400000);
-              return daysAgo === 1 ? 'yesterday' : `${daysAgo}d ago`;
-            };
-            return (
-              <View style={[styles.triageCard, styles.triageCardAlert]}>
-                <TouchableOpacity
-                  style={styles.triageHeader}
-                  onPress={() => setInjuryCardExpanded(prev => !prev)}
-                  activeOpacity={0.85}
-                >
-                  <View style={[styles.triageIcon, { backgroundColor: `${SIGNAL.color.coral}18` }]}>
-                    <Ionicons name="warning" size={16} color={SIGNAL.color.coral} />
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={[styles.triageTitle, { color: SIGNAL.color.coral }]}>
-                      {injuredAthletes.length} reporting injury or illness
-                    </Text>
-                  </View>
-                  <Ionicons name={injuryCardExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={SIGNAL.color.coral} />
-                </TouchableOpacity>
-
-                {injuryCardExpanded && (
-                  <View style={styles.triageBody}>
-                    <LinearGradient
-                      colors={injuryGradient}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={styles.heroPill}
-                    >
-                      <Text style={styles.heroPillNum}>{injuredAthletes.length}</Text>
-                      <Text style={styles.heroPillSub}>athletes need attention</Text>
-                    </LinearGradient>
-
-                    {injuredAthletes.map(athlete => {
-                      const alerts = overtTrainingAlerts[athlete.id];
-                      const inj = alerts?.todayInjury;
-                      const ill = alerts?.todayIllness;
-                      const when = formatWhen(alerts?.injuryCheckinDate);
-                      const worstSeverity = [inj?.severity, ill?.severity]
-                        .filter(Boolean)
-                        .reduce((w, s) => s === 'severe' || w === 'severe' ? 'severe' : s === 'moderate' || w === 'moderate' ? 'moderate' : 'mild', 'mild');
-                      const sevColor = worstSeverity === 'severe' ? SIGNAL.color.coral
-                        : worstSeverity === 'moderate' ? SIGNAL.color.amber
-                        : SIGNAL.color.inkSoft;
-                      const rec = worstSeverity === 'severe' ? 'Recommend rest day'
-                        : worstSeverity === 'moderate' ? 'Consider modified workout'
-                        : 'Monitor during practice';
-                      return (
-                        <TouchableOpacity
-                          key={athlete.id}
-                          style={styles.injuryRow}
-                          onPress={() => setSelectedAthlete(athlete)}
-                          activeOpacity={0.85}
-                        >
-                          <View style={[styles.injuryAvatar, { backgroundColor: athlete.avatarColor || SIGNAL.color.indigo }]}>
-                            <Text style={styles.injuryAvatarText}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
-                          </View>
-                          <View style={{ flex: 1, minWidth: 0 }}>
-                            <Text style={styles.injuryName}>
-                              {athlete.firstName} {athlete.lastName}
-                              {when ? <Text style={styles.injuryWhen}>  ·  {when}</Text> : null}
-                            </Text>
-                            {inj && (
-                              <Text style={styles.injuryDetail}>
-                                🩹 {inj.perLocation
-                                  ? inj.perLocation.map(p => `${p.location.charAt(0).toUpperCase() + p.location.slice(1)} (${p.severity})`).join(', ')
-                                  : `${inj.locations?.map(l => l.charAt(0).toUpperCase() + l.slice(1)).join(', ')} — ${inj.severity}`
-                                }{inj.note ? ` — "${inj.note}"` : ''}
-                              </Text>
-                            )}
-                            {ill && (
-                              <Text style={styles.injuryDetail}>
-                                🤒 {ill.symptoms?.map(s => s.replace(/_/g, ' ')).join(', ')} — <Text style={{ color: sevColor, fontFamily: SIGNAL.font.bodySemi }}>{ill.severity}</Text>
-                              </Text>
-                            )}
-                            <Text style={[styles.injuryRec, { color: sevColor }]}>{rec}</Text>
-                          </View>
-                          <Text style={styles.chevron}>›</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                )}
-              </View>
-            );
-          })()}
-
           {/* Injury Risk (ACWR) */}
           {acwrHasSignal ? (
             <View style={styles.triageCard}>
@@ -1528,6 +1446,99 @@ export default function CoachDashboardSignal({ userData }) {
               )}
             </View>
           ) : null}
+
+          {/* Injury / Illness alert */}
+          {injuredAthletes.length > 0 && (() => {
+            const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+            const formatWhen = (d) => {
+              if (!d) return '';
+              if (d >= todayStart) return 'today';
+              const daysAgo = Math.ceil((todayStart - d) / 86400000);
+              return daysAgo === 1 ? 'yesterday' : `${daysAgo}d ago`;
+            };
+            return (
+              <View style={[styles.triageCard, styles.triageCardAlert]}>
+                <TouchableOpacity
+                  style={styles.triageHeader}
+                  onPress={() => setInjuryCardExpanded(prev => !prev)}
+                  activeOpacity={0.85}
+                >
+                  <View style={[styles.triageIcon, { backgroundColor: `${SIGNAL.color.coral}18` }]}>
+                    <Ionicons name="warning" size={16} color={SIGNAL.color.coral} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={[styles.triageTitle, { color: SIGNAL.color.coral }]}>
+                      {injuredAthletes.length} reporting injury or illness
+                    </Text>
+                  </View>
+                  <Ionicons name={injuryCardExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={SIGNAL.color.coral} />
+                </TouchableOpacity>
+
+                {injuryCardExpanded && (
+                  <View style={styles.triageBody}>
+                    <LinearGradient
+                      colors={injuryGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.heroPill}
+                    >
+                      <Text style={styles.heroPillNum}>{injuredAthletes.length}</Text>
+                      <Text style={styles.heroPillSub}>athletes need attention</Text>
+                    </LinearGradient>
+
+                    {injuredAthletes.map(athlete => {
+                      const alerts = overtTrainingAlerts[athlete.id];
+                      const inj = alerts?.todayInjury;
+                      const ill = alerts?.todayIllness;
+                      const when = formatWhen(alerts?.injuryCheckinDate);
+                      const worstSeverity = [inj?.severity, ill?.severity]
+                        .filter(Boolean)
+                        .reduce((w, s) => s === 'severe' || w === 'severe' ? 'severe' : s === 'moderate' || w === 'moderate' ? 'moderate' : 'mild', 'mild');
+                      const sevColor = worstSeverity === 'severe' ? SIGNAL.color.coral
+                        : worstSeverity === 'moderate' ? SIGNAL.color.amber
+                        : SIGNAL.color.inkSoft;
+                      const rec = worstSeverity === 'severe' ? 'Recommend rest day'
+                        : worstSeverity === 'moderate' ? 'Consider modified workout'
+                        : 'Monitor during practice';
+                      return (
+                        <TouchableOpacity
+                          key={athlete.id}
+                          style={styles.injuryRow}
+                          onPress={() => setSelectedAthlete(athlete)}
+                          activeOpacity={0.85}
+                        >
+                          <View style={[styles.injuryAvatar, { backgroundColor: athlete.avatarColor || SIGNAL.color.indigo }]}>
+                            <Text style={styles.injuryAvatarText}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
+                          </View>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={styles.injuryName}>
+                              {athlete.firstName} {athlete.lastName}
+                              {when ? <Text style={styles.injuryWhen}>  ·  {when}</Text> : null}
+                            </Text>
+                            {inj && (
+                              <Text style={styles.injuryDetail}>
+                                🩹 {inj.perLocation
+                                  ? inj.perLocation.map(p => `${p.location.charAt(0).toUpperCase() + p.location.slice(1)} (${p.severity})`).join(', ')
+                                  : `${inj.locations?.map(l => l.charAt(0).toUpperCase() + l.slice(1)).join(', ')} — ${inj.severity}`
+                                }{inj.note ? ` — "${inj.note}"` : ''}
+                              </Text>
+                            )}
+                            {ill && (
+                              <Text style={styles.injuryDetail}>
+                                🤒 {ill.symptoms?.map(s => s.replace(/_/g, ' ')).join(', ')} — <Text style={{ color: sevColor, fontFamily: SIGNAL.font.bodySemi }}>{ill.severity}</Text>
+                              </Text>
+                            )}
+                            <Text style={[styles.injuryRec, { color: sevColor }]}>{rec}</Text>
+                          </View>
+                          <Text style={styles.chevron}>›</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            );
+          })()}
         </View>
 
         {/* ── Team roster ── */}
@@ -2081,19 +2092,37 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: SIGNAL.color.mute,
   },
-  msgBtn: {
-    paddingVertical: 13,
-    paddingHorizontal: 16,
-    backgroundColor: SIGNAL.color.paper,
-    borderTopWidth: 1,
-    borderTopColor: SIGNAL.color.line,
-    alignItems: 'center',
+  messageCardWrap: {
+    paddingHorizontal: 14,
+    paddingTop: 12,
   },
-  msgBtnText: {
+  messageCard: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    ...SIGNAL.border.hairline,
+  },
+  messageCardIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: SIGNAL.radius.chip,
+    backgroundColor: `${SIGNAL.color.indigo}${SIGNAL.tint.chip}`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  messageCardTitle: {
     fontFamily: SIGNAL.font.bodySemi,
-    fontSize: 13,
-    color: SIGNAL.color.indigo,
-    letterSpacing: SIGNAL.letter.bodyTight,
+    fontSize: 14,
+    color: SIGNAL.color.ink,
+  },
+  messageCardDesc: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 12,
+    color: SIGNAL.color.mute,
+    marginTop: 2,
   },
 
   // ── Season Review banner ───────────────────────────────────────────────────
