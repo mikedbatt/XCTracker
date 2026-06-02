@@ -21,7 +21,7 @@ import { auth, db } from '../firebaseConfig';
 import AthleteDetailScreen from './AthleteDetailScreenSignal';
 import CalendarScreen from './CalendarScreenSignal';
 import ChannelList from './ChannelListSignal';
-import ParentLinkScreen from './ParentLinkScreen';
+import ParentLinkScreen from './ParentLinkScreenSignal';
 import { useStaleRefresh } from '../hooks/useStaleRefresh';
 
 export default function ParentDashboardSignal({ userData }) {

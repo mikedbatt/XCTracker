@@ -34,12 +34,12 @@ import {
   FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE, STATUS, STRAVA_ORANGE,
 } from '../constants/design';
 import AthleteDetailScreen from '../screens/AthleteDetailScreenSignal';
-import AttendanceScreen from '../screens/AttendanceScreen';
+import AttendanceScreen from '../screens/AttendanceScreenSignal';
 import CoachAnalytics from '../screens/CoachAnalyticsSignal';
 import CoachProfile from '../screens/CoachProfileSignal';
 import CalendarScreen from '../screens/CalendarScreenSignal';
 import { TYPE_COLORS, SIGNAL_TYPE_COLORS } from '../constants/training';
-import ManageGroups from '../screens/ManageGroups';
+import ManageGroups from '../screens/ManageGroupsSignal';
 import ManageRoster from '../screens/ManageRosterSignal';
 import ManageSeasons from '../screens/ManageSeasons';
 import RaceManager from '../screens/RaceManagerSignal';

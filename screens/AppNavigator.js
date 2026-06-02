@@ -19,7 +19,7 @@ Notifications.setNotificationHandler({
   }),
 });
 
-import AssistantJoinScreen from '../screens/AssistantJoinScreen';
+import AssistantJoinScreen from '../screens/AssistantJoinScreenSignal';
 import AthleteDashboardLegacy from '../screens/AthleteDashboard';
 import AthleteDashboardSignal from '../screens/AthleteDashboardSignal';
 // Flip this to false to fall back to the legacy (pre-Signal) dashboard.
@@ -32,10 +32,10 @@ import CoachDashboardSignal from '../screens/CoachDashboardSignal';
 // Flip this to false to fall back to the legacy (pre-Signal) coach dashboard.
 const USE_SIGNAL_COACH_DASHBOARD = true;
 const CoachDashboard = USE_SIGNAL_COACH_DASHBOARD ? CoachDashboardSignal : CoachDashboardLegacy;
-import CoachSetupScreen from '../screens/CoachSetupScreen';
+import CoachSetupScreen from '../screens/CoachSetupScreenSignal';
 import LoginScreen from '../screens/LoginScreenSignal';
 import ParentDashboard from '../screens/ParentDashboardSignal';
-import ParentLinkScreen from '../screens/ParentLinkScreen';
+import ParentLinkScreen from '../screens/ParentLinkScreenSignal';
 
 // Register for push notifications and save token to Firestore
 async function registerForPushNotifications(uid) {
