@@ -617,30 +617,6 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
               </TouchableOpacity>
             </View>
 
-            {/* Garmin — coming soon */}
-            <View style={[styles.connectionCard, { opacity: 0.5 }]}>
-              <View style={[styles.connectionLogo, { backgroundColor: '#00305718' }]}>
-                <Text style={[styles.connectionLogoText, { color: '#003057' }]}>G</Text>
-              </View>
-              <View style={styles.connectionInfo}>
-                <Text style={styles.connectionName}>Garmin</Text>
-                <Text style={[styles.connectionStatus, { color: SIGNAL.color.mute }]}>Coming soon</Text>
-              </View>
-              <Text style={[styles.connectionAction, { color: SIGNAL.color.mute2 }]}>Soon</Text>
-            </View>
-
-            {/* Apple Health — coming soon */}
-            <View style={[styles.connectionCard, { opacity: 0.5 }]}>
-              <View style={[styles.connectionLogo, { backgroundColor: '#ff3b3018' }]}>
-                <Text style={[styles.connectionLogoText, { color: '#ff3b30' }]}>♥</Text>
-              </View>
-              <View style={styles.connectionInfo}>
-                <Text style={styles.connectionName}>Apple Health</Text>
-                <Text style={[styles.connectionStatus, { color: SIGNAL.color.mute }]}>Coming soon — iOS only</Text>
-              </View>
-              <Text style={[styles.connectionAction, { color: SIGNAL.color.mute2 }]}>Soon</Text>
-            </View>
-
             {/* Connected parents */}
             <View style={styles.parentsHeader}>
               <Text style={[styles.eyebrow, { marginTop: 0, paddingLeft: 4 }]}>Connected parents</Text>
