@@ -97,6 +97,51 @@ export default function AthleteAnalyticsSignal({ userData, school, myGroup, athl
     isPast: mon < currentMonday,
   }));
 
+  // Prepend up to 3 weeks of prior-season actuals when the current season is
+  // brand new — gives athletes visual context for what they were running
+  // before this season's volume curve kicks in. Prior weeks have target=null
+  // so the chart renders just the actual bar (no ghost target behind it).
+  const elapsedSeasonWeeks = activeSeason
+    ? Math.max(0, Math.floor((new Date() - new Date(activeSeason.seasonStart)) / (7 * 86400000)))
+    : 99;
+  const priorWeeks = [];
+  if (elapsedSeasonWeeks < 3 && activeSeason) {
+    const seasonStart = new Date(activeSeason.seasonStart);
+    for (let w = 3; w >= 1; w--) {
+      const monday = new Date(seasonStart);
+      monday.setDate(seasonStart.getDate() - 7 * w);
+      monday.setHours(0, 0, 0, 0);
+      const mondayISO = monday.toISOString().split('T')[0];
+      const wRuns = weeklyRunData[mondayISO];
+      priorWeeks.push({
+        monday: mondayISO,
+        target: null,
+        actual: wRuns ? Math.round(wRuns.reduce((s, r) => s + (r.miles || 0), 0) * 10) / 10 : 0,
+        isCurrent: false,
+        isPast: true,
+        isPriorSeason: true,
+      });
+    }
+  }
+  const allVolumeWeeks = [...priorWeeks, ...volumeWeeks];
+
+  // 30-day mileage volume compliance — actual miles in the last 30 days vs.
+  // the athlete's weekly target × (30/7). Single number, color-coded.
+  // Meaningful even at the very start of a season when volumePlan is sparse.
+  let compliance30 = null;
+  if (myGroup?.weeklyMilesTarget) {
+    const nowDate = new Date();
+    const thirtyAgo = new Date(nowDate.getTime() - 30 * 86400000);
+    const recentMiles = allRuns
+      .filter(r => {
+        const d = getRunDate(r);
+        return d && d >= thirtyAgo && d <= nowDate;
+      })
+      .reduce((s, r) => s + (r.miles || 0), 0);
+    const targetMiles = myGroup.weeklyMilesTarget * (30 / 7);
+    if (targetMiles > 0) compliance30 = Math.round((recentMiles / targetMiles) * 100);
+  }
+
   // ── Feature 2: Race Performance data ──
   const myResults = raceResults.map(res => {
     const race = races.find(r => r.id === res.raceId);
@@ -488,82 +533,19 @@ export default function AthleteAnalyticsSignal({ userData, school, myGroup, athl
                 </View>
               )}
 
-              {/* Volume bars */}
-              <View style={styles.volumeChart}>
-                {volumeWeeks.map((w, i) => {
-                  const maxTarget = Math.max(...volumeWeeks.map(wk => Math.max(wk.target, wk.actual || 0)), 1);
-                  const targetH = (w.target / maxTarget) * 100;
-                  const actualH = w.actual != null ? (w.actual / maxTarget) * 100 : 0;
-                  const ratio = w.target > 0 && w.actual != null ? w.actual / w.target : null;
-                  const barColor = w.actual == null
-                    ? SIGNAL.color.line
-                    : (ratio >= 0.9 && ratio <= 1.1)
-                      ? SIGNAL.color.emerald
-                      : ratio < 0.9
-                        ? SIGNAL.color.amber
-                        : SIGNAL.color.coral;
-                  return (
-                    <View
-                      key={w.monday}
-                      style={[
-                        styles.volumeBar,
-                        w.isCurrent && styles.volumeBarCurrent,
-                      ]}
-                    >
-                      {w.isCurrent && (
-                        <Text style={styles.volumeNowLabel}>NOW</Text>
-                      )}
-                      <View style={styles.volumeBarInner}>
-                        <View style={[styles.volumeTarget, { height: `${targetH}%` }]} />
-                        {w.actual != null && (
-                          <View style={[styles.volumeActual, { height: `${actualH}%`, backgroundColor: barColor }]} />
-                        )}
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-              <View style={styles.volumeAxisRow}>
-                <Text style={styles.volumeAxisLabel}>W1</Text>
-                <Text style={styles.volumeAxisLabel}>W{volumeWeeks.length}</Text>
-              </View>
-
-              {/* Current week summary */}
-              {volumeWeeks.find(w => w.isCurrent) && (() => {
-                const cw = volumeWeeks.find(w => w.isCurrent);
-                const pct = cw.target > 0 ? Math.round((cw.actual / cw.target) * 100) : 0;
-                const pctColor = pct >= 90 && pct <= 110
+              {/* 30-day mileage compliance indicator */}
+              {compliance30 != null && (() => {
+                const color = compliance30 >= 90 && compliance30 <= 110
                   ? SIGNAL.color.emerald
-                  : pct < 90 ? SIGNAL.color.amber : SIGNAL.color.coral;
+                  : compliance30 < 90 ? SIGNAL.color.amber : SIGNAL.color.coral;
                 return (
-                  <Text style={styles.volumeSummary}>
-                    This week: <Text style={styles.volumeSummaryBold}>{cw.actual}</Text>
-                    {' '}of {cw.target} mi target{' '}
-                    <Text style={[styles.volumeSummaryBold, { color: pctColor }]}>({pct}%)</Text>
-                  </Text>
+                  <View style={styles.complianceRow}>
+                    <Text style={styles.complianceLabel}>Last 30 days</Text>
+                    <Text style={[styles.complianceNum, { color }]}>{compliance30}%</Text>
+                    <Text style={styles.complianceSub}>of weekly target</Text>
+                  </View>
                 );
               })()}
-
-              {/* Legend */}
-              <View style={styles.volumeLegend}>
-                {[
-                  ['Target', SIGNAL.color.paper2, true],
-                  ['On track', SIGNAL.color.emerald, false],
-                  ['Under', SIGNAL.color.amber, false],
-                  ['Over', SIGNAL.color.coral, false],
-                ].map(([label, color, bordered]) => (
-                  <View key={label} style={styles.legendItem}>
-                    <View
-                      style={[
-                        styles.legendDot,
-                        { backgroundColor: color },
-                        bordered && { borderWidth: 1, borderColor: SIGNAL.color.line },
-                      ]}
-                    />
-                    <Text style={styles.legendText}>{label}</Text>
-                  </View>
-                ))}
-              </View>
             </View>
           ) : (
             <View style={styles.cardBody}>
@@ -573,28 +555,39 @@ export default function AthleteAnalyticsSignal({ userData, school, myGroup, athl
             </View>
           )}
 
-          {expandedSection === 'volume' && volumeWeeks.length > 0 && (
+          {expandedSection === 'volume' && allVolumeWeeks.length > 0 && (
             <View style={styles.cardBody}>
               <View style={styles.divider} />
               <Text style={styles.eyebrowMb}>Week-by-week target vs actual</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.detailChartScroll}>
-                {volumeWeeks.map((w, i) => {
-                  const maxTarget = Math.max(...volumeWeeks.map(wk => Math.max(wk.target, wk.actual || 0)), 1);
-                  const targetH = (w.target / maxTarget) * 100;
-                  const actualH = w.actual != null ? (w.actual / maxTarget) * 100 : 0;
+                {allVolumeWeeks.map((w, i) => {
+                  const maxBar = Math.max(...allVolumeWeeks.map(wk => Math.max(wk.target || 0, wk.actual || 0)), 1);
+                  const targetH = w.target != null ? (w.target / maxBar) * 100 : 0;
+                  const actualH = w.actual != null ? (w.actual / maxBar) * 100 : 0;
                   const pctOfTarget = w.target > 0 && w.actual != null ? w.actual / w.target : null;
-                  const barColor = w.actual == null
-                    ? SIGNAL.color.line
-                    : pctOfTarget >= 0.9 && pctOfTarget <= 1.1
-                      ? SIGNAL.color.emerald
-                      : pctOfTarget < 0.9 ? SIGNAL.color.amber : SIGNAL.color.coral;
+                  const barColor = w.isPriorSeason
+                    ? SIGNAL.color.mute2 // prior-season actuals render muted gray (no target to compare to)
+                    : w.actual == null
+                      ? SIGNAL.color.line
+                      : pctOfTarget >= 0.9 && pctOfTarget <= 1.1
+                        ? SIGNAL.color.emerald
+                        : pctOfTarget < 0.9 ? SIGNAL.color.amber : SIGNAL.color.coral;
+                  // Week label: prior weeks count backward from "W1" of the active season
+                  const priorCount = priorWeeks.length;
+                  const label = w.isCurrent
+                    ? 'Now'
+                    : w.isPriorSeason
+                      ? `-${priorCount - i}` // e.g., -3, -2, -1 for the three prior weeks
+                      : `W${i - priorCount + 1}`;
                   return (
                     <View
                       key={w.monday}
                       style={[styles.detailVolumeBar, w.isCurrent && styles.volumeBarCurrent]}
                     >
                       <View style={styles.detailVolumeBarInner}>
-                        <View style={[styles.volumeTarget, { height: `${targetH}%` }]} />
+                        {w.target != null && (
+                          <View style={[styles.volumeTarget, { height: `${targetH}%` }]} />
+                        )}
                         {w.actual != null && (
                           <View style={[styles.volumeActual, { height: `${actualH}%`, backgroundColor: barColor }]} />
                         )}
@@ -604,9 +597,10 @@ export default function AthleteAnalyticsSignal({ userData, school, myGroup, athl
                         style={[
                           styles.detailVolumeLabel,
                           w.isCurrent && { color: SIGNAL.color.indigo, fontFamily: SIGNAL.font.bodyBold },
+                          w.isPriorSeason && { color: SIGNAL.color.mute2 },
                         ]}
                       >
-                        {w.isCurrent ? 'Now' : `W${i + 1}`}
+                        {label}
                       </Text>
                     </View>
                   );
@@ -1186,39 +1180,31 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: SIGNAL.color.mute,
   },
-  volumeChart: {
+  // 30-day mileage compliance pill (collapsed Mileage Volume view)
+  complianceRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 4,
-    height: 96,
+    alignItems: 'baseline',
+    gap: 8,
+    marginTop: 6,
   },
-  volumeBar: {
-    flex: 1,
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    borderRadius: 4,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
-    padding: 1,
-    position: 'relative',
+  complianceLabel: {
+    ...SIGNAL.style.eyebrow,
+    fontSize: 10,
   },
+  complianceNum: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 26,
+    letterSpacing: SIGNAL.letter.titleTight,
+  },
+  complianceSub: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 11.5,
+    color: SIGNAL.color.mute,
+  },
+
+  // Volume bar parts (used by the expanded dropdown chart)
   volumeBarCurrent: {
     borderColor: SIGNAL.color.indigo,
-  },
-  volumeNowLabel: {
-    position: 'absolute',
-    top: -14,
-    fontFamily: SIGNAL.font.mono,
-    fontSize: 8,
-    color: SIGNAL.color.indigo,
-    fontWeight: '700',
-  },
-  volumeBarInner: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'flex-end',
-    position: 'relative',
   },
   volumeTarget: {
     position: 'absolute',
@@ -1242,46 +1228,6 @@ const styles = StyleSheet.create({
     backgroundColor: SIGNAL.color.mute,
     borderRadius: 1,
     zIndex: 2,
-  },
-  volumeAxisRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 6,
-  },
-  volumeAxisLabel: {
-    fontFamily: SIGNAL.font.mono,
-    fontSize: 9,
-    color: SIGNAL.color.mute,
-  },
-  volumeSummary: {
-    fontSize: 12.5,
-    color: SIGNAL.color.inkSoft,
-    fontFamily: SIGNAL.font.body,
-    marginTop: 12,
-  },
-  volumeSummaryBold: {
-    fontFamily: SIGNAL.font.bodyBold,
-  },
-  volumeLegend: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 14,
-    marginTop: 12,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 3,
-  },
-  legendText: {
-    fontSize: 10.5,
-    color: SIGNAL.color.mute,
-    fontFamily: SIGNAL.font.body,
   },
 
   // ── Detail chart variants (for expanded sections) ──
@@ -1319,15 +1265,15 @@ const styles = StyleSheet.create({
   heroCard: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 18,
+    paddingVertical: 14,
     paddingHorizontal: 16,
     borderRadius: SIGNAL.radius.card,
     marginBottom: 14,
   },
   heroGaugeNum: {
     fontFamily: SIGNAL.font.bodySemi,
-    fontSize: 48,
-    lineHeight: 52,
+    fontSize: 36,
+    lineHeight: 40,
     color: '#fff',
     letterSpacing: SIGNAL.letter.numTight,
   },
