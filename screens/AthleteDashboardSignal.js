@@ -56,7 +56,7 @@ import StravaConnect from './StravaConnect';
 import ChannelList from './ChannelList';
 import TeammateProfile from './TeammateProfile';
 import TimeframePicker, { TIMEFRAMES, getDateRange } from './TimeframePicker';
-import WellnessCheckIn from './WellnessCheckIn';
+import WellnessCheckIn from './WellnessCheckInSignal';
 import WorkoutDetailModal from './WorkoutDetailModalSignal';
 import AthleteAnalytics from './AthleteAnalyticsSignal';
 
