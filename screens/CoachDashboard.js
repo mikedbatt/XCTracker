@@ -1580,19 +1580,33 @@ export default function CoachDashboard({ userData }) {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.groupChipRow}
           >
-            {[{ id: 'all', name: 'All' }, { id: 'bygroup', name: 'By Group' }, ...groups, { id: 'unassigned', name: 'Unassigned' }].map(g => {
-              const active = groupFilter === g.id;
-              return (
-                <TouchableOpacity
-                  key={g.id}
-                  style={[styles.filterChip, active && styles.filterChipActive]}
-                  onPress={() => setGroupFilter(g.id)}
-                  activeOpacity={0.85}
-                >
-                  <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{g.name}</Text>
-                </TouchableOpacity>
-              );
-            })}
+            {(() => {
+              // Counts respect the active gender filter so a "Boys" filter shows
+              // boys-per-group counts. "By Group" is a display mode, no count.
+              const base = athletes.filter(a => genderFilter === 'all' || a.gender === genderFilter);
+              const chipCount = (id) => {
+                if (id === 'bygroup') return null;
+                if (id === 'all') return base.length;
+                if (id === 'unassigned') return base.filter(a => !a.groupId).length;
+                return base.filter(a => a.groupId === id).length;
+              };
+              return [{ id: 'all', name: 'All' }, { id: 'bygroup', name: 'By Group' }, ...groups, { id: 'unassigned', name: 'Unassigned' }].map(g => {
+                const active = groupFilter === g.id;
+                const count = chipCount(g.id);
+                return (
+                  <TouchableOpacity
+                    key={g.id}
+                    style={[styles.filterChip, active && styles.filterChipActive]}
+                    onPress={() => setGroupFilter(g.id)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+                      {g.name}{count != null ? ` (${count})` : ''}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              });
+            })()}
             <TouchableOpacity
               style={styles.manageGroupsBtn}
               onPress={() => { setFeedVisible(false); setZonesVisible(false); setProfileVisible(false); setAnalyticsVisible(false); setAddFromDashboard(false); setTrainingSection('groups'); }}
