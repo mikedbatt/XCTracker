@@ -452,16 +452,16 @@ export default function CoachAnalytics({
           title="Mileage Compliance"
           sub={`Last 3 weeks vs target · ${onTarget.length} on target`}
           summary={(() => {
-            // Status: alert if more than 25% off-target, warn if any off-target, ok otherwise
+            // Status by % on target: ≥75% green, 50–74% amber, <50% red.
             const total = onTarget.length + underTarget.length + overTarget.length;
-            const off = underTarget.length + overTarget.length;
+            const onPct = total > 0 ? onTarget.length / total : 0;
             const grad = total === 0
               ? null
-              : off === 0
+              : onPct >= 0.75
                 ? GRAD_OK
-                : off / total > 0.25
-                  ? GRAD_ALERT
-                  : GRAD_WARN;
+                : onPct >= 0.5
+                  ? GRAD_WARN
+                  : GRAD_ALERT;
             return (
               <View style={styles.heroWrap}>
                 {grad ? (
