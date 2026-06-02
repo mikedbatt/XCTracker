@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { collection, doc, getDoc, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -11,7 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { BRAND, BRAND_DARK, SIGNAL } from '../constants/design';
+import { SIGNAL } from '../constants/design';
 import { auth, db } from '../firebaseConfig';
 import {
   DEFAULT_ZONE_BOUNDARIES,
@@ -22,7 +21,7 @@ import {
   formatMinutes,
   parseBirthdate,
 } from '../zoneConfig';
-import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
+import { PACE_ZONES, calcPaceZoneBreakdown } from '../utils/vdotUtils';
 import RunDetailModal from './RunDetailModal';
 
 export default function TeammateProfile({ athlete, school, onBack }) {

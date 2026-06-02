@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
 import {
   Platform,
   ScrollView,
@@ -8,10 +7,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import {
-  BRAND, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE,
-} from '../constants/design';
+import { SIGNAL } from '../constants/design';
 import { getActiveSeason, getPhaseForSeason, SPORTS } from './SeasonPlanner';
 
 export default function TrainingHub({ school, athletes, pendingAthletes: pendingAthletesList = [], groups, trainingItems, nextMeet, onNavigate }) {

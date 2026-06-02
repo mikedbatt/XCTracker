@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -14,7 +14,7 @@ import {
     View,
 } from 'react-native';
 import { db } from '../firebaseConfig';
-import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE, STATUS } from '../constants/design';
+import { SIGNAL } from '../constants/design';
 import {
     DEFAULT_ZONE_BOUNDARIES, ZONE_META,
 } from '../zoneConfig';

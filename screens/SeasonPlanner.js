@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { doc, updateDoc } from 'firebase/firestore';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   Alert,
   Platform,
@@ -12,7 +12,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import { BRAND, BRAND_DARK, SIGNAL } from '../constants/design';
+import { SIGNAL } from '../constants/design';
 import { db } from '../firebaseConfig';
 import DatePickerField from './DatePickerField';
 

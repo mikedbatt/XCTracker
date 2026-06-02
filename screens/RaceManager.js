@@ -1,19 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import {
-  addDoc, collection, doc, getDocs, orderBy, query,
-  serverTimestamp, where,
-} from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
+import { addDoc, collection, doc, getDocs, query, serverTimestamp, where } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator, Alert, Platform, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
-import {
-  BRAND, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE, STATUS,
-} from '../constants/design';
+import { BRAND, SIGNAL } from '../constants/design';
 import DatePickerField from './DatePickerField';
 import MeetDetail from './MeetDetail';
 

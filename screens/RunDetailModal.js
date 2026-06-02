@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { deleteDoc, doc, getDoc, updateDoc } from 'firebase/firestore';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -16,7 +16,7 @@ import {
   View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
-import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE, STATUS } from '../constants/design';
+import { SIGNAL } from '../constants/design';
 import { SIGNAL_TYPE_COLORS } from '../constants/training';
 import {
   DEFAULT_ZONE_BOUNDARIES, ZONE_META, calcMaxHR,
@@ -24,7 +24,7 @@ import {
   calcZoneBreakdownFromStream,
   formatMinutes,
 } from '../zoneConfig';
-import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020, formatPace } from '../utils/vdotUtils';
+import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
 import DatePickerField from './DatePickerField';
 
 const EFFORT_LABELS = ['', 'Very Easy', 'Easy', 'Moderate', 'Moderate', 'Medium',

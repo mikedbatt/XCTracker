@@ -5,7 +5,7 @@ import { signOut, updateEmail } from 'firebase/auth';
 import {
   arrayRemove, collection, doc, getDoc, getDocs, orderBy, query, updateDoc, where
 } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -18,10 +18,7 @@ import {
   View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
-import {
-  AVATAR_COLORS, BRAND, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE, STATUS, STRAVA_ORANGE,
-} from '../constants/design';
+import { AVATAR_COLORS, SIGNAL, STRAVA_ORANGE } from '../constants/design';
 import { calcVDOT, getTrainingPaces, formatPace, parseTimeToSeconds, RACE_DISTANCES } from '../utils/vdotUtils';
 import StravaConnect from './StravaConnect';
 

@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import {
   collection, doc, getDocs, query, serverTimestamp, setDoc, where,
 } from 'firebase/firestore';
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text,
   TouchableOpacity, View,

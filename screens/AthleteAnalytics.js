@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -12,12 +12,7 @@ import {
   View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
-import {
-  BRAND, BRAND_ACCENT, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
-  EFFORT_COLORS, SIGNAL,
-} from '../constants/design';
-import { SIGNAL_TYPE_COLORS } from '../constants/training';
+import { SIGNAL } from '../constants/design';
 import { getActiveSeason, getPhaseForSeason, getCompletedSeasons, generateVolumeCurve } from './SeasonPlanner';
 import SeasonReview from './SeasonReview';
 import { formatTime, calcPace, formatPace } from '../utils/raceUtils';

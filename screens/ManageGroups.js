@@ -1,17 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import {
-  addDoc, collection, deleteDoc, doc, getDocs, orderBy,
-  query, serverTimestamp, updateDoc, where,
-} from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
+import { addDoc, collection, deleteDoc, doc, getDocs, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
 import {
   ActionSheetIOS, ActivityIndicator, Alert, Platform,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
-import {
-  BRAND, BRAND_ACCENT, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE,
-} from '../constants/design';
+import { SIGNAL } from '../constants/design';
 import { batchDocsByIds } from '../utils/batchDocsByIds';
 import { formatPace } from '../utils/vdotUtils';
 

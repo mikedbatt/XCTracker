@@ -1,5 +1,5 @@
 import { doc, setDoc, updateDoc } from 'firebase/firestore';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
     Alert, Platform, ScrollView,
     StyleSheet,
@@ -7,11 +7,7 @@ import {
     View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
-import Button from '../components/Button';
-import {
-  BRAND, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SIGNAL, SPACE, STATUS,
-} from '../constants/design';
+import { SIGNAL } from '../constants/design';
 
 const generateJoinCode = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';

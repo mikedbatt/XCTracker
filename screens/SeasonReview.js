@@ -1,17 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { collection, getDocs, query, where } from 'firebase/firestore';
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Platform, ScrollView, Share, StyleSheet,
   Text, TouchableOpacity, View,
 } from 'react-native';
 import ViewShot from 'react-native-view-shot';
 import { auth, db } from '../firebaseConfig';
-import {
-  BRAND, BRAND_ACCENT, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE, STATUS,
-} from '../constants/design';
+import { SIGNAL } from '../constants/design';
 import { SPORTS } from './SeasonPlanner';
 import { formatTime } from '../utils/raceUtils';
 import { calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';

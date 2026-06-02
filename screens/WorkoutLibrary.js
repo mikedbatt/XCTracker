@@ -21,7 +21,7 @@ import {
     View
 } from 'react-native';
 import { db } from '../firebaseConfig';
-import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE, STATUS } from '../constants/design';
+import { SIGNAL } from '../constants/design';
 import { SIGNAL_TYPE_COLORS } from '../constants/training';
 
 // ── Built-in workout library organized by phase ───────────────────────────────

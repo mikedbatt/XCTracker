@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { collection, doc, getDoc, getDocs, orderBy, query, where } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
+import { collection, getDocs, orderBy, query, where } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -11,17 +11,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import {
-  BRAND, BRAND_ACCENT, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
-  EFFORT_COLORS, SIGNAL,
-} from '../constants/design';
+import { BRAND, SIGNAL } from '../constants/design';
 import { db } from '../firebaseConfig';
-import {
-  DEFAULT_ZONE_BOUNDARIES, ZONE_META, calcMaxHR,
-  calcZoneBreakdownFromRuns, calcZoneBreakdownFromStream,
-  calc8020, formatMinutes, parseBirthdate,
-} from '../zoneConfig';
+import { DEFAULT_ZONE_BOUNDARIES, ZONE_META, calcMaxHR, calcZoneBreakdownFromRuns, calcZoneBreakdownFromStream, calc8020, parseBirthdate } from '../zoneConfig';
 import { getActiveSeason, getPhaseForSeason, generateVolumeCurve } from './SeasonPlanner';
 import { formatTime, calcPace, formatPace } from '../utils/raceUtils';
 import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';

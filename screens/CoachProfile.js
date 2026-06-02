@@ -1,9 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { signOut, updateEmail } from 'firebase/auth';
-import {
-  arrayRemove, arrayUnion, collection, doc, getDoc, getDocs, query, updateDoc, where,
-} from 'firebase/firestore';
-import React, { useState } from 'react';
+import { arrayRemove, arrayUnion, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,11 +15,7 @@ import {
   View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
-import Button from '../components/Button';
-import {
-  AVATAR_COLORS, BRAND, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE, STATUS,
-} from '../constants/design';
+import { AVATAR_COLORS, SIGNAL } from '../constants/design';
 
 const SCHOOL_COLORS = [
   { name: 'Navy & Gold', primary: '#1a237e', secondary: '#ffd600' },

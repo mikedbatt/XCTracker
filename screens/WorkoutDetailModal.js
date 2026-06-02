@@ -8,7 +8,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { BRAND, BRAND_ACCENT, BRAND_DARK, BRAND_LIGHT, NEUTRAL, SIGNAL } from '../constants/design';
+import { SIGNAL } from '../constants/design';
 import { TYPE_COLORS, SIGNAL_TYPE_COLORS, WORKOUT_PACE_ZONE } from '../constants/training';
 import { formatPace } from '../utils/vdotUtils';
 

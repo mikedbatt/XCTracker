@@ -1,9 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as SecureStore from 'expo-secure-store';
 import { signOut } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, orderBy, query, where } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   ActivityIndicator, Alert,
   Platform,
@@ -13,10 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import {
-  BRAND, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE, STATUS,
-} from '../constants/design';
+import { SIGNAL } from '../constants/design';
 import { auth, db } from '../firebaseConfig';
 import AthleteDetailScreen from './AthleteDetailScreen';
 import CalendarScreen from './CalendarScreen';

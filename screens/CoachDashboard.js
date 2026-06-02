@@ -14,7 +14,7 @@ import {
   updateDoc,
   where
 } from 'firebase/firestore';
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator, Alert,
   KeyboardAvoidingView,
@@ -29,16 +29,13 @@ import {
   View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
-import {
-  BRAND, BRAND_ACCENT, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE, STATUS, STRAVA_ORANGE,
-} from '../constants/design';
+import { SIGNAL } from '../constants/design';
 import AthleteDetailScreen from '../screens/AthleteDetailScreen';
 import AttendanceScreen from '../screens/AttendanceScreen';
 import CoachAnalytics from '../screens/CoachAnalytics';
 import CoachProfile from '../screens/CoachProfile';
 import CalendarScreen from '../screens/CalendarScreen';
-import { TYPE_COLORS, SIGNAL_TYPE_COLORS } from '../constants/training';
+import { SIGNAL_TYPE_COLORS } from '../constants/training';
 import ManageGroups from '../screens/ManageGroups';
 import ManageRoster from '../screens/ManageRoster';
 import ManageSeasons from '../screens/ManageSeasons';
@@ -51,7 +48,7 @@ import TimeframePicker, { TIMEFRAMES, getDateRange } from '../screens/TimeframeP
 import TrainingHub from '../screens/TrainingHub';
 import WorkoutDetailModal from '../screens/WorkoutDetailModal';
 import ZoneSettings from '../screens/ZoneSettings';
-import { ACWR_STATUS, calcACWR, getACWRColor, getACWRColorBg } from '../utils/acwrUtils';
+import { ACWR_STATUS, calcACWR } from '../utils/acwrUtils';
 import { batchDocsByIds } from '../utils/batchDocsByIds';
 import { computeVolumeCompliance, getCurrentWeekPace, getAthleteWeeklyTarget } from '../utils/complianceUtils';
 import { calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';

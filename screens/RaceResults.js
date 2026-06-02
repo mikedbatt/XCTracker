@@ -2,15 +2,12 @@ import { Ionicons } from '@expo/vector-icons';
 import {
   collection, getDocs, query, where,
 } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator, Platform, ScrollView, StyleSheet,
   Text, TouchableOpacity, View,
 } from 'react-native';
-import {
-  BRAND, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE, STATUS,
-} from '../constants/design';
+import { BRAND, SIGNAL } from '../constants/design';
 import { db } from '../firebaseConfig';
 import { calcPackAnalysis, formatTime, formatPace, calcPace } from '../utils/raceUtils';
 import RaceResultsEntry from './RaceResultsEntry';

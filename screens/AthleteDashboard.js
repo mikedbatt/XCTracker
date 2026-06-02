@@ -28,12 +28,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { auth, db } from '../firebaseConfig';
 import { autoSyncStrava } from '../stravaConfig';
-import {
-  BRAND, BRAND_ACCENT, BRAND_DARK, BRAND_LIGHT,
-  EFFORT_COLORS as DESIGN_EFFORT_COLORS, EFFORT_LABELS as DESIGN_EFFORT_LABELS,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE, STATUS, STRAVA_ORANGE,
-  getTeamAccent,
-} from '../constants/design';
+import { BRAND, EFFORT_COLORS as DESIGN_EFFORT_COLORS, EFFORT_LABELS as DESIGN_EFFORT_LABELS, SIGNAL } from '../constants/design';
 import {
   DEFAULT_ZONE_BOUNDARIES, ZONE_META,
   calc8020,

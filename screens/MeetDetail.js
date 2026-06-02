@@ -3,16 +3,10 @@ import {
   addDoc, collection, deleteDoc, doc, getDocs, query,
   serverTimestamp, updateDoc, where,
 } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
-import {
-  ActionSheetIOS, ActivityIndicator, Alert, Platform, ScrollView, StyleSheet,
-  Text, TextInput, TouchableOpacity, View,
-} from 'react-native';
-import { auth, db } from '../firebaseConfig';
-import {
-  BRAND, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE, STATUS,
-} from '../constants/design';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { db } from '../firebaseConfig';
+import { SIGNAL } from '../constants/design';
 import { RACE_DISTANCES, RACE_LEVELS } from '../utils/raceUtils';
 import RaceResults from './RaceResults';
 

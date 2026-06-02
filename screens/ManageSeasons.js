@@ -3,7 +3,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import {
   collection, doc, getDocs, query, updateDoc, where,
 } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert, Platform, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
@@ -11,11 +11,7 @@ import {
 import { db } from '../firebaseConfig';
 import { SIGNAL } from '../constants/design';
 import DatePickerField from './DatePickerField';
-import {
-  generateVolumeCurve,
-  getActiveSeason, getPhaseForSeason,
-  SPORTS, SPORT_PHASES,
-} from './SeasonPlanner';
+import { generateVolumeCurve, getActiveSeason, getPhaseForSeason, SPORTS } from './SeasonPlanner';
 
 // Build a stable key for a season: "sport_YYYY-MM-DD"
 function seasonKey(season) {

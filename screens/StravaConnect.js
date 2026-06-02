@@ -1,6 +1,5 @@
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
-import * as AuthSession from 'expo-auth-session';
 import {
   collection,
   doc, getDoc,
@@ -10,7 +9,7 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator, Alert, Platform, ScrollView,
   StyleSheet,
@@ -20,7 +19,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../firebaseConfig';
-import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, SIGNAL, SPACE, STRAVA_ORANGE } from '../constants/design';
+import { BRAND, SIGNAL, STRAVA_ORANGE } from '../constants/design';
 import {
   STRAVA_CONFIG, exchangeStravaCode,
   fetchStravaActivities,

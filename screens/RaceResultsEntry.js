@@ -3,17 +3,13 @@ import {
   addDoc, collection, deleteDoc, doc, getDocs, query,
   serverTimestamp, updateDoc, where,
 } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
-import {
-  BRAND, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
-  SIGNAL,
-} from '../constants/design';
+import { BRAND, SIGNAL } from '../constants/design';
 import { parseTime, formatTime, calcPace } from '../utils/raceUtils';
 
 export default function RaceResultsEntry({ race, meet, schoolId, school, athletes, existingResults, onClose }) {

@@ -1,5 +1,5 @@
 import { arrayUnion, collection, doc, getDocs, query, updateDoc, where } from 'firebase/firestore';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
     ActivityIndicator,
     Alert, Platform, ScrollView,
@@ -8,12 +8,7 @@ import {
     View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
-import Button from '../components/Button';
-import Card from '../components/Card';
-import {
-  BRAND, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SIGNAL, SPACE, STATUS,
-} from '../constants/design';
+import { SIGNAL } from '../constants/design';
 
 export default function ParentLinkScreen({ onLinkComplete }) {
   const [athleteEmail, setAthleteEmail] = useState('');

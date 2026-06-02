@@ -1,11 +1,8 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import DatePickerField from './DatePickerField';
 import Button from '../components/Button';
-import {
-  BRAND, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
-} from '../constants/design';
+import { BRAND, BRAND_DARK, BRAND_LIGHT, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE } from '../constants/design';
 
 export const TIMEFRAMES = [
   { label: 'This week',   key: 'week' },

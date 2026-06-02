@@ -1,17 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import {
-    addDoc,
-    collection,
-    deleteDoc, doc,
-    getDocs,
-    limit,
-    onSnapshot,
-    orderBy,
-    query,
-    serverTimestamp,
-    updateDoc,
-    where,
-} from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDocs, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -26,7 +14,6 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 // SDK 54 moved the function-based file API (downloadAsync, cacheDirectory,
@@ -35,7 +22,7 @@ import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system/legacy';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from '../firebaseConfig';
-import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SIGNAL, SPACE } from '../constants/design';
+import { BRAND, SIGNAL } from '../constants/design';
 
 export default function TeamFeed({ userData, school, onClose, channel, channelName }) {
   const [posts,       setPosts]       = useState([]);
