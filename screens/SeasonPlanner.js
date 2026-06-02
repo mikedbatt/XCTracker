@@ -248,7 +248,7 @@ export function getCompletedSeasons(school) {
     });
 }
 
-export function getPhaseForSeason(season) {
+export function getPhaseForSeason(season, referenceDate) {
   if (!season) {
     return { name: 'Pre-Season', color: '#607d8b', icon: '📋', tip: 'No active season. Set up your season plan.', weekNum: null, daysToChamp: null, isPreSeason: true, sport: 'cross_country', phases: SPORT_PHASES.cross_country };
   }
@@ -260,14 +260,16 @@ export function getPhaseForSeason(season) {
     return { name: 'Pre-Season', color: sportDef?.color || '#607d8b', icon: sportDef?.icon || '📋', tip: 'Set season dates to activate phase tracking.', weekNum: null, daysToChamp: null, isPreSeason: true, sport, phases };
   }
 
-  // Day-level math: treat the entire start day as "season day 1" regardless of
-  // what time-of-day the picker happened to save.
-  const today    = startOfDay(new Date());
+  // Day-level math. `referenceDate` lets callers compute the phase for a
+  // specific week (e.g. WeeklyPlanner navigating to a future week) rather
+  // than always anchoring to today.
+  const ref      = referenceDate ? new Date(referenceDate) : new Date();
+  const refDay   = startOfDay(ref);
   const startDay = startOfDay(new Date(season.seasonStart));
   const champDay = startOfDay(new Date(season.championshipDate));
   const totalDays   = Math.round((champDay - startDay) / 86400000);
-  const elapsed     = Math.round((today - startDay) / 86400000);
-  const daysToChamp = Math.round((champDay - today) / 86400000);
+  const elapsed     = Math.round((refDay - startDay) / 86400000);
+  const daysToChamp = Math.round((champDay - refDay) / 86400000);
   const weekNum     = Math.max(1, Math.floor(elapsed / 7) + 1);
 
   if (elapsed < 0) {

@@ -267,7 +267,7 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
   const [templatePromptDismissed, setTemplatePromptDismissed] = useState(false);
 
   const mondayISO = weekStart.toISOString().split('T')[0];
-  const phase = activeSeason ? getPhaseForSeason(activeSeason) : null;
+  const phase = activeSeason ? getPhaseForSeason(activeSeason, weekStart) : null;
   const draftDocId = `${schoolId}_${mondayISO}`;
 
   // Build season key for looking up volume plans
