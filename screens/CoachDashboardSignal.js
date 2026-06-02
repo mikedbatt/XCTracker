@@ -42,7 +42,7 @@ import { TYPE_COLORS, SIGNAL_TYPE_COLORS } from '../constants/training';
 import ManageGroups from '../screens/ManageGroups';
 import ManageRoster from '../screens/ManageRoster';
 import ManageSeasons from '../screens/ManageSeasons';
-import RaceManager from '../screens/RaceManager';
+import RaceManager from '../screens/RaceManagerSignal';
 import { getActiveSeason, getPhaseForSeason, getCompletedSeasons } from '../screens/SeasonPlanner';
 import SeasonReview from '../screens/SeasonReview';
 import WeeklyPlanner from '../screens/WeeklyPlanner';
