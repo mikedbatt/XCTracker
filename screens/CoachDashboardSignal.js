@@ -33,9 +33,9 @@ import {
   BRAND, BRAND_ACCENT, BRAND_DARK, BRAND_LIGHT,
   FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE, STATUS, STRAVA_ORANGE,
 } from '../constants/design';
-import AthleteDetailScreen from '../screens/AthleteDetailScreen';
+import AthleteDetailScreen from '../screens/AthleteDetailScreenSignal';
 import AttendanceScreen from '../screens/AttendanceScreen';
-import CoachAnalytics from '../screens/CoachAnalytics';
+import CoachAnalytics from '../screens/CoachAnalyticsSignal';
 import CoachProfile from '../screens/CoachProfileSignal';
 import CalendarScreen from '../screens/CalendarScreenSignal';
 import { TYPE_COLORS, SIGNAL_TYPE_COLORS } from '../constants/training';
