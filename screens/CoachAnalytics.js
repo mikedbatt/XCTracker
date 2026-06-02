@@ -23,6 +23,10 @@ export default function CoachAnalytics({
   athleteZonePct, athletePaceEasyPct = {}, overtTrainingAlerts, athleteMiles, groups, school, schoolId, userData, onClose,
 }) {
   const [analyticsTab, setAnalyticsTab] = useState('training');
+  // Group filter — defaults to 'all'; can be 'ungrouped' or any group.id from `groups`.
+  // Filters every metric on the screen so a coach can focus on a single training group
+  // without losing context of the rest of the team.
+  const [groupFilter, setGroupFilter] = useState('all');
   const [seasonReviewSeason, setSeasonReviewSeason] = useState(null);
   const [expandedSection, setExpandedSection] = useState(null);
   const [wellnessData, setWellnessData] = useState(null);
@@ -269,9 +273,33 @@ export default function CoachAnalytics({
     setLoadingWellness(false);
   };
 
+  // ── Group filter derivations ──
+  // `filteredAthletes` is what every downstream metric uses. When the filter is 'all'
+  // it's identity-equal to `athletes`. The chip row shows one chip per group with
+  // an "Ungrouped" bucket for athletes without a groupId.
+  const filteredAthletes = groupFilter === 'all'
+    ? athletes
+    : groupFilter === 'ungrouped'
+      ? athletes.filter(a => !a.groupId)
+      : athletes.filter(a => a.groupId === groupFilter);
+
+  const groupChips = (() => {
+    const counts = {};
+    athletes.forEach(a => {
+      const k = a.groupId || 'ungrouped';
+      counts[k] = (counts[k] || 0) + 1;
+    });
+    const chips = [{ key: 'all', label: 'All', count: athletes.length }];
+    for (const g of (groups || [])) {
+      if (counts[g.id]) chips.push({ key: g.id, label: g.name, count: counts[g.id] });
+    }
+    if (counts.ungrouped) chips.push({ key: 'ungrouped', label: 'Ungrouped', count: counts.ungrouped });
+    return chips;
+  })();
+
   // ── Metric 1: Mileage Volume (last 3 completed weeks) ──
   const { volumeData, onTarget, underTarget, overTarget } = computeVolumeCompliance(
-    athletes, groups, athlete3WeekAvg, athleteWeeklyBreakdown
+    filteredAthletes, groups, athlete3WeekAvg, athleteWeeklyBreakdown
   );
 
   // ── Metric 2: Easy-Hard Balance (pace-only, no HR fallback) ──
@@ -279,7 +307,7 @@ export default function CoachAnalytics({
   const paceCaution = [];
   const paceTooHard = [];
   const paceNoPaces = [];
-  athletes.forEach(a => {
+  filteredAthletes.forEach(a => {
     const pct = athletePaceEasyPct[a.id];
     if (pct === undefined || pct === null) {
       if (!a.trainingPaces) paceNoPaces.push(a);
@@ -298,7 +326,7 @@ export default function CoachAnalytics({
     : null;
 
   // ── Metric 3: Load Progression (last week vs avg of 2 weeks before) ──
-  const loadRisks = athletes.map(a => {
+  const loadRisks = filteredAthletes.map(a => {
     const wb = athleteWeeklyBreakdown[a.id] || { w1: 0, w2: 0, w3: 0 };
     const lastWeek = wb.w1; // last completed week
     const priorAvg = (wb.w2 + wb.w3) / 2; // average of 2 weeks before
@@ -313,7 +341,7 @@ export default function CoachAnalytics({
   const [packGender, setPackGender] = useState('boys');
 
   const calcSpread = (gender) => {
-    const sorted = [...athletes].filter(a => a.gender === gender).sort((a, b) => (athleteMiles[b.id] || 0) - (athleteMiles[a.id] || 0));
+    const sorted = [...filteredAthletes].filter(a => a.gender === gender).sort((a, b) => (athleteMiles[b.id] || 0) - (athleteMiles[a.id] || 0));
     const topN = Math.min(sorted.length, 5);
     // Spread between #1 and last of the top group (top 5, or however many exist if <5)
     const sTop = topN >= 2 ? Math.round(((athleteMiles[sorted[0]?.id] || 0) - (athleteMiles[sorted[topN - 1]?.id] || 0)) * 10) / 10 : null;
@@ -328,8 +356,8 @@ export default function CoachAnalytics({
   const maxMiles = top10.length > 0 ? (athleteMiles[top10[0]?.id] || 1) : 1;
 
   // ── Metric 5: Wellness (last 7 days) ──
-  const wellnessAthletes = athletes.filter(a => wellnessData?.athleteAvgs[a.id]);
-  const nonReportingAthletes = athletes.filter(a => !wellnessData?.athleteAvgs[a.id]);
+  const wellnessAthletes = filteredAthletes.filter(a => wellnessData?.athleteAvgs[a.id]);
+  const nonReportingAthletes = filteredAthletes.filter(a => !wellnessData?.athleteAvgs[a.id]);
   const concernAthletes = wellnessAthletes.filter(a => {
     const d = wellnessData?.athleteAvgs[a.id];
     return d && (d.avgSleep < 2.5 || d.avgLegs < 2.5 || d.moodDeclining || d.hasChronicInjury);
@@ -415,7 +443,11 @@ export default function CoachAnalytics({
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Team Analytics</Text>
           {!!school?.name && (
-            <Text style={styles.headerSub}>{school.name} · {athletes.length} athlete{athletes.length === 1 ? '' : 's'}</Text>
+            <Text style={styles.headerSub}>
+              {school.name} · {groupFilter === 'all'
+                ? `${athletes.length} athlete${athletes.length === 1 ? '' : 's'}`
+                : `${filteredAthletes.length} of ${athletes.length}`}
+            </Text>
           )}
         </View>
         <View style={{ width: 64 }} />
@@ -437,6 +469,33 @@ export default function CoachAnalytics({
           );
         })}
       </View>
+
+      {/* ── Group filter chip row ── */}
+      {groupChips.length > 1 && (
+        <View style={styles.filterRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterRowContent}
+          >
+            {groupChips.map(chip => {
+              const active = groupFilter === chip.key;
+              return (
+                <TouchableOpacity
+                  key={chip.key}
+                  style={[styles.filterChip, active && styles.filterChipActive]}
+                  onPress={() => setGroupFilter(chip.key)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+                    {chip.label} · {chip.count}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
 
       {analyticsTab === 'training' ? (
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
@@ -689,7 +748,18 @@ export default function CoachAnalytics({
               );
             }
             if (!attendanceData || attendanceData.totalRecorded === 0) return null;
-            const rate = attendanceData.teamRate;
+            // Recompute teamRate + concernCount over the FILTERED athlete set so the
+            // pill matches the group filter at the top of the screen.
+            let presentSum = 0, recordedSum = 0, concern = 0;
+            for (const a of filteredAthletes) {
+              const s = attendanceData.byAthlete?.[a.id];
+              if (!s || !s.totalRecorded) continue;
+              presentSum  += s.present;
+              recordedSum += s.totalRecorded;
+              if (s.rate < 0.90) concern++;
+            }
+            if (recordedSum === 0) return null;
+            const rate = presentSum / recordedSum;
             const grad = rate >= 0.9 ? GRAD_OK : rate >= 0.75 ? GRAD_WARN : GRAD_ALERT;
             return (
               <View style={styles.heroWrap}>
@@ -700,7 +770,7 @@ export default function CoachAnalytics({
                   </View>
                   <View style={styles.heroPillDivider} />
                   <View style={styles.heroPillCol}>
-                    <Text style={styles.heroPillNum}>{attendanceData.concernCount}</Text>
+                    <Text style={styles.heroPillNum}>{concern}</Text>
                     <Text style={styles.heroPillLabel}>{'<'} 90%</Text>
                   </View>
                 </LinearGradient>
@@ -712,7 +782,7 @@ export default function CoachAnalytics({
             <Text style={styles.detailEmpty}>No attendance recorded in the last 30 days.</Text>
           ) : (
             <>
-              {athletes
+              {filteredAthletes
                 .map(a => ({ ...a, ...attendanceData.byAthlete[a.id] }))
                 .filter(a => a.totalRecorded > 0)
                 .sort((a, b) => a.rate - b.rate)
@@ -861,7 +931,7 @@ export default function CoachAnalytics({
           id="wellness"
           n="6"
           title="Wellness & Readiness"
-          sub={`Last 7 days · ${wellnessAthletes.length}/${athletes.length} reporting`}
+          sub={`Last 7 days · ${wellnessAthletes.length}/${filteredAthletes.length} reporting`}
           summary={(() => {
             if (loadingWellness) {
               return (
@@ -978,7 +1048,7 @@ export default function CoachAnalytics({
           )}
 
           {/* All athletes sorted: concerns first, then healthy reporters, then non-reporting */}
-          {athletes.length === 0 ? (
+          {filteredAthletes.length === 0 ? (
             <Text style={styles.detailEmpty}>No athletes on the team.</Text>
           ) : (
             <>
@@ -1298,6 +1368,39 @@ const styles = StyleSheet.create({
   },
   tabTextActive: {
     color: SIGNAL.color.indigo,
+  },
+
+  // Group filter chips
+  filterRow: {
+    backgroundColor: SIGNAL.color.white,
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  filterRowContent: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 8,
+    flexDirection: 'row',
+  },
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: SIGNAL.color.white,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+  },
+  filterChipActive: {
+    backgroundColor: SIGNAL.color.indigo,
+    borderColor: SIGNAL.color.indigo,
+  },
+  filterChipText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 12,
+    color: SIGNAL.color.inkSoft,
+  },
+  filterChipTextActive: {
+    color: '#fff',
   },
 
   scroll: { flex: 1 },
