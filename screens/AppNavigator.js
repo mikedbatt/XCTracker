@@ -27,7 +27,11 @@ import AthleteDashboardSignal from '../screens/AthleteDashboardSignal';
 const USE_SIGNAL_DASHBOARD = true;
 const AthleteDashboard = USE_SIGNAL_DASHBOARD ? AthleteDashboardSignal : AthleteDashboardLegacy;
 import AthleteJoinScreen from '../screens/AthleteJoinScreen';
-import CoachDashboard from '../screens/CoachDashboard';
+import CoachDashboardLegacy from '../screens/CoachDashboard';
+import CoachDashboardSignal from '../screens/CoachDashboardSignal';
+// Flip this to false to fall back to the legacy (pre-Signal) coach dashboard.
+const USE_SIGNAL_COACH_DASHBOARD = true;
+const CoachDashboard = USE_SIGNAL_COACH_DASHBOARD ? CoachDashboardSignal : CoachDashboardLegacy;
 import CoachSetupScreen from '../screens/CoachSetupScreen';
 import LoginScreen from '../screens/LoginScreen';
 import ParentDashboard from '../screens/ParentDashboard';
