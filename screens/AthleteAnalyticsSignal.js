@@ -125,32 +125,42 @@ export default function AthleteAnalyticsSignal({ userData, school, myGroup, athl
   }
   const allVolumeWeeks = [...priorWeeks, ...volumeWeeks];
 
-  // 30-day mileage volume compliance — actual miles in the last 30 days vs.
-  // the athlete's weekly target × (30/7). Single number, color-coded.
-  // Meaningful even at the very start of a season when volumePlan is sparse.
-  let compliance30 = null;
-  if (myGroup?.weeklyMilesTarget) {
-    const nowDate = new Date();
-    const thirtyAgo = new Date(nowDate.getTime() - 30 * 86400000);
-    const recentMiles = allRuns
-      .filter(r => {
-        const d = getRunDate(r);
-        return d && d >= thirtyAgo && d <= nowDate;
-      })
-      .reduce((s, r) => s + (r.miles || 0), 0);
-    const targetMiles = myGroup.weeklyMilesTarget * (30 / 7);
-    if (targetMiles > 0) compliance30 = Math.round((recentMiles / targetMiles) * 100);
-  }
-
-  // Last 4 weeks of per-week mileage compliance for the trend dots row.
-  // Pads with nulls on the left when fewer than 4 weeks of data exist (e.g.
-  // brand-new season). Each value = actual / target × 100, rounded.
-  const volumeTrend = (() => {
-    const valid = volumeWeeks.filter(w => w.target > 0 && w.actual != null);
-    const last4 = valid.slice(-4);
-    const padded = [...Array(Math.max(0, 4 - last4.length)).fill(null), ...last4];
-    return padded.map(w => w == null ? null : Math.round((w.actual / w.target) * 100));
+  // Build the last 4 calendar weeks (Monday-aligned, oldest → newest) with
+  // per-week actual + target. Targets come from volumePlan if the week is
+  // inside the current season; otherwise we fall back to the group's static
+  // weeklyMilesTarget so prior-to-season weeks still produce a meaningful
+  // compliance %.
+  const last4WeekData = (() => {
+    const today = new Date();
+    const dow = today.getDay();
+    const thisMon = new Date(today);
+    thisMon.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
+    thisMon.setHours(0, 0, 0, 0);
+    const weeks = [];
+    for (let i = 3; i >= 0; i--) {
+      const monday = new Date(thisMon);
+      monday.setDate(thisMon.getDate() - 7 * i);
+      const mondayISO = monday.toISOString().split('T')[0];
+      const wRuns = weeklyRunData[mondayISO] || [];
+      const actual = Math.round(wRuns.reduce((s, r) => s + (r.miles || 0), 0) * 10) / 10;
+      const target = volumePlan[mondayISO] || myGroup?.weeklyMilesTarget || 0;
+      weeks.push({ monday: mondayISO, actual, target });
+    }
+    return weeks;
   })();
+
+  // Big-pill compliance: sum(actual) / sum(target) across the 4-week window.
+  const compliance4w = (() => {
+    const sumActual = last4WeekData.reduce((s, w) => s + w.actual, 0);
+    const sumTarget = last4WeekData.reduce((s, w) => s + w.target, 0);
+    if (sumTarget <= 0) return null;
+    return Math.round((sumActual / sumTarget) * 100);
+  })();
+
+  // Per-week trend dots: each value = that week's actual/target × 100.
+  const volumeTrend = last4WeekData.map(w =>
+    w.target > 0 ? Math.round((w.actual / w.target) * 100) : null
+  );
 
   // ── Feature 2: Race Performance data ──
   const myResults = raceResults.map(res => {
@@ -521,20 +531,29 @@ export default function AthleteAnalyticsSignal({ userData, school, myGroup, athl
 
           {volumeWeeks.length > 0 ? (
             <View style={styles.cardBody}>
-              {/* Hero gauge — gradient indigo→violet card (mirrors Easy-Hard Balance) */}
-              {compliance30 != null && (
-                <LinearGradient
-                  colors={[SIGNAL.color.indigo, SIGNAL.color.violet]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.heroCard}
-                >
-                  <Text style={styles.heroGaugeNum}>{compliance30}%</Text>
-                  <Text style={styles.heroGaugeSub}>Of weekly target</Text>
-                </LinearGradient>
-              )}
+              {/* Hero gauge — gradient pill, colored by status */}
+              {compliance4w != null && (() => {
+                const status = compliance4w >= 90 && compliance4w <= 110 ? 'ok'
+                  : compliance4w < 90 ? 'under' : 'over';
+                const gradient = status === 'ok'
+                  ? [SIGNAL.color.emerald, SIGNAL.color.cyan]
+                  : status === 'under'
+                    ? [SIGNAL.color.amber, SIGNAL.color.coral]
+                    : [SIGNAL.color.coral, SIGNAL.color.effort10];
+                return (
+                  <LinearGradient
+                    colors={gradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.heroCard}
+                  >
+                    <Text style={styles.heroGaugeNum}>{compliance4w}%</Text>
+                    <Text style={styles.heroGaugeSub}>Last 4 weeks · of weekly target</Text>
+                  </LinearGradient>
+                );
+              })()}
 
-              {/* 4-week trend dots */}
+              {/* Per-week trend dots */}
               <View style={styles.trendRow}>
                 {volumeTrend.map((pct, i) => (
                   <View key={i} style={styles.trendItem}>
@@ -625,19 +644,29 @@ export default function AthleteAnalyticsSignal({ userData, school, myGroup, athl
 
           {displayEighty20 ? (
             <View style={styles.cardBody}>
-              {/* Hero gauge — gradient indigo→violet card */}
-              <LinearGradient
-                colors={[SIGNAL.color.indigo, SIGNAL.color.violet]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.heroCard}
-              >
-                <Text style={styles.heroGaugeNum}>{displayEighty20.easyPct}%</Text>
-                <Text style={styles.heroGaugeSub}>
-                  {usePace ? 'Easy running (by pace)' : 'Z1 + Z2 (easy running)'}
-                  {!usePace && hasStreamData ? '  · Precise' : ''}
-                </Text>
-              </LinearGradient>
+              {/* Hero gauge — gradient pill, colored by 80/20 status */}
+              {(() => {
+                const pct = displayEighty20.easyPct;
+                const gradient = pct >= 78
+                  ? [SIGNAL.color.emerald, SIGNAL.color.cyan]
+                  : pct >= 70
+                    ? [SIGNAL.color.amber, SIGNAL.color.coral]
+                    : [SIGNAL.color.coral, SIGNAL.color.effort10];
+                return (
+                  <LinearGradient
+                    colors={gradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.heroCard}
+                  >
+                    <Text style={styles.heroGaugeNum}>{pct}%</Text>
+                    <Text style={styles.heroGaugeSub}>
+                      {usePace ? 'Easy running (by pace)' : 'Z1 + Z2 (easy running)'}
+                      {!usePace && hasStreamData ? '  · Precise' : ''}
+                    </Text>
+                  </LinearGradient>
+                );
+              })()}
 
               {/* 4-week trend dots */}
               <View style={styles.trendRow}>
