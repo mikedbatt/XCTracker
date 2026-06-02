@@ -1505,7 +1505,6 @@ export default function AthleteDashboardSignal({ userData: userDataProp, refresh
                 )}
               </View>
               <Text style={[styles.bottomNavLabel, t.active && styles.bottomNavLabelActive]}>{t.label}</Text>
-              {t.active && <View style={styles.bottomNavDot} />}
             </TouchableOpacity>
           ));
         })()}
@@ -1900,10 +1899,6 @@ const styles = StyleSheet.create({
     fontFamily: SIGNAL.font.bodySemi, fontSize: 11, color: SIGNAL.color.mute2,
   },
   bottomNavLabelActive: { color: SIGNAL.color.indigo },
-  bottomNavDot: {
-    marginTop: 2, width: 4, height: 4, borderRadius: 2,
-    backgroundColor: SIGNAL.color.indigo,
-  },
 
   // ── Badge (feed unread) ─────────────────────────────────────────────────────
   badge: {
