@@ -400,8 +400,13 @@ export default function AthleteAnalyticsSignal({ userData, school, myGroup, athl
     if (c.injury) { injuryStreak++; } else break;
   }
   if (recentCheckins[0]?.injury) {
-    const locs = recentCheckins[0].injury.locations || [];
-    activeInjuries.push({ locations: locs, severity: recentCheckins[0].injury.severity, streak: injuryStreak });
+    const inj = recentCheckins[0].injury;
+    activeInjuries.push({
+      locations: inj.locations || [],
+      perLocation: inj.perLocation,  // undefined for older check-ins without per-location data
+      severity: inj.severity,
+      streak: injuryStreak,
+    });
   }
 
   // ── Render helpers ──
@@ -977,7 +982,10 @@ export default function AthleteAnalyticsSignal({ userData, school, myGroup, athl
                   {activeInjuries.map((inj, i) => (
                     <View key={i} style={styles.injuryChip}>
                       <Text style={styles.injuryChipText}>
-                        🩹 {inj.locations.map(l => l.charAt(0).toUpperCase() + l.slice(1)).join(', ')} ({inj.severity}) — {inj.streak} consecutive day{inj.streak !== 1 ? 's' : ''}
+                        🩹 {inj.perLocation
+                          ? inj.perLocation.map(p => `${p.location.charAt(0).toUpperCase() + p.location.slice(1)} (${p.severity})`).join(', ')
+                          : `${inj.locations.map(l => l.charAt(0).toUpperCase() + l.slice(1)).join(', ')} (${inj.severity})`
+                        } — {inj.streak} consecutive day{inj.streak !== 1 ? 's' : ''}
                       </Text>
                     </View>
                   ))}
