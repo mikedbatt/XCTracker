@@ -471,19 +471,22 @@ export default function CoachAnalytics({
             </View>
             <Ionicons name={expandedSection === 'intensity' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />
           </View>
-          <View style={styles.intensityRow}>
-            <Text style={[styles.intensityNum, { color: teamAvgEasy === null ? NEUTRAL.muted : teamAvgEasy >= 78 ? STATUS.success : teamAvgEasy >= 68 ? STATUS.warning : STATUS.error }]}>
-              {teamAvgEasy !== null ? teamAvgEasy + '%' : '—'}
-            </Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.intensityLabel}>Team avg easy %</Text>
-              <Text style={styles.intensitySub}>
-                {paceOnTarget.length > 0 ? `${paceOnTarget.length} on target` : ''}
-                {paceCaution.length > 0 ? `${paceOnTarget.length > 0 ? ', ' : ''}${paceCaution.length} caution` : ''}
-                {paceTooHard.length > 0 ? `${paceOnTarget.length + paceCaution.length > 0 ? ', ' : ''}${paceTooHard.length} too hard` : ''}
-                {paceNoPaces.length > 0 ? `${athletesWithData.length > 0 ? ', ' : ''}${paceNoPaces.length} need paces` : ''}
-                {athletesWithData.length === 0 && paceNoPaces.length === 0 ? 'No data yet' : ''}
+          <View style={styles.summaryRow}>
+            <View style={[styles.summaryCard, {
+              backgroundColor: teamAvgEasy === null ? NEUTRAL.bg
+                : teamAvgEasy >= 78 ? STATUS.successBg
+                : teamAvgEasy >= 68 ? STATUS.warningBg
+                : STATUS.errorBg,
+            }]}>
+              <Text style={[styles.summaryNum, {
+                color: teamAvgEasy === null ? NEUTRAL.muted
+                  : teamAvgEasy >= 78 ? STATUS.success
+                  : teamAvgEasy >= 68 ? STATUS.warning
+                  : STATUS.error,
+              }]}>
+                {teamAvgEasy !== null ? teamAvgEasy + '%' : '—'}
               </Text>
+              <Text style={styles.summaryLabel}>Team avg easy</Text>
             </View>
           </View>
         </TouchableOpacity>
