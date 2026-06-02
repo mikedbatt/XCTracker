@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 import {
-  BRAND, BRAND_ACCENT, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE,
+  BRAND, BRAND_ACCENT, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE,
 } from '../constants/design';
 import { batchDocsByIds } from '../utils/batchDocsByIds';
 import { formatPace } from '../utils/vdotUtils';
@@ -184,13 +184,13 @@ export default function ManageGroups({ schoolId, athletes, onClose }) {
       <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-            <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+            <Ionicons name="chevron-back" size={22} color={SIGNAL.color.indigo} />
             <Text style={styles.backText}>Back</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Manage Groups</Text>
+          <Text style={styles.headerTitle}>Groups</Text>
           <View style={{ width: 60 }} />
         </View>
-        <ActivityIndicator style={{ marginTop: 40 }} color={BRAND} />
+        <ActivityIndicator style={{ marginTop: 40 }} color={SIGNAL.color.indigo} />
       </View>
     );
   }
@@ -199,10 +199,10 @@ export default function ManageGroups({ schoolId, athletes, onClose }) {
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+          <Ionicons name="chevron-back" size={22} color={SIGNAL.color.indigo} />
           <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Manage Groups</Text>
+        <Text style={styles.headerTitle}>Groups</Text>
         <View style={{ width: 60 }} />
       </View>
 
@@ -210,33 +210,39 @@ export default function ManageGroups({ schoolId, athletes, onClose }) {
         {[{ key: 'groups', label: 'Groups' }, { key: 'assign', label: 'Assign' }].map(t => (
           <TouchableOpacity
             key={t.key}
-            style={[styles.tab, activeTab === t.key && { borderBottomColor: BRAND, borderBottomWidth: 2 }]}
+            style={[styles.tab, activeTab === t.key && styles.tabActive]}
             onPress={() => setActiveTab(t.key)}
           >
-            <Text style={[styles.tabText, activeTab === t.key && { color: BRAND, fontWeight: '700' }]}>{t.label}</Text>
+            <Text style={[styles.tabText, activeTab === t.key && styles.tabTextActive]}>{t.label}</Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {activeTab === 'groups' && (
           <View style={styles.section}>
+            <Text style={styles.eyebrow}>Training groups</Text>
             <Text style={styles.sectionTitle}>Groups</Text>
-            <View style={styles.addRow}>
-              <TextInput
-                style={styles.addInput}
-                value={newGroupName}
-                onChangeText={setNewGroupName}
-                placeholder="New group name..."
-                placeholderTextColor="#9CA3AF"
-              />
-              <TouchableOpacity style={styles.addBtn} onPress={handleAddGroup}>
-                <Text style={styles.addBtnText}>+ Add</Text>
-              </TouchableOpacity>
+
+            <View style={styles.card}>
+              <View style={styles.addRow}>
+                <TextInput
+                  style={styles.addInput}
+                  value={newGroupName}
+                  onChangeText={setNewGroupName}
+                  placeholder="New group name..."
+                  placeholderTextColor={SIGNAL.color.mute2}
+                />
+                <TouchableOpacity style={styles.addBtn} onPress={handleAddGroup}>
+                  <Text style={styles.addBtnText}>Add</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {groups.length === 0 ? (
-              <Text style={styles.emptyText}>No groups yet. Create one above.</Text>
+              <View style={styles.card}>
+                <Text style={styles.emptyText}>No groups yet. Create one above.</Text>
+              </View>
             ) : groups.map(group => {
               const inGroup = athletes.filter(a => a.groupId === group.id);
               const count = inGroup.length;
@@ -259,10 +265,12 @@ export default function ManageGroups({ schoolId, athletes, onClose }) {
                         onChangeText={(text) => setGroups(prev => prev.map(g => g.id === group.id ? { ...g, name: text } : g))}
                         onBlur={() => handleUpdateGroup(group.id, { name: group.name })}
                       />
-                      <Text style={styles.groupCount}>{count} athlete{count !== 1 ? 's' : ''}  ·  avg {groupAvg} mi/wk{vdotLabel ? `  ·  ${vdotLabel}` : ''}</Text>
+                      <Text style={styles.groupCount}>
+                        {count} athlete{count !== 1 ? 's' : ''}  ·  avg {groupAvg} mi/wk{vdotLabel ? `  ·  ${vdotLabel}` : ''}
+                      </Text>
                     </View>
                     <TouchableOpacity onPress={() => handleDeleteGroup(group)} style={styles.deleteBtn}>
-                      <Text style={styles.deleteBtnText}>✕</Text>
+                      <Ionicons name="trash-outline" size={18} color={SIGNAL.color.coral} />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -273,17 +281,18 @@ export default function ManageGroups({ schoolId, athletes, onClose }) {
 
         {activeTab === 'assign' && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Assign Athletes</Text>
+            <Text style={styles.eyebrow}>Roster assignment</Text>
+            <Text style={styles.sectionTitle}>Assign athletes</Text>
             <Text style={styles.sectionHint}>Tap an athlete to assign to a group.</Text>
 
             <View style={styles.sortRow}>
               {[{ key: 'volume', label: 'By volume' }, { key: 'vdot', label: 'By VDOT' }].map(opt => (
                 <TouchableOpacity
                   key={opt.key}
-                  style={[styles.sortBtn, sortBy === opt.key && { backgroundColor: BRAND, borderColor: BRAND }]}
+                  style={[styles.sortBtn, sortBy === opt.key && styles.sortBtnActive]}
                   onPress={() => setSortBy(opt.key)}
                 >
-                  <Text style={[styles.sortBtnText, sortBy === opt.key && { color: '#fff' }]}>{opt.label}</Text>
+                  <Text style={[styles.sortBtnText, sortBy === opt.key && styles.sortBtnTextActive]}>{opt.label}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -302,6 +311,7 @@ export default function ManageGroups({ schoolId, athletes, onClose }) {
                   key={athlete.id}
                   style={styles.athleteRow}
                   onPress={() => handleAssignAthlete(athlete)}
+                  activeOpacity={0.7}
                 >
                   <View style={styles.athleteInfo}>
                     <View style={styles.athleteNameRow}>
@@ -312,8 +322,8 @@ export default function ManageGroups({ schoolId, athletes, onClose }) {
                       {stats.avg3wk} mi/wk avg  ·  {easyRange}
                     </Text>
                   </View>
-                  <View style={[styles.groupBadge, isAssigned && { backgroundColor: BRAND + '15', borderColor: BRAND }]}>
-                    <Text style={[styles.groupBadgeText, isAssigned && { color: BRAND }]}>{groupName}</Text>
+                  <View style={[styles.groupBadge, isAssigned && styles.groupBadgeAssigned]}>
+                    <Text style={[styles.groupBadgeText, isAssigned && styles.groupBadgeTextAssigned]}>{groupName}</Text>
                   </View>
                 </TouchableOpacity>
               );
@@ -328,39 +338,261 @@ export default function ManageGroups({ schoolId, athletes, onClose }) {
 }
 
 const styles = StyleSheet.create({
-  container:      { flex: 1, backgroundColor: NEUTRAL.bg },
-  header:         { backgroundColor: '#fff', paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
-  backBtn:        { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6 },
-  backText:       { color: BRAND_DARK, fontSize: 15, fontWeight: '600' },
-  headerTitle:    { fontSize: 20, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  tabRow:         { flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
-  tab:            { flex: 1, paddingVertical: 12, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  tabText:        { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted },
-  scroll:         { flex: 1 },
-  section:        { padding: SPACE.lg },
-  sectionTitle:   { fontSize: 17, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: 10 },
-  sectionHint:    { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginBottom: 12 },
-  emptyText:      { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted, textAlign: 'center', paddingVertical: 20 },
-  addRow:         { flexDirection: 'row', gap: 10, marginBottom: 14 },
-  addInput:       { flex: 1, backgroundColor: '#fff', borderRadius: RADIUS.md, padding: 12, fontSize: 15, borderWidth: 1, borderColor: NEUTRAL.border, color: BRAND_DARK },
-  addBtn:         { backgroundColor: BRAND, borderRadius: RADIUS.md, paddingHorizontal: 16, justifyContent: 'center' },
-  addBtnText:     { color: '#fff', fontWeight: FONT_WEIGHT.bold, fontSize: FONT_SIZE.sm },
-  groupCard:      { backgroundColor: '#fff', borderRadius: RADIUS.lg, padding: 12, marginBottom: 8, ...SHADOW.sm },
-  groupCardTop:   { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  groupInfo:      { flex: 1 },
-  groupNameInput: { fontSize: 15, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, padding: 0 },
-  groupCount:     { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: 2 },
-  deleteBtn:      { padding: 8 },
-  deleteBtnText:  { fontSize: 16, color: '#dc2626', fontWeight: '600' },
-  athleteRow:     { backgroundColor: '#fff', borderRadius: RADIUS.md, padding: 12, marginBottom: 6, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  athleteInfo:    { flex: 1 },
-  athleteName:    { fontSize: FONT_SIZE.sm, fontWeight: '600', color: BRAND_DARK },
-  athleteNameRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
-  athleteStats:   { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: 2 },
-  vdotBadge:      { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, color: BRAND_ACCENT, backgroundColor: BRAND + '10', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  sortRow:        { flexDirection: 'row', gap: SPACE.sm, marginBottom: SPACE.md },
-  sortBtn:        { paddingHorizontal: SPACE.md, paddingVertical: SPACE.xs + 2, borderRadius: RADIUS.full, borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.card },
-  sortBtnText:    { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.body },
-  groupBadge:     { borderRadius: 8, borderWidth: 1, borderColor: NEUTRAL.border, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: '#f9f9f9' },
-  groupBadgeText: { fontSize: FONT_SIZE.xs, fontWeight: '600', color: NEUTRAL.body },
+  container: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper2,
+  },
+  header: {
+    backgroundColor: SIGNAL.color.white,
+    paddingTop: Platform.OS === 'ios' ? 68 : 44,
+    paddingBottom: SIGNAL.space[5],
+    paddingHorizontal: SIGNAL.space.screen,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: 6,
+  },
+  backText: {
+    color: SIGNAL.color.indigo,
+    fontSize: SIGNAL.size.bodyLg,
+    fontFamily: SIGNAL.font.bodyMedium,
+  },
+  headerTitle: {
+    fontSize: SIGNAL.size.heading,
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+
+  tabRow: {
+    flexDirection: 'row',
+    backgroundColor: SIGNAL.color.white,
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: SIGNAL.space[4],
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabActive: {
+    borderBottomColor: SIGNAL.color.indigo,
+  },
+  tabText: {
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.bodyMedium,
+    color: SIGNAL.color.mute2,
+  },
+  tabTextActive: {
+    color: SIGNAL.color.indigo,
+    fontFamily: SIGNAL.font.bodySemi,
+  },
+
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: SIGNAL.space[8] },
+
+  section: {
+    paddingHorizontal: SIGNAL.space.screen,
+    paddingTop: SIGNAL.space[6],
+  },
+  eyebrow: {
+    ...SIGNAL.style.eyebrow,
+    marginBottom: SIGNAL.space[2],
+  },
+  sectionTitle: {
+    fontSize: SIGNAL.size.heading,
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.indigo,
+    letterSpacing: SIGNAL.letter.bodyTight,
+    marginBottom: SIGNAL.space[4],
+  },
+  sectionHint: {
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.body,
+    color: SIGNAL.color.mute,
+    marginBottom: SIGNAL.space[5],
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+
+  card: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    padding: SIGNAL.space.card,
+    marginBottom: SIGNAL.space[3],
+    ...SIGNAL.border.hairline,
+  },
+
+  emptyText: {
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.body,
+    color: SIGNAL.color.mute,
+    textAlign: 'center',
+    paddingVertical: SIGNAL.space[6],
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+
+  addRow: {
+    flexDirection: 'row',
+    gap: SIGNAL.space[3],
+    alignItems: 'center',
+  },
+  addInput: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper,
+    borderRadius: SIGNAL.radius.control,
+    paddingHorizontal: SIGNAL.space[4],
+    paddingVertical: SIGNAL.space[3],
+    fontSize: SIGNAL.size.bodyLg,
+    fontFamily: SIGNAL.font.body,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  addBtn: {
+    backgroundColor: SIGNAL.color.indigo,
+    borderRadius: SIGNAL.radius.button,
+    paddingHorizontal: SIGNAL.space[6],
+    paddingVertical: SIGNAL.space[3],
+    justifyContent: 'center',
+  },
+  addBtnText: {
+    color: SIGNAL.color.white,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: SIGNAL.size.body,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+
+  groupCard: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    padding: SIGNAL.space.card,
+    marginBottom: SIGNAL.space[2],
+    ...SIGNAL.border.hairline,
+  },
+  groupCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SIGNAL.space[3],
+  },
+  groupInfo: { flex: 1 },
+  groupNameInput: {
+    fontSize: SIGNAL.size.bodyLg,
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.ink,
+    padding: 0,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  groupCount: {
+    fontSize: SIGNAL.size.label,
+    fontFamily: SIGNAL.font.body,
+    color: SIGNAL.color.mute,
+    marginTop: SIGNAL.space[1],
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  deleteBtn: {
+    padding: SIGNAL.space[2],
+    borderRadius: SIGNAL.radius.control,
+  },
+
+  athleteRow: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    padding: SIGNAL.space.card,
+    marginBottom: SIGNAL.space[2],
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SIGNAL.space[3],
+    ...SIGNAL.border.hairline,
+  },
+  athleteInfo: { flex: 1 },
+  athleteNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SIGNAL.space[2],
+  },
+  athleteName: {
+    fontSize: SIGNAL.size.bodyLg,
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  athleteStats: {
+    fontSize: SIGNAL.size.label,
+    fontFamily: SIGNAL.font.body,
+    color: SIGNAL.color.mute,
+    marginTop: SIGNAL.space[1],
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  vdotBadge: {
+    fontSize: SIGNAL.size.eyebrow,
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.indigo,
+    backgroundColor: `${SIGNAL.color.indigo}${SIGNAL.tint.chip}`,
+    paddingHorizontal: SIGNAL.space[2],
+    paddingVertical: 2,
+    borderRadius: SIGNAL.radius.chip,
+    overflow: 'hidden',
+    letterSpacing: 0.5,
+  },
+
+  sortRow: {
+    flexDirection: 'row',
+    gap: SIGNAL.space[2],
+    marginBottom: SIGNAL.space[5],
+  },
+  sortBtn: {
+    paddingHorizontal: SIGNAL.space[5],
+    paddingVertical: SIGNAL.space[2],
+    borderRadius: SIGNAL.radius.chip,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    backgroundColor: SIGNAL.color.white,
+  },
+  sortBtnActive: {
+    backgroundColor: SIGNAL.color.indigo,
+    borderColor: SIGNAL.color.indigo,
+  },
+  sortBtnText: {
+    fontSize: SIGNAL.size.label,
+    fontFamily: SIGNAL.font.bodyMedium,
+    color: SIGNAL.color.inkSoft,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  sortBtnTextActive: {
+    color: SIGNAL.color.white,
+    fontFamily: SIGNAL.font.bodySemi,
+  },
+
+  groupBadge: {
+    borderRadius: SIGNAL.radius.chip,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    paddingHorizontal: SIGNAL.space[4],
+    paddingVertical: SIGNAL.space[2],
+    backgroundColor: SIGNAL.color.paper,
+  },
+  groupBadgeAssigned: {
+    backgroundColor: `${SIGNAL.color.indigo}${SIGNAL.tint.chip}`,
+    borderColor: SIGNAL.color.indigo,
+  },
+  groupBadgeText: {
+    fontSize: SIGNAL.size.label,
+    fontFamily: SIGNAL.font.bodyMedium,
+    color: SIGNAL.color.mute,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  groupBadgeTextAssigned: {
+    color: SIGNAL.color.indigo,
+    fontFamily: SIGNAL.font.bodySemi,
+  },
 });

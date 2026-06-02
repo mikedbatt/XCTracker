@@ -23,9 +23,7 @@ import {
   TouchableOpacity, View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
-import {
-  BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
-} from '../constants/design';
+import { SIGNAL } from '../constants/design';
 import DatePickerField from './DatePickerField';
 
 const STATUS_VALUES = ['present', 'absent', 'excused'];
@@ -143,107 +141,161 @@ export default function AttendanceScreen({ userData, athletes = [], onClose }) {
     setSaving(false);
   };
 
-  const renderStatusBtn = (athleteId, status, label, color) => {
+  const STATUS_COLORS = {
+    present: SIGNAL.color.emerald,
+    absent:  SIGNAL.color.coral,
+    excused: SIGNAL.color.amber,
+  };
+
+  const renderStatusBtn = (athleteId, status, label) => {
     const active = marks[athleteId] === status;
+    const color = STATUS_COLORS[status];
     return (
       <TouchableOpacity
         key={status}
-        style={[styles.statusBtn, active && { backgroundColor: color, borderColor: color }]}
+        style={[
+          styles.statusBtn,
+          active && { backgroundColor: color, borderColor: color },
+        ]}
         onPress={() => setMark(athleteId, status)}
+        activeOpacity={0.7}
       >
-        <Text style={[styles.statusBtnText, active && { color: '#fff' }]}>{label}</Text>
+        <Text style={[styles.statusBtnText, active && { color: SIGNAL.color.white }]}>
+          {label}
+        </Text>
       </TouchableOpacity>
     );
   };
 
+  const saveDisabled = saving || Object.keys(marks).length === 0;
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={onClose} style={styles.headerBtn}>
-          <Ionicons name="chevron-back" size={24} color={BRAND} />
+        <TouchableOpacity onPress={onClose} style={styles.headerBtn} activeOpacity={0.7}>
+          <Ionicons name="chevron-back" size={22} color={SIGNAL.color.indigo} />
           <Text style={styles.headerBackText}>Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Attendance</Text>
-        <View style={{ width: 60 }} />
+        <Text style={styles.eyebrow}>Coach</Text>
+        <View style={{ width: 64 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.screenTitle}>Attendance</Text>
+
         <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Date</Text>
           <DatePickerField
-            label="Date"
+            label=""
             value={selectedDate}
             onChange={d => setSelectedDate(d)}
             maximumDate={new Date()}
           />
 
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryPill}>{counts.present} present</Text>
-            <Text style={[styles.summaryPill, { color: STATUS.error }]}>{counts.absent} absent</Text>
-            <Text style={[styles.summaryPill, { color: STATUS.warning }]}>{counts.excused} excused</Text>
-            <Text style={[styles.summaryPill, { color: NEUTRAL.muted }]}>{counts.unmarked} unmarked</Text>
+            <View style={[styles.summaryPill, { backgroundColor: `${SIGNAL.color.emerald}${SIGNAL.tint.chip}` }]}>
+              <Text style={[styles.summaryPillText, { color: SIGNAL.color.emerald }]}>
+                {counts.present} present
+              </Text>
+            </View>
+            <View style={[styles.summaryPill, { backgroundColor: `${SIGNAL.color.coral}${SIGNAL.tint.chip}` }]}>
+              <Text style={[styles.summaryPillText, { color: SIGNAL.color.coral }]}>
+                {counts.absent} absent
+              </Text>
+            </View>
+            <View style={[styles.summaryPill, { backgroundColor: `${SIGNAL.color.amber}${SIGNAL.tint.chip}` }]}>
+              <Text style={[styles.summaryPillText, { color: SIGNAL.color.amber }]}>
+                {counts.excused} excused
+              </Text>
+            </View>
+            <View style={[styles.summaryPill, { backgroundColor: SIGNAL.color.paper }]}>
+              <Text style={[styles.summaryPillText, { color: SIGNAL.color.mute }]}>
+                {counts.unmarked} unmarked
+              </Text>
+            </View>
           </View>
 
           <View style={styles.shortcutRow}>
-            <TouchableOpacity style={styles.shortcutBtn} onPress={markAllPresent}>
-              <Ionicons name="checkmark-done" size={16} color={BRAND} />
+            <TouchableOpacity style={styles.shortcutBtn} onPress={markAllPresent} activeOpacity={0.7}>
+              <Ionicons name="checkmark-done" size={15} color={SIGNAL.color.indigo} />
               <Text style={styles.shortcutText}>Mark all present</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.shortcutBtn} onPress={clearAll}>
-              <Ionicons name="refresh" size={16} color={NEUTRAL.muted} />
-              <Text style={[styles.shortcutText, { color: NEUTRAL.muted }]}>Clear</Text>
+            <TouchableOpacity style={styles.shortcutBtn} onPress={clearAll} activeOpacity={0.7}>
+              <Ionicons name="refresh" size={15} color={SIGNAL.color.mute} />
+              <Text style={[styles.shortcutText, { color: SIGNAL.color.mute }]}>Clear</Text>
             </TouchableOpacity>
           </View>
+        </View>
 
-          <View style={styles.sortRow}>
-            <Text style={styles.sortLabel}>Sort by:</Text>
+        <View style={styles.sortHeader}>
+          <Text style={styles.sectionTitle}>Roster</Text>
+          <View style={styles.sortToggle}>
             {[
-              { key: 'firstName', label: 'First name' },
-              { key: 'lastName',  label: 'Last name'  },
-            ].map(opt => (
-              <TouchableOpacity
-                key={opt.key}
-                style={[styles.sortBtn, sortBy === opt.key && { backgroundColor: BRAND, borderColor: BRAND }]}
-                onPress={() => setSortBy(opt.key)}
-              >
-                <Text style={[styles.sortBtnText, sortBy === opt.key && { color: '#fff' }]}>{opt.label}</Text>
-              </TouchableOpacity>
-            ))}
+              { key: 'firstName', label: 'First' },
+              { key: 'lastName',  label: 'Last'  },
+            ].map(opt => {
+              const active = sortBy === opt.key;
+              return (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={[styles.sortBtn, active && styles.sortBtnActive]}
+                  onPress={() => setSortBy(opt.key)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.sortBtnText, active && styles.sortBtnTextActive]}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
 
         {loading ? (
-          <ActivityIndicator color={BRAND} style={{ marginTop: SPACE.xl }} />
+          <ActivityIndicator color={SIGNAL.color.indigo} style={{ marginTop: SIGNAL.space[8] }} />
         ) : athletes.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyText}>No approved athletes on the roster yet.</Text>
           </View>
         ) : (
-          sortedAthletes.map(a => (
-            <View key={a.id} style={styles.athleteRow}>
-              <View style={[styles.avatar, { backgroundColor: a.avatarColor || BRAND }]}>
-                <Text style={styles.avatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
+          <View style={styles.rosterCard}>
+            {sortedAthletes.map((a, i) => (
+              <View
+                key={a.id}
+                style={[styles.athleteRow, i === sortedAthletes.length - 1 && { borderBottomWidth: 0 }]}
+              >
+                <View style={[styles.avatar, { backgroundColor: a.avatarColor || SIGNAL.color.indigo }]}>
+                  <Text style={styles.avatarText}>
+                    {a.firstName?.[0]}{a.lastName?.[0]}
+                  </Text>
+                </View>
+                <Text style={styles.athleteName} numberOfLines={1}>
+                  {sortBy === 'lastName' ? `${a.lastName}, ${a.firstName}` : `${a.firstName} ${a.lastName}`}
+                </Text>
+                <View style={styles.statusBtnRow}>
+                  {renderStatusBtn(a.id, 'present', 'P')}
+                  {renderStatusBtn(a.id, 'absent',  'A')}
+                  {renderStatusBtn(a.id, 'excused', 'E')}
+                </View>
               </View>
-              <Text style={styles.athleteName} numberOfLines={1}>
-                {sortBy === 'lastName' ? `${a.lastName}, ${a.firstName}` : `${a.firstName} ${a.lastName}`}
-              </Text>
-              <View style={styles.statusBtnRow}>
-                {renderStatusBtn(a.id, 'present', 'P', STATUS.success)}
-                {renderStatusBtn(a.id, 'absent',  'A', STATUS.error)}
-                {renderStatusBtn(a.id, 'excused', 'E', STATUS.warning)}
-              </View>
-            </View>
-          ))
+            ))}
+          </View>
         )}
       </ScrollView>
 
       <View style={styles.footer}>
         <TouchableOpacity
-          style={[styles.saveBtn, (saving || Object.keys(marks).length === 0) && { opacity: 0.5 }]}
-          disabled={saving || Object.keys(marks).length === 0}
+          style={[styles.saveBtn, saveDisabled && styles.saveBtnDisabled]}
+          disabled={saveDisabled}
           onPress={handleSave}
+          activeOpacity={0.85}
         >
           {saving
-            ? <ActivityIndicator color="#fff" />
+            ? <ActivityIndicator color={SIGNAL.color.white} />
             : <Text style={styles.saveBtnText}>Save attendance</Text>}
         </TouchableOpacity>
       </View>
@@ -252,32 +304,214 @@ export default function AttendanceScreen({ userData, athletes = [], onClose }) {
 }
 
 const styles = StyleSheet.create({
-  container:        { flex: 1, backgroundColor: NEUTRAL.bg },
-  header:           { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACE.lg, paddingTop: Platform.OS === 'ios' ? 56 : 20, paddingBottom: SPACE.md, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
-  headerBtn:        { flexDirection: 'row', alignItems: 'center' },
-  headerBackText:   { color: BRAND, fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.medium },
-  headerTitle:      { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  content:          { padding: SPACE.lg, paddingBottom: 100 },
-  card:             { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.md, marginBottom: SPACE.md, ...SHADOW.sm },
-  summaryRow:       { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.sm, marginTop: SPACE.sm },
-  summaryPill:      { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, color: STATUS.success },
-  shortcutRow:      { flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md },
-  shortcutBtn:      { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: SPACE.sm, paddingHorizontal: SPACE.md, borderRadius: RADIUS.md, borderWidth: 1, borderColor: NEUTRAL.border },
-  shortcutText:     { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: BRAND },
-  sortRow:          { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginTop: SPACE.md },
-  sortLabel:        { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted },
-  sortBtn:          { paddingVertical: 6, paddingHorizontal: SPACE.md, borderRadius: RADIUS.md, borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.card },
-  sortBtnText:      { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.body },
-  athleteRow:       { flexDirection: 'row', alignItems: 'center', backgroundColor: NEUTRAL.card, borderRadius: RADIUS.md, padding: SPACE.md, marginBottom: SPACE.sm, gap: SPACE.md, ...SHADOW.sm },
-  avatar:           { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  avatarText:       { color: '#fff', fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
-  athleteName:      { flex: 1, fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.semibold, color: BRAND_DARK },
-  statusBtnRow:     { flexDirection: 'row', gap: 6 },
-  statusBtn:        { minWidth: 36, paddingVertical: 6, paddingHorizontal: SPACE.sm, borderRadius: RADIUS.md, borderWidth: 1.5, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.card, alignItems: 'center' },
-  statusBtnText:    { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: NEUTRAL.body },
-  emptyCard:        { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.xl, alignItems: 'center' },
-  emptyText:        { color: NEUTRAL.muted, fontSize: FONT_SIZE.sm, textAlign: 'center' },
-  footer:           { position: 'absolute', bottom: 0, left: 0, right: 0, padding: SPACE.lg, paddingBottom: Platform.OS === 'ios' ? 34 : SPACE.lg, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: NEUTRAL.border },
-  saveBtn:          { backgroundColor: BRAND, borderRadius: RADIUS.md, paddingVertical: SPACE.md, alignItems: 'center' },
-  saveBtnText:      { color: '#fff', fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
+  container: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper2,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SIGNAL.space.screen,
+    paddingTop: Platform.OS === 'ios' ? 68 : 44,
+    paddingBottom: SIGNAL.space[4],
+    backgroundColor: SIGNAL.color.paper2,
+  },
+  headerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 64,
+  },
+  headerBackText: {
+    color: SIGNAL.color.indigo,
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.bodyMedium,
+    marginLeft: 2,
+  },
+  eyebrow: {
+    ...SIGNAL.style.eyebrow,
+    fontFamily: SIGNAL.font.bodyMedium,
+  },
+  content: {
+    paddingHorizontal: SIGNAL.space.screen,
+    paddingBottom: 120,
+  },
+  screenTitle: {
+    fontSize: SIGNAL.size.title,
+    fontFamily: SIGNAL.font.bodyBold,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.titleTight,
+    marginTop: SIGNAL.space[2],
+    marginBottom: SIGNAL.space[5],
+  },
+  sectionTitle: {
+    fontSize: SIGNAL.size.heading,
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.indigo,
+    marginBottom: SIGNAL.space[3],
+  },
+  card: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    padding: SIGNAL.space.card,
+    marginBottom: SIGNAL.space[5],
+    ...SIGNAL.border.hairline,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SIGNAL.space[2],
+    marginTop: SIGNAL.space[4],
+  },
+  summaryPill: {
+    paddingVertical: 6,
+    paddingHorizontal: SIGNAL.space[4],
+    borderRadius: SIGNAL.radius.chip,
+  },
+  summaryPillText: {
+    fontSize: SIGNAL.size.label,
+    fontFamily: SIGNAL.font.bodySemi,
+  },
+  shortcutRow: {
+    flexDirection: 'row',
+    gap: SIGNAL.space[2],
+    marginTop: SIGNAL.space[4],
+  },
+  shortcutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: SIGNAL.space[3],
+    paddingHorizontal: SIGNAL.space[4],
+    borderRadius: SIGNAL.radius.button,
+    backgroundColor: SIGNAL.color.paper,
+    ...SIGNAL.border.hairline,
+  },
+  shortcutText: {
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.indigo,
+  },
+  sortHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SIGNAL.space[3],
+    paddingHorizontal: 2,
+  },
+  sortToggle: {
+    flexDirection: 'row',
+    backgroundColor: SIGNAL.color.paper,
+    borderRadius: SIGNAL.radius.chip,
+    padding: 3,
+    ...SIGNAL.border.hairline,
+  },
+  sortBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: SIGNAL.space[4],
+    borderRadius: SIGNAL.radius.chip,
+  },
+  sortBtnActive: {
+    backgroundColor: SIGNAL.color.indigo,
+  },
+  sortBtnText: {
+    fontSize: SIGNAL.size.label,
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.mute,
+  },
+  sortBtnTextActive: {
+    color: SIGNAL.color.white,
+  },
+  rosterCard: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    paddingHorizontal: SIGNAL.space.card,
+    ...SIGNAL.border.hairline,
+  },
+  athleteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SIGNAL.space[4],
+    gap: SIGNAL.space[4],
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  avatar: {
+    width: 36,
+    height: 36,
+    borderRadius: SIGNAL.radius.chip,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    color: SIGNAL.color.white,
+    fontSize: SIGNAL.size.label,
+    fontFamily: SIGNAL.font.bodyBold,
+  },
+  athleteName: {
+    flex: 1,
+    fontSize: SIGNAL.size.bodyLg,
+    fontFamily: SIGNAL.font.bodyMedium,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  statusBtnRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  statusBtn: {
+    minWidth: 36,
+    paddingVertical: 7,
+    paddingHorizontal: SIGNAL.space[3],
+    borderRadius: SIGNAL.radius.chip,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    backgroundColor: SIGNAL.color.white,
+    alignItems: 'center',
+  },
+  statusBtnText: {
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.bodyBold,
+    color: SIGNAL.color.inkSoft,
+  },
+  emptyCard: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    padding: SIGNAL.space[8],
+    alignItems: 'center',
+    ...SIGNAL.border.hairline,
+  },
+  emptyText: {
+    color: SIGNAL.color.mute,
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.body,
+    textAlign: 'center',
+  },
+  footer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: SIGNAL.space.screen,
+    paddingTop: SIGNAL.space[4],
+    paddingBottom: Platform.OS === 'ios' ? 34 : SIGNAL.space[5],
+    backgroundColor: SIGNAL.color.white,
+    borderTopWidth: 1,
+    borderTopColor: SIGNAL.color.line,
+  },
+  saveBtn: {
+    backgroundColor: SIGNAL.color.indigo,
+    borderRadius: SIGNAL.radius.button,
+    paddingVertical: SIGNAL.space[5],
+    alignItems: 'center',
+  },
+  saveBtnDisabled: {
+    opacity: 0.4,
+  },
+  saveBtnText: {
+    color: SIGNAL.color.white,
+    fontSize: SIGNAL.size.bodyLg,
+    fontFamily: SIGNAL.font.bodySemi,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
 });

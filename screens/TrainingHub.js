@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import {
   BRAND, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE,
+  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE,
 } from '../constants/design';
 import { getActiveSeason, getPhaseForSeason, SPORTS } from './SeasonPlanner';
 
@@ -108,20 +108,29 @@ export default function TrainingHub({ school, athletes, pendingAthletes: pending
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Program</Text>
+        <Text style={styles.eyebrow}>Coach</Text>
+        <View style={styles.headerRow}>
+          <Text style={styles.headerTitle}>Training</Text>
+          <View style={styles.statusPill}>
+            <View style={styles.statusDot} />
+            <Text style={styles.statusText} numberOfLines={1}>{seasonSummary}</Text>
+          </View>
+        </View>
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <Text style={styles.sectionTitle}>Manage your program</Text>
+
         {cards.map(card => (
           <TouchableOpacity
             key={card.key}
             style={styles.card}
-            activeOpacity={0.7}
+            activeOpacity={0.85}
             onPress={() => onNavigate(card.key)}
           >
             <View style={styles.cardLeft}>
-              <View style={styles.iconCircle}>
-                <Ionicons name={card.icon} size={24} color={BRAND} />
+              <View style={styles.iconBadge}>
+                <Ionicons name={card.icon} size={20} color={SIGNAL.color.indigo} />
                 {card.badge > 0 && (
                   <View style={styles.cardBadge}>
                     <Text style={styles.cardBadgeText}>{card.badge > 99 ? '99+' : card.badge}</Text>
@@ -133,7 +142,7 @@ export default function TrainingHub({ school, athletes, pendingAthletes: pending
                 <Text style={styles.cardSubtitle} numberOfLines={2}>{card.subtitle}</Text>
               </View>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={NEUTRAL.muted} />
+            <Ionicons name="chevron-forward" size={18} color={SIGNAL.color.mute2} />
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -142,17 +151,130 @@ export default function TrainingHub({ school, athletes, pendingAthletes: pending
 }
 
 const styles = StyleSheet.create({
-  container:    { flex: 1, backgroundColor: NEUTRAL.bg },
-  header:       { backgroundColor: '#fff', paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 16, paddingHorizontal: SPACE.lg, borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
-  headerTitle:  { fontSize: 24, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, textAlign: 'center' },
-  scroll:       { flex: 1 },
-  scrollContent:{ padding: SPACE.lg, gap: SPACE.md },
-  card:         { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', ...SHADOW.sm },
-  cardLeft:     { flexDirection: 'row', alignItems: 'center', flex: 1, gap: SPACE.md },
-  iconCircle:   { width: 44, height: 44, borderRadius: RADIUS.full, backgroundColor: BRAND_LIGHT, alignItems: 'center', justifyContent: 'center' },
-  cardBadge:    { position: 'absolute', top: -4, right: -4, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: '#dc2626', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5, borderWidth: 2, borderColor: '#fff' },
-  cardBadgeText:{ color: '#fff', fontSize: 11, fontWeight: FONT_WEIGHT.bold },
-  cardText:     { flex: 1 },
-  cardTitle:    { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: 2 },
-  cardSubtitle: { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, lineHeight: 18 },
+  container: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper2,
+  },
+  header: {
+    backgroundColor: SIGNAL.color.paper2,
+    paddingTop: Platform.OS === 'ios' ? 68 : 44,
+    paddingBottom: SIGNAL.space[5],
+    paddingHorizontal: SIGNAL.space.screen,
+  },
+  eyebrow: {
+    ...SIGNAL.style.eyebrow,
+    marginBottom: SIGNAL.space[2],
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SIGNAL.space[3],
+  },
+  headerTitle: {
+    fontFamily: SIGNAL.font.display,
+    fontSize: SIGNAL.size.title,
+    letterSpacing: SIGNAL.letter.titleTight,
+    color: SIGNAL.color.ink,
+  },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SIGNAL.space[2],
+    paddingHorizontal: SIGNAL.space[3],
+    paddingVertical: 6,
+    borderRadius: SIGNAL.radius.chip,
+    backgroundColor: SIGNAL.color.white,
+    ...SIGNAL.border.hairline,
+    flexShrink: 1,
+    maxWidth: '65%',
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: SIGNAL.color.emerald,
+  },
+  statusText: {
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: SIGNAL.size.label,
+    color: SIGNAL.color.inkSoft,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: SIGNAL.space.screen,
+    paddingBottom: SIGNAL.space[8],
+    gap: SIGNAL.space[3],
+  },
+  sectionTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: SIGNAL.size.heading,
+    color: SIGNAL.color.indigo,
+    letterSpacing: SIGNAL.letter.bodyTight,
+    marginTop: SIGNAL.space[2],
+    marginBottom: SIGNAL.space[2],
+  },
+  card: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    paddingVertical: SIGNAL.space[5],
+    paddingHorizontal: SIGNAL.space.card,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    ...SIGNAL.border.hairline,
+  },
+  cardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: SIGNAL.space[4],
+  },
+  iconBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: SIGNAL.radius.control,
+    backgroundColor: `${SIGNAL.color.indigo}${SIGNAL.tint.chip}`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: SIGNAL.color.coral,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: SIGNAL.color.white,
+  },
+  cardBadgeText: {
+    color: SIGNAL.color.white,
+    fontSize: 10,
+    fontFamily: SIGNAL.font.bodyBold,
+  },
+  cardText: {
+    flex: 1,
+  },
+  cardTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: SIGNAL.size.bodyLg,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+    marginBottom: 2,
+  },
+  cardSubtitle: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: SIGNAL.size.body,
+    color: SIGNAL.color.mute,
+    letterSpacing: SIGNAL.letter.bodyTight,
+    lineHeight: 18,
+  },
 });

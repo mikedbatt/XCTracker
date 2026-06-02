@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -9,7 +10,7 @@ import ViewShot from 'react-native-view-shot';
 import { auth, db } from '../firebaseConfig';
 import {
   BRAND, BRAND_ACCENT, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
+  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE, STATUS,
 } from '../constants/design';
 import { SPORTS } from './SeasonPlanner';
 import { formatTime } from '../utils/raceUtils';
@@ -306,20 +307,18 @@ export default function SeasonReview({ season, school, userData, athletes = [], 
   };
 
   // ── Render helpers ──────────────────────────────────────────────────────────
-  const StatRow = ({ label, value, accent }) => (
+  const StatRow = ({ label, value, accent, mono }) => (
     <View style={styles.statRow}>
       <Text style={styles.statLabel}>{label}</Text>
-      <Text style={[styles.statValue, accent && { color: accent }]}>{value}</Text>
+      <Text style={[styles.statValue, mono && styles.statValueMono, accent && { color: accent }]}>{value}</Text>
     </View>
   );
 
-  const Card = ({ title, icon, children }) => (
+  const Card = ({ title, eyebrow, children }) => (
     <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <Text style={styles.cardIcon}>{icon}</Text>
-        <Text style={styles.cardTitle}>{title}</Text>
-      </View>
-      {children}
+      {eyebrow ? <Text style={styles.cardEyebrow}>{eyebrow}</Text> : null}
+      <Text style={styles.cardTitle}>{title}</Text>
+      <View style={styles.cardBody}>{children}</View>
     </View>
   );
 
@@ -329,13 +328,13 @@ export default function SeasonReview({ season, school, userData, athletes = [], 
       <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-            <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+            <Ionicons name="chevron-back" size={22} color={SIGNAL.color.indigo} />
             <Text style={styles.backText}>Back</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Season in Review</Text>
           <View style={{ width: 60 }} />
         </View>
-        <View style={styles.center}><ActivityIndicator size="large" color={BRAND} /></View>
+        <View style={styles.center}><ActivityIndicator size="large" color={SIGNAL.color.indigo} /></View>
       </View>
     );
   }
@@ -346,50 +345,68 @@ export default function SeasonReview({ season, school, userData, athletes = [], 
     return (
       <>
         {/* Hero */}
-        <View style={[styles.heroCard, { borderTopColor: sport.color }]}>
-          <Text style={styles.heroIcon}>{sport.icon}</Text>
+        <LinearGradient
+          colors={['#4F46E5', '#7C3AED']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.heroCard}
+        >
+          <Text style={styles.heroEyebrow}>Season in Review</Text>
           <Text style={styles.heroSeason}>{season.name || sport.label}</Text>
           <Text style={styles.heroName}>{userData.firstName} {userData.lastName}</Text>
           <Text style={styles.heroSchool}>{school?.name}</Text>
+          <View style={styles.heroDivider} />
           <Text style={styles.heroDate}>{formatDateRange(season.seasonStart, season.championshipDate)}</Text>
-        </View>
+        </LinearGradient>
 
-        {/* By the Numbers */}
-        <Card title="By the Numbers" icon="📊">
-          <View style={styles.bigStatRow}>
-            <View style={styles.bigStat}>
-              <Text style={[styles.bigStatNum, { color: BRAND }]}>{data.totalMiles}</Text>
-              <Text style={styles.bigStatLabel}>miles</Text>
+        {/* By the Numbers — hero stat band */}
+        <LinearGradient
+          colors={['#10B981', '#06B6D4']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.statHeroCard}
+        >
+          <Text style={styles.statHeroEyebrow}>By the Numbers</Text>
+          <View style={styles.statHeroRow}>
+            <View style={styles.statHeroCell}>
+              <Text style={styles.statHeroNum}>{data.totalMiles}</Text>
+              <Text style={styles.statHeroLabel}>miles</Text>
             </View>
-            <View style={styles.bigStat}>
-              <Text style={[styles.bigStatNum, { color: BRAND }]}>{data.totalRuns}</Text>
-              <Text style={styles.bigStatLabel}>runs</Text>
+            <View style={styles.statHeroDivider} />
+            <View style={styles.statHeroCell}>
+              <Text style={styles.statHeroNum}>{data.totalRuns}</Text>
+              <Text style={styles.statHeroLabel}>runs</Text>
             </View>
-            <View style={styles.bigStat}>
-              <Text style={[styles.bigStatNum, { color: BRAND }]}>{data.runDays}</Text>
-              <Text style={styles.bigStatLabel}>days</Text>
+            <View style={styles.statHeroDivider} />
+            <View style={styles.statHeroCell}>
+              <Text style={styles.statHeroNum}>{data.runDays}</Text>
+              <Text style={styles.statHeroLabel}>days</Text>
             </View>
           </View>
-          <StatRow label="Longest run" value={`${data.longestRun} mi`} />
-          <StatRow label="Biggest week" value={`${data.biggestWeek} mi`} />
+        </LinearGradient>
+
+        <Card eyebrow="Volume" title="Distance milestones">
+          <StatRow label="Longest run" value={`${data.longestRun} mi`} mono />
+          <StatRow label="Biggest week" value={`${data.biggestWeek} mi`} mono />
         </Card>
 
         {/* Race Progression */}
         {data.raceCount > 0 && (
-          <Card title="Race Day" icon="🏁">
+          <Card eyebrow="Race Day" title="On the line">
             <StatRow label="Races" value={data.raceCount} />
             {data.primaryDist && <StatRow label="Primary distance" value={data.primaryDist} />}
             {data.bestRace && (
-              <StatRow label="Best time" value={formatTime(data.bestRace.finishTime)} accent={STATUS.success} />
+              <StatRow label="Best time" value={formatTime(data.bestRace.finishTime)} accent={SIGNAL.color.emerald} mono />
             )}
             {data.firstRace && data.lastRace && data.firstRace !== data.lastRace && (
               <>
-                <StatRow label="First race" value={formatTime(data.firstRace.finishTime)} />
-                <StatRow label="Last race" value={formatTime(data.lastRace.finishTime)} />
+                <StatRow label="First race" value={formatTime(data.firstRace.finishTime)} mono />
+                <StatRow label="Last race" value={formatTime(data.lastRace.finishTime)} mono />
               </>
             )}
             {data.improvement != null && data.improvement > 0 && (
               <View style={styles.improvementBanner}>
+                <Ionicons name="trending-down" size={16} color={SIGNAL.color.emerald} />
                 <Text style={styles.improvementText}>
                   {formatTime(data.improvement)} faster from first to last race
                 </Text>
@@ -399,27 +416,25 @@ export default function SeasonReview({ season, school, userData, athletes = [], 
         )}
 
         {/* Training Consistency */}
-        <Card title="Consistency" icon="🔥">
+        <Card eyebrow="Wellness" title="Consistency">
           <StatRow label="Check-ins completed" value={data.totalCheckins} />
-          {data.maxStreak > 1 && <StatRow label="Longest streak" value={`${data.maxStreak} days`} accent={STATUS.success} />}
-          {data.avgMood && <StatRow label="Avg mood" value={`${data.avgMood}/5`} />}
-          {data.avgSleep && <StatRow label="Avg sleep" value={`${data.avgSleep}/5`} />}
-          {data.avgLegs && <StatRow label="Avg legs" value={`${data.avgLegs}/5`} />}
+          {data.maxStreak > 1 && <StatRow label="Longest streak" value={`${data.maxStreak} days`} accent={SIGNAL.color.emerald} />}
+          {data.avgMood && <StatRow label="Avg mood" value={`${data.avgMood}/5`} mono />}
+          {data.avgSleep && <StatRow label="Avg sleep" value={`${data.avgSleep}/5`} mono />}
+          {data.avgLegs && <StatRow label="Avg legs" value={`${data.avgLegs}/5`} mono />}
         </Card>
 
         {/* Easy-Hard Balance */}
         {data.easyPct != null && (
-          <Card title="Easy-Hard Balance" icon="⚖️">
-            <View style={styles.bigStatRow}>
-              <View style={styles.bigStat}>
-                <Text style={[styles.bigStatNum, {
-                  color: data.easyPct >= 78 ? STATUS.success : data.easyPct >= 68 ? STATUS.warning : STATUS.error,
-                }]}>{data.easyPct}%</Text>
-                <Text style={styles.bigStatLabel}>easy running</Text>
-              </View>
+          <Card eyebrow="80/20 Rule" title="Easy-hard balance">
+            <View style={styles.balanceWrap}>
+              <Text style={[styles.balanceNum, {
+                color: data.easyPct >= 78 ? SIGNAL.color.emerald : data.easyPct >= 68 ? SIGNAL.color.amber : SIGNAL.color.coral,
+              }]}>{data.easyPct}%</Text>
+              <Text style={styles.balanceCaption}>easy running</Text>
             </View>
             <Text style={styles.balanceHint}>
-              {data.easyPct >= 78 ? 'Great 80/20 balance this season!'
+              {data.easyPct >= 78 ? 'Great 80/20 balance this season.'
                 : data.easyPct >= 68 ? 'Good effort — aim for a bit more easy running next season.'
                 : 'Too much hard running — focus on more easy miles next season.'}
             </Text>
@@ -435,43 +450,65 @@ export default function SeasonReview({ season, school, userData, athletes = [], 
     return (
       <>
         {/* Hero */}
-        <View style={[styles.heroCard, { borderTopColor: sport.color }]}>
-          <Text style={styles.heroIcon}>{sport.icon}</Text>
+        <LinearGradient
+          colors={['#4F46E5', '#7C3AED']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.heroCard}
+        >
+          <Text style={styles.heroEyebrow}>Coach Recap</Text>
           <Text style={styles.heroSeason}>{season.name || sport.label}</Text>
           <Text style={styles.heroName}>Coach {userData.lastName}</Text>
           <Text style={styles.heroSchool}>{school?.name}</Text>
-          <Text style={styles.heroDate}>{formatDateRange(season.seasonStart, season.championshipDate)} · {data.athleteCount} athletes</Text>
-        </View>
+          <View style={styles.heroDivider} />
+          <Text style={styles.heroDate}>{formatDateRange(season.seasonStart, season.championshipDate)}</Text>
+          <Text style={styles.heroDate}>{data.athleteCount} athletes</Text>
+        </LinearGradient>
 
-        {/* Team Numbers */}
-        <Card title="Team by the Numbers" icon="📊">
-          <View style={styles.bigStatRow}>
-            <View style={styles.bigStat}>
-              <Text style={[styles.bigStatNum, { color: BRAND }]}>{data.teamTotalMiles}</Text>
-              <Text style={styles.bigStatLabel}>team miles</Text>
+        {/* Team Numbers — hero stat band */}
+        <LinearGradient
+          colors={['#10B981', '#06B6D4']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.statHeroCard}
+        >
+          <Text style={styles.statHeroEyebrow}>Team by the Numbers</Text>
+          <View style={styles.statHeroRow}>
+            <View style={styles.statHeroCell}>
+              <Text style={styles.statHeroNum}>{data.teamTotalMiles}</Text>
+              <Text style={styles.statHeroLabel}>team miles</Text>
             </View>
-            <View style={styles.bigStat}>
-              <Text style={[styles.bigStatNum, { color: BRAND }]}>{data.teamTotalRuns}</Text>
-              <Text style={styles.bigStatLabel}>runs logged</Text>
+            <View style={styles.statHeroDivider} />
+            <View style={styles.statHeroCell}>
+              <Text style={styles.statHeroNum}>{data.teamTotalRuns}</Text>
+              <Text style={styles.statHeroLabel}>runs logged</Text>
             </View>
           </View>
-          <StatRow label="Avg per athlete" value={`${data.avgPerAthlete} mi`} />
+        </LinearGradient>
+
+        <Card eyebrow="Volume" title="Team volume">
+          <StatRow label="Avg per athlete" value={`${data.avgPerAthlete} mi`} mono />
           {data.topMilesAthlete && (
-            <StatRow label="Most miles" value={`${data.topMilesAthlete.firstName} ${data.topMilesAthlete.lastName} — ${data.topMilesVal} mi`} accent={BRAND} />
+            <StatRow
+              label="Most miles"
+              value={`${data.topMilesAthlete.firstName} ${data.topMilesAthlete.lastName} — ${data.topMilesVal} mi`}
+              accent={SIGNAL.color.indigo}
+            />
           )}
         </Card>
 
         {/* Race Development */}
         {data.raceCount > 0 && (
-          <Card title="Race Development" icon="🏁">
+          <Card eyebrow="Race Day" title="Race development">
             <StatRow label="Meets" value={data.raceCount} />
             {data.primaryDist && <StatRow label="Primary distance" value={data.primaryDist} />}
             {data.firstSpread != null && data.lastSpread != null && (
               <>
-                <StatRow label="First meet pack spread" value={formatTime(data.firstSpread)} />
-                <StatRow label="Last meet pack spread" value={formatTime(data.lastSpread)} accent={data.lastSpread < data.firstSpread ? STATUS.success : STATUS.error} />
+                <StatRow label="First meet pack spread" value={formatTime(data.firstSpread)} mono />
+                <StatRow label="Last meet pack spread" value={formatTime(data.lastSpread)} mono accent={data.lastSpread < data.firstSpread ? SIGNAL.color.emerald : SIGNAL.color.coral} />
                 {data.lastSpread < data.firstSpread && (
                   <View style={styles.improvementBanner}>
+                    <Ionicons name="contract" size={16} color={SIGNAL.color.emerald} />
                     <Text style={styles.improvementText}>
                       Pack tightened by {formatTime(data.firstSpread - data.lastSpread)}
                     </Text>
@@ -480,18 +517,18 @@ export default function SeasonReview({ season, school, userData, athletes = [], 
               </>
             )}
             {data.teamTimeImprovement != null && data.teamTimeImprovement > 0 && (
-              <StatRow label="Team avg improvement" value={formatTime(data.teamTimeImprovement)} accent={STATUS.success} />
+              <StatRow label="Team avg improvement" value={formatTime(data.teamTimeImprovement)} accent={SIGNAL.color.emerald} mono />
             )}
           </Card>
         )}
 
         {/* Athlete Development */}
-        <Card title="Athlete Highlights" icon="⭐">
+        <Card eyebrow="Standouts" title="Athlete highlights">
           {data.mostImproved && (
             <StatRow
               label="Most improved"
               value={`${data.mostImproved.athlete.firstName} ${data.mostImproved.athlete.lastName} (${formatTime(data.mostImproved.improvement)} faster)`}
-              accent={STATUS.success}
+              accent={SIGNAL.color.emerald}
             />
           )}
           {data.mostConsistent && (
@@ -509,10 +546,10 @@ export default function SeasonReview({ season, school, userData, athletes = [], 
         </Card>
 
         {/* Team Health */}
-        <Card title="Team Health" icon="💚">
-          <StatRow label="Injury rate" value={`${data.injuryRate}%`} accent={data.injuryRate <= 10 ? STATUS.success : data.injuryRate <= 25 ? STATUS.warning : STATUS.error} />
-          {data.avgMood && <StatRow label="Team avg mood" value={`${data.avgMood}/5`} />}
-          {data.avgSleep && <StatRow label="Team avg sleep" value={`${data.avgSleep}/5`} />}
+        <Card eyebrow="Wellness" title="Team health">
+          <StatRow label="Injury rate" value={`${data.injuryRate}%`} accent={data.injuryRate <= 10 ? SIGNAL.color.emerald : data.injuryRate <= 25 ? SIGNAL.color.amber : SIGNAL.color.coral} />
+          {data.avgMood && <StatRow label="Team avg mood" value={`${data.avgMood}/5`} mono />}
+          {data.avgSleep && <StatRow label="Team avg sleep" value={`${data.avgSleep}/5`} mono />}
         </Card>
       </>
     );
@@ -523,12 +560,12 @@ export default function SeasonReview({ season, school, userData, athletes = [], 
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+          <Ionicons name="chevron-back" size={22} color={SIGNAL.color.indigo} />
           <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Season in Review</Text>
         <TouchableOpacity onPress={handleShare} style={styles.shareBtn}>
-          <Ionicons name="share-outline" size={22} color={BRAND} />
+          <Ionicons name="share-outline" size={22} color={SIGNAL.color.indigo} />
         </TouchableOpacity>
       </View>
 
@@ -536,9 +573,14 @@ export default function SeasonReview({ season, school, userData, athletes = [], 
         <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 1 }}>
           <View style={styles.captureArea}>
             {isCoach ? renderCoachReview() : renderAthleteReview()}
-            <Text style={styles.watermark}>TeamBase Season in Review</Text>
+            <Text style={styles.watermark}>TeamBase · Season in Review</Text>
           </View>
         </ViewShot>
+
+        <TouchableOpacity style={styles.shareCta} onPress={handleShare} activeOpacity={0.9}>
+          <Ionicons name="share-outline" size={18} color={SIGNAL.color.white} />
+          <Text style={styles.shareCtaText}>Share recap</Text>
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -547,57 +589,290 @@ export default function SeasonReview({ season, school, userData, athletes = [], 
 // ── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container:    { flex: 1, backgroundColor: NEUTRAL.bg },
-  center:       { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  container: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper2,
+  },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Header
   header: {
-    backgroundColor: NEUTRAL.card, paddingTop: Platform.OS === 'ios' ? 56 : 32,
-    paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row',
-    alignItems: 'center', justifyContent: 'space-between',
-    borderBottomWidth: 1, borderBottomColor: NEUTRAL.border,
+    backgroundColor: SIGNAL.color.white,
+    paddingTop: Platform.OS === 'ios' ? 68 : 44,
+    paddingBottom: 14,
+    paddingHorizontal: SIGNAL.space.screen,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
   },
-  backBtn:      { flexDirection: 'row', alignItems: 'center', gap: 4, width: 60 },
-  backText:     { color: BRAND_DARK, fontSize: 15, fontWeight: '600' },
-  headerTitle:  { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  shareBtn:     { width: 60, alignItems: 'flex-end' },
-  scroll:       { flex: 1 },
-  captureArea:  { padding: SPACE.lg, backgroundColor: NEUTRAL.bg },
-  watermark:    { textAlign: 'center', fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: SPACE.lg },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    width: 70,
+  },
+  backText: {
+    color: SIGNAL.color.indigo,
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.bodyMedium,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  headerTitle: {
+    fontSize: SIGNAL.size.heading,
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.indigo,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  shareBtn: {
+    width: 70,
+    alignItems: 'flex-end',
+  },
 
-  // Hero card
+  // Scroll + capture
+  scroll: { flex: 1 },
+  captureArea: {
+    padding: SIGNAL.space.screen,
+    backgroundColor: SIGNAL.color.paper2,
+  },
+  watermark: {
+    textAlign: 'center',
+    fontSize: SIGNAL.size.eyebrow,
+    fontFamily: SIGNAL.font.body,
+    color: SIGNAL.color.mute2,
+    letterSpacing: SIGNAL.letter.eyebrow,
+    textTransform: 'uppercase',
+    marginTop: SIGNAL.space.7,
+  },
+
+  // ── Hero gradient card (indigo → violet) ──────────────────────────────────
   heroCard: {
-    backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE['2xl'],
-    alignItems: 'center', marginBottom: SPACE.lg, borderTopWidth: 5, ...SHADOW.sm,
+    borderRadius: SIGNAL.radius.card,
+    padding: SIGNAL.space.8,
+    paddingVertical: 32,
+    alignItems: 'center',
+    marginBottom: SIGNAL.space.6,
   },
-  heroIcon:     { fontSize: 40, marginBottom: SPACE.sm },
-  heroSeason:   { fontSize: FONT_SIZE['2xl'], fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, textAlign: 'center' },
-  heroName:     { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.semibold, color: BRAND, marginTop: SPACE.xs },
-  heroSchool:   { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginTop: 2 },
-  heroDate:     { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: SPACE.xs },
+  heroEyebrow: {
+    fontSize: SIGNAL.size.eyebrow,
+    letterSpacing: SIGNAL.letter.eyebrow,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.78)',
+    fontFamily: SIGNAL.font.bodyMedium,
+    marginBottom: SIGNAL.space.3,
+  },
+  heroSeason: {
+    fontSize: SIGNAL.size.display,
+    fontFamily: SIGNAL.font.display,
+    color: SIGNAL.color.white,
+    textAlign: 'center',
+    letterSpacing: SIGNAL.letter.titleTight,
+  },
+  heroName: {
+    fontSize: SIGNAL.size.bodyLg,
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.white,
+    marginTop: SIGNAL.space.2,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  heroSchool: {
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.body,
+    color: 'rgba(255,255,255,0.88)',
+    marginTop: 2,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  heroDivider: {
+    width: 40,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.35)',
+    marginVertical: SIGNAL.space.4,
+  },
+  heroDate: {
+    fontSize: SIGNAL.size.label,
+    fontFamily: SIGNAL.font.mono,
+    color: 'rgba(255,255,255,0.85)',
+    marginTop: 2,
+  },
 
-  // Cards
+  // ── Stat hero band (emerald → cyan) ───────────────────────────────────────
+  statHeroCard: {
+    borderRadius: SIGNAL.radius.card,
+    paddingVertical: 26,
+    paddingHorizontal: SIGNAL.space.6,
+    marginBottom: SIGNAL.space.6,
+  },
+  statHeroEyebrow: {
+    fontSize: SIGNAL.size.eyebrow,
+    letterSpacing: SIGNAL.letter.eyebrow,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.85)',
+    fontFamily: SIGNAL.font.bodyMedium,
+    textAlign: 'center',
+    marginBottom: SIGNAL.space.4,
+  },
+  statHeroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+  },
+  statHeroCell: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statHeroNum: {
+    fontSize: SIGNAL.size.displayLg,
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.white,
+    letterSpacing: SIGNAL.letter.numTight,
+  },
+  statHeroLabel: {
+    fontSize: SIGNAL.size.eyebrow,
+    fontFamily: SIGNAL.font.bodyMedium,
+    color: 'rgba(255,255,255,0.85)',
+    textTransform: 'uppercase',
+    letterSpacing: SIGNAL.letter.eyebrow,
+    marginTop: 4,
+  },
+  statHeroDivider: {
+    width: 1,
+    height: 38,
+    backgroundColor: 'rgba(255,255,255,0.28)',
+  },
+
+  // ── Card (white + hairline + 16pt radius, no shadow) ──────────────────────
   card: {
-    backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg,
-    marginBottom: SPACE.md, ...SHADOW.sm,
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    padding: SIGNAL.space.6,
+    marginBottom: SIGNAL.space.4,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
   },
-  cardHeader:   { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginBottom: SPACE.md },
-  cardIcon:     { fontSize: 20 },
-  cardTitle:    { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  cardEyebrow: {
+    fontSize: SIGNAL.size.eyebrow,
+    letterSpacing: SIGNAL.letter.eyebrow,
+    textTransform: 'uppercase',
+    color: SIGNAL.color.mute,
+    fontFamily: SIGNAL.font.bodyMedium,
+    marginBottom: 4,
+  },
+  cardTitle: {
+    fontSize: SIGNAL.size.heading,
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.indigo,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  cardBody: {
+    marginTop: SIGNAL.space.4,
+  },
 
-  // Stats
-  bigStatRow:   { flexDirection: 'row', justifyContent: 'space-around', marginBottom: SPACE.md },
-  bigStat:      { alignItems: 'center' },
-  bigStatNum:   { fontSize: FONT_SIZE['3xl'], fontWeight: FONT_WEIGHT.bold },
-  bigStatLabel: { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: 2 },
-  statRow:      { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: SPACE.xs + 2, borderBottomWidth: 1, borderBottomColor: NEUTRAL.bg },
-  statLabel:    { fontSize: FONT_SIZE.sm, color: NEUTRAL.body },
-  statValue:    { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, flexShrink: 1, textAlign: 'right', marginLeft: SPACE.md },
+  // ── Stat rows ─────────────────────────────────────────────────────────────
+  statRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: SIGNAL.space.3,
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  statLabel: {
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.body,
+    color: SIGNAL.color.mute,
+    letterSpacing: SIGNAL.letter.bodyTight,
+    flex: 1,
+  },
+  statValue: {
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+    flexShrink: 1,
+    textAlign: 'right',
+    marginLeft: SIGNAL.space.4,
+  },
+  statValueMono: {
+    fontFamily: SIGNAL.font.mono,
+  },
 
-  // Improvement banner
-  improvementBanner: { backgroundColor: STATUS.successBg, borderRadius: RADIUS.md, padding: SPACE.md, marginTop: SPACE.sm, alignItems: 'center' },
-  improvementText:   { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: STATUS.success },
+  // ── Improvement banner ────────────────────────────────────────────────────
+  improvementBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: `${SIGNAL.color.emerald}${SIGNAL.tint.chip}`,
+    borderRadius: SIGNAL.radius.control,
+    paddingVertical: SIGNAL.space.4,
+    paddingHorizontal: SIGNAL.space.5,
+    marginTop: SIGNAL.space.4,
+  },
+  improvementText: {
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.emerald,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
 
-  // Balance hint
-  balanceHint:  { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, textAlign: 'center', marginTop: SPACE.xs },
+  // ── Balance block (centered big stat in white card) ───────────────────────
+  balanceWrap: {
+    alignItems: 'center',
+    marginBottom: SIGNAL.space.3,
+  },
+  balanceNum: {
+    fontSize: SIGNAL.size.displayLg,
+    fontFamily: SIGNAL.font.bodySemi,
+    letterSpacing: SIGNAL.letter.numTight,
+  },
+  balanceCaption: {
+    fontSize: SIGNAL.size.eyebrow,
+    fontFamily: SIGNAL.font.bodyMedium,
+    color: SIGNAL.color.mute,
+    textTransform: 'uppercase',
+    letterSpacing: SIGNAL.letter.eyebrow,
+    marginTop: 2,
+  },
+  balanceHint: {
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.body,
+    color: SIGNAL.color.inkSoft,
+    textAlign: 'center',
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
 
-  emptyText:    { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted, textAlign: 'center', padding: SPACE['2xl'] },
+  // ── Empty ─────────────────────────────────────────────────────────────────
+  emptyText: {
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.body,
+    color: SIGNAL.color.mute,
+    textAlign: 'center',
+    padding: SIGNAL.space.8,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+
+  // ── Share CTA (indigo) ────────────────────────────────────────────────────
+  shareCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginHorizontal: SIGNAL.space.screen,
+    marginTop: SIGNAL.space.4,
+    marginBottom: SIGNAL.space.6,
+    backgroundColor: SIGNAL.color.indigo,
+    borderRadius: SIGNAL.radius.button,
+    paddingVertical: 14,
+  },
+  shareCtaText: {
+    fontSize: SIGNAL.size.bodyLg,
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.white,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
 });

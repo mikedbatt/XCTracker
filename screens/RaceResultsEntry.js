@@ -12,6 +12,7 @@ import { auth, db } from '../firebaseConfig';
 import {
   BRAND, BRAND_DARK, BRAND_LIGHT,
   FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
+  SIGNAL,
 } from '../constants/design';
 import { parseTime, formatTime, calcPace } from '../utils/raceUtils';
 
@@ -30,6 +31,7 @@ export default function RaceResultsEntry({ race, meet, schoolId, school, athlete
       return {
         athleteId: uid,
         athleteName: athlete ? `${athlete.firstName} ${athlete.lastName}` : 'Unknown',
+        avatarColor: athlete?.avatarColor || SIGNAL.color.indigo,
         timeInput: existing?.finishTimeDisplay || '',
         placeInput: existing?.place ? String(existing.place) : '',
         status: existing?.status || 'finished',
@@ -123,102 +125,373 @@ export default function RaceResultsEntry({ race, meet, schoolId, school, athlete
 
   const statusOptions = ['finished', 'DNS', 'DNF', 'DQ'];
 
+  const initialsOf = (name) => {
+    const parts = (name || '').trim().split(/\s+/);
+    const first = parts[0]?.[0] || '';
+    const last = parts.length > 1 ? parts[parts.length - 1][0] : '';
+    return (first + last).toUpperCase() || '?';
+  };
+
   return (
     <View style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
-          <Text style={styles.backText}>Cancel</Text>
+        <TouchableOpacity onPress={onClose} style={styles.backBtn} hitSlop={8}>
+          <Ionicons name="chevron-back" size={22} color={SIGNAL.color.ink} />
+          <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Enter Results</Text>
-          <Text style={styles.headerSub}>{race.label} · {race.distanceLabel}</Text>
+          <Text style={[styles.eyebrow]} numberOfLines={1}>{race.label} · {race.distanceLabel}</Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>Enter Results</Text>
         </View>
-        <TouchableOpacity onPress={handleSave} style={styles.saveHeaderBtn} disabled={saving}>
-          {saving ? <ActivityIndicator color={BRAND} size="small" /> : <Text style={styles.saveHeaderText}>Save</Text>}
+        <TouchableOpacity onPress={handleSave} style={styles.saveHeaderBtn} disabled={saving} hitSlop={8}>
+          {saving
+            ? <ActivityIndicator color={SIGNAL.color.indigo} size="small" />
+            : <Text style={styles.saveHeaderText}>Save</Text>}
         </TouchableOpacity>
       </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Section title */}
+          <Text style={styles.sectionTitle}>Athletes</Text>
 
-          {/* Column headers */}
-          <View style={styles.colHeaders}>
-            <Text style={[styles.colHeaderText, { flex: 1 }]}>Athlete</Text>
-            <Text style={[styles.colHeaderText, { width: 80, textAlign: 'center' }]}>Time</Text>
-            <Text style={[styles.colHeaderText, { width: 50, textAlign: 'center' }]}>Place</Text>
-            <Text style={[styles.colHeaderText, { width: 55, textAlign: 'center' }]}>Status</Text>
+          {/* Card with athlete rows */}
+          <View style={styles.card}>
+            {/* Column headers */}
+            <View style={styles.colHeaders}>
+              <Text style={[styles.colHeaderText, { flex: 1, marginLeft: 40 }]}>Athlete</Text>
+              <Text style={[styles.colHeaderText, { width: 50, textAlign: 'center' }]}>Place</Text>
+              <Text style={[styles.colHeaderText, { width: 80, textAlign: 'center' }]}>Time</Text>
+              <Text style={[styles.colHeaderText, { width: 55, textAlign: 'center' }]}>Status</Text>
+            </View>
+
+            {entries.map((entry, i) => {
+              const disabled = entry.status !== 'finished';
+              return (
+                <View
+                  key={entry.athleteId}
+                  style={[styles.entryRow, i === entries.length - 1 && styles.entryRowLast]}
+                >
+                  {/* Avatar */}
+                  <View style={[styles.avatar, { backgroundColor: entry.avatarColor }]}>
+                    <Text style={styles.avatarText}>{initialsOf(entry.athleteName)}</Text>
+                  </View>
+
+                  {/* Name */}
+                  <Text style={styles.entryName} numberOfLines={1}>{entry.athleteName}</Text>
+
+                  {/* Place */}
+                  <TextInput
+                    style={[styles.placeInput, disabled && styles.inputDisabled]}
+                    value={entry.placeInput}
+                    onChangeText={(v) => updateEntry(i, 'placeInput', v)}
+                    placeholder="#"
+                    placeholderTextColor={SIGNAL.color.mute2}
+                    keyboardType="number-pad"
+                    editable={!disabled}
+                    maxLength={4}
+                  />
+
+                  {/* Time */}
+                  <TextInput
+                    style={[styles.timeInput, disabled && styles.inputDisabled]}
+                    value={entry.timeInput}
+                    onChangeText={(v) => updateEntry(i, 'timeInput', v)}
+                    placeholder="00:00"
+                    placeholderTextColor={SIGNAL.color.mute2}
+                    keyboardType="numbers-and-punctuation"
+                    editable={!disabled}
+                    maxLength={8}
+                  />
+
+                  {/* Status */}
+                  <TouchableOpacity
+                    style={[styles.statusBtn, disabled && styles.statusBtnAlt]}
+                    onPress={() => {
+                      const nextIdx = (statusOptions.indexOf(entry.status) + 1) % statusOptions.length;
+                      updateEntry(i, 'status', statusOptions[nextIdx]);
+                    }}
+                  >
+                    <Text style={[styles.statusBtnText, disabled && styles.statusBtnTextAlt]}>
+                      {entry.status === 'finished' ? 'Fin' : entry.status}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+
+            {entries.length === 0 && (
+              <View style={styles.emptyMsg}>
+                <Text style={styles.emptyText}>
+                  No athletes assigned to this race. Go back and add entries first.
+                </Text>
+              </View>
+            )}
           </View>
 
-          {entries.map((entry, i) => (
-            <View key={entry.athleteId} style={styles.entryRow}>
-              <Text style={styles.entryName} numberOfLines={1}>{entry.athleteName}</Text>
-              <TextInput
-                style={[styles.timeInput, entry.status !== 'finished' && { opacity: 0.3 }]}
-                value={entry.timeInput}
-                onChangeText={(v) => updateEntry(i, 'timeInput', v)}
-                placeholder="MM:SS"
-                placeholderTextColor={NEUTRAL.muted}
-                keyboardType="numbers-and-punctuation"
-                editable={entry.status === 'finished'}
-                maxLength={8}
-              />
-              <TextInput
-                style={[styles.placeInput, entry.status !== 'finished' && { opacity: 0.3 }]}
-                value={entry.placeInput}
-                onChangeText={(v) => updateEntry(i, 'placeInput', v)}
-                placeholder="#"
-                placeholderTextColor={NEUTRAL.muted}
-                keyboardType="number-pad"
-                editable={entry.status === 'finished'}
-                maxLength={4}
-              />
-              <TouchableOpacity
-                style={[styles.statusBtn, entry.status !== 'finished' && { backgroundColor: STATUS.errorBg }]}
-                onPress={() => {
-                  const nextIdx = (statusOptions.indexOf(entry.status) + 1) % statusOptions.length;
-                  updateEntry(i, 'status', statusOptions[nextIdx]);
-                }}
-              >
-                <Text style={[styles.statusBtnText, entry.status !== 'finished' && { color: STATUS.error }]}>
-                  {entry.status === 'finished' ? 'Fin' : entry.status}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          ))}
-
-          {entries.length === 0 && (
-            <View style={styles.emptyMsg}>
-              <Text style={styles.emptyText}>No athletes assigned to this race. Go back and add entries first.</Text>
-            </View>
-          )}
-
-          <View style={{ height: 100 }} />
+          <View style={{ height: 120 }} />
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Sticky bottom Save CTA */}
+      {entries.length > 0 && (
+        <View style={styles.bottomBar}>
+          <TouchableOpacity
+            style={[styles.primaryBtn, saving && { opacity: 0.6 }]}
+            onPress={handleSave}
+            disabled={saving}
+            activeOpacity={0.85}
+          >
+            {saving
+              ? <ActivityIndicator color={SIGNAL.color.white} size="small" />
+              : <Text style={styles.primaryBtnText}>Save Results</Text>}
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container:      { flex: 1, backgroundColor: NEUTRAL.bg },
-  header:         { backgroundColor: '#fff', paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 14, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
-  backBtn:        { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6 },
-  backText:       { color: STATUS.error, fontSize: 15, fontWeight: '600' },
-  headerCenter:   { alignItems: 'center', flex: 1 },
-  headerTitle:    { fontSize: 17, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  headerSub:      { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 1 },
-  saveHeaderBtn:  { paddingVertical: 6, paddingHorizontal: 10 },
-  saveHeaderText: { fontSize: 15, fontWeight: FONT_WEIGHT.bold, color: BRAND },
-  scroll:         { flex: 1 },
-  colHeaders:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACE.lg, paddingVertical: SPACE.sm, borderBottomWidth: 1, borderBottomColor: NEUTRAL.border, backgroundColor: '#fff' },
-  colHeaderText:  { fontSize: 11, fontWeight: FONT_WEIGHT.bold, color: NEUTRAL.muted, textTransform: 'uppercase' },
-  entryRow:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACE.lg, paddingVertical: SPACE.sm, borderBottomWidth: 0.5, borderBottomColor: NEUTRAL.border, backgroundColor: '#fff', gap: SPACE.sm },
-  entryName:      { flex: 1, fontSize: FONT_SIZE.sm, color: BRAND_DARK, fontWeight: '600' },
-  timeInput:      { width: 80, backgroundColor: NEUTRAL.bg, borderRadius: RADIUS.sm, padding: SPACE.sm, textAlign: 'center', fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, borderWidth: 1, borderColor: NEUTRAL.border },
-  placeInput:     { width: 50, backgroundColor: NEUTRAL.bg, borderRadius: RADIUS.sm, padding: SPACE.sm, textAlign: 'center', fontSize: FONT_SIZE.sm, color: BRAND_DARK, borderWidth: 1, borderColor: NEUTRAL.border },
-  statusBtn:      { width: 55, borderRadius: RADIUS.sm, padding: SPACE.sm, alignItems: 'center', backgroundColor: NEUTRAL.bg },
-  statusBtnText:  { fontSize: 11, fontWeight: FONT_WEIGHT.bold, color: NEUTRAL.body },
-  emptyMsg:       { padding: SPACE['2xl'], alignItems: 'center' },
-  emptyText:      { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted, textAlign: 'center' },
+  container: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper2,
+  },
+
+  // ── Header ───────────────────────────────────────────────────────────────
+  header: {
+    backgroundColor: SIGNAL.color.white,
+    paddingTop: Platform.OS === 'ios' ? 68 : 44,
+    paddingBottom: SIGNAL.space[5],
+    paddingHorizontal: SIGNAL.space.screen,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: SIGNAL.space[1],
+    minWidth: 64,
+  },
+  backText: {
+    color: SIGNAL.color.ink,
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontWeight: '500',
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: SIGNAL.space[2],
+  },
+  eyebrow: {
+    ...SIGNAL.style.eyebrow,
+    marginBottom: 2,
+  },
+  headerTitle: {
+    fontSize: SIGNAL.size.heading,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+    color: SIGNAL.color.indigo,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  saveHeaderBtn: {
+    paddingVertical: SIGNAL.space[1],
+    paddingHorizontal: SIGNAL.space[2],
+    minWidth: 64,
+    alignItems: 'flex-end',
+  },
+  saveHeaderText: {
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+    color: SIGNAL.color.indigo,
+  },
+
+  // ── Scroll ───────────────────────────────────────────────────────────────
+  scroll: { flex: 1 },
+  scrollContent: {
+    paddingHorizontal: SIGNAL.space.screen,
+    paddingTop: SIGNAL.space[6],
+  },
+
+  // ── Section title ────────────────────────────────────────────────────────
+  sectionTitle: {
+    fontSize: SIGNAL.size.heading,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+    color: SIGNAL.color.indigo,
+    letterSpacing: SIGNAL.letter.bodyTight,
+    marginBottom: SIGNAL.space[3],
+    marginLeft: SIGNAL.space[1],
+  },
+
+  // ── Card ─────────────────────────────────────────────────────────────────
+  card: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    ...SIGNAL.border.hairline,
+    overflow: 'hidden',
+  },
+
+  // ── Column headers ───────────────────────────────────────────────────────
+  colHeaders: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SIGNAL.space.card,
+    paddingVertical: SIGNAL.space[3],
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+    gap: SIGNAL.space[2],
+  },
+  colHeaderText: {
+    fontSize: SIGNAL.size.eyebrow,
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontWeight: '500',
+    color: SIGNAL.color.mute,
+    letterSpacing: SIGNAL.letter.eyebrow,
+    textTransform: 'uppercase',
+  },
+
+  // ── Entry row ────────────────────────────────────────────────────────────
+  entryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SIGNAL.space.card,
+    paddingVertical: SIGNAL.space[3],
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+    gap: SIGNAL.space[2],
+  },
+  entryRowLast: {
+    borderBottomWidth: 0,
+  },
+  avatar: {
+    width: 32,
+    height: 32,
+    borderRadius: SIGNAL.radius.chip,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    color: SIGNAL.color.white,
+    fontSize: SIGNAL.size.label,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+  },
+  entryName: {
+    flex: 1,
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontWeight: '500',
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+
+  // ── Inputs (mono) ────────────────────────────────────────────────────────
+  placeInput: {
+    width: 50,
+    height: 36,
+    backgroundColor: SIGNAL.color.paper,
+    borderRadius: SIGNAL.radius.control,
+    paddingHorizontal: SIGNAL.space[2],
+    textAlign: 'center',
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.mono,
+    color: SIGNAL.color.ink,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+  },
+  timeInput: {
+    width: 80,
+    height: 36,
+    backgroundColor: SIGNAL.color.paper,
+    borderRadius: SIGNAL.radius.control,
+    paddingHorizontal: SIGNAL.space[2],
+    textAlign: 'center',
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.mono,
+    color: SIGNAL.color.ink,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+  },
+  inputDisabled: {
+    opacity: 0.35,
+  },
+
+  // ── Status pill ──────────────────────────────────────────────────────────
+  statusBtn: {
+    width: 55,
+    height: 36,
+    borderRadius: SIGNAL.radius.chip,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: `${SIGNAL.color.emerald}${SIGNAL.tint.chip}`,
+  },
+  statusBtnAlt: {
+    backgroundColor: `${SIGNAL.color.coral}${SIGNAL.tint.chip}`,
+  },
+  statusBtnText: {
+    fontSize: SIGNAL.size.eyebrow,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+    color: SIGNAL.color.emerald,
+    letterSpacing: SIGNAL.letter.eyebrow,
+    textTransform: 'uppercase',
+  },
+  statusBtnTextAlt: {
+    color: SIGNAL.color.coral,
+  },
+
+  // ── Empty ────────────────────────────────────────────────────────────────
+  emptyMsg: {
+    paddingVertical: SIGNAL.space[8],
+    paddingHorizontal: SIGNAL.space[6],
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.body,
+    color: SIGNAL.color.mute,
+    textAlign: 'center',
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+
+  // ── Sticky bottom bar ────────────────────────────────────────────────────
+  bottomBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: SIGNAL.space.screen,
+    paddingTop: SIGNAL.space[4],
+    paddingBottom: Platform.OS === 'ios' ? 32 : SIGNAL.space[5],
+    backgroundColor: SIGNAL.color.white,
+    borderTopWidth: 1,
+    borderTopColor: SIGNAL.color.line,
+  },
+  primaryBtn: {
+    height: 50,
+    borderRadius: SIGNAL.radius.button,
+    backgroundColor: SIGNAL.color.indigo,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryBtnText: {
+    color: SIGNAL.color.white,
+    fontSize: SIGNAL.size.bodyLg,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
 });

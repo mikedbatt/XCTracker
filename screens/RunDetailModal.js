@@ -1,3 +1,5 @@
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { deleteDoc, doc, getDoc, updateDoc } from 'firebase/firestore';
 import React, { useState } from 'react';
 import {
@@ -14,7 +16,8 @@ import {
   View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
-import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS } from '../constants/design';
+import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE, STATUS } from '../constants/design';
+import { SIGNAL_TYPE_COLORS } from '../constants/training';
 import {
   DEFAULT_ZONE_BOUNDARIES, ZONE_META, calcMaxHR,
   calcZoneBreakdownFromRuns,
@@ -26,9 +29,6 @@ import DatePickerField from './DatePickerField';
 
 const EFFORT_LABELS = ['', 'Very Easy', 'Easy', 'Moderate', 'Moderate', 'Medium',
   'Medium Hard', 'Hard', 'Very Hard', 'Max Effort', 'All Out'];
-
-const EFFORT_COLORS = ['', '#4caf50', '#4caf50', '#8bc34a', '#8bc34a', '#ffeb3b',
-  '#ffc107', '#ff9800', '#ff5722', '#f44336', '#b71c1c'];
 
 // ── Zone breakdown for a single run (3-tier: rawHRStream → zoneSeconds → avg HR) ──
 function RunPaceBreakdown({ run, trainingPaces }) {
@@ -63,44 +63,58 @@ function RunPaceBreakdown({ run, trainingPaces }) {
   })).filter(z => z.seconds > 0);
 
   const totalMins = Math.round(total / 60);
+  const balanceColor = eighty20
+    ? (eighty20.easyPct >= 78 ? SIGNAL.color.emerald
+       : eighty20.easyPct >= 68 ? SIGNAL.color.amber
+       : SIGNAL.color.coral)
+    : SIGNAL.color.mute;
 
   return (
-    <View style={zoneStyles.section}>
-      <View style={zoneStyles.titleRow}>
-        <Text style={zoneStyles.sectionTitle}>Pace zones</Text>
-        {hasPaceStream
-          ? <View style={zoneStyles.preciseBadge}><Text style={zoneStyles.preciseBadgeText}>GPS ✓</Text></View>
-          : <Text style={zoneStyles.estimatedText}>from avg pace</Text>
-        }
-      </View>
-
-      {/* Stacked bar */}
-      <View style={zoneStyles.stackedBar}>
-        {zonesArr.map(z => (
-          <View key={z.key} style={[zoneStyles.stackedSegment, { flex: z.minutes || 1, backgroundColor: z.color }]} />
-        ))}
-      </View>
-
-      {/* Zone rows */}
-      {zonesArr.map(z => (
-        <View key={z.key} style={zoneStyles.zoneRow}>
-          <View style={[zoneStyles.zoneDot, { backgroundColor: z.color }]} />
-          <Text style={zoneStyles.zoneName}>{z.short} {z.name}</Text>
-          <View style={zoneStyles.zoneBarBg}>
-            <View style={[zoneStyles.zoneBarFill, { width: z.pct + '%', backgroundColor: z.color }]} />
+    <View style={styles.card}>
+      <View style={styles.cardPad}>
+        <View style={styles.zoneTitleRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.eyebrow}>Pace zones</Text>
+            <Text style={styles.sectionTitle}>Pace</Text>
           </View>
-          <Text style={zoneStyles.zoneTime}>{formatMinutes(z.minutes)}</Text>
+          {hasPaceStream
+            ? (
+              <View style={styles.preciseChip}>
+                <Text style={styles.preciseChipText}>GPS</Text>
+              </View>
+            )
+            : <Text style={styles.estimatedText}>from avg pace</Text>
+          }
         </View>
-      ))}
 
-      {eighty20 && (
-        <Text style={[zoneStyles.totalTime, { color: eighty20.easyPct >= 78 ? STATUS.success : eighty20.easyPct >= 68 ? STATUS.warning : STATUS.error }]}>
-          Easy: {eighty20.easyPct}% · Hard: {eighty20.hardPct}%
+        {/* Stacked bar */}
+        <View style={styles.stackedBar}>
+          {zonesArr.map(z => (
+            <View key={z.key} style={[styles.stackedSegment, { flex: z.minutes || 1, backgroundColor: z.color }]} />
+          ))}
+        </View>
+
+        {/* Zone rows */}
+        {zonesArr.map(z => (
+          <View key={z.key} style={styles.zoneRow}>
+            <View style={[styles.zoneDot, { backgroundColor: z.color }]} />
+            <Text style={styles.zoneName}>{z.short} {z.name}</Text>
+            <View style={styles.zoneBarBg}>
+              <View style={[styles.zoneBarFill, { width: z.pct + '%', backgroundColor: z.color }]} />
+            </View>
+            <Text style={styles.zoneTime}>{formatMinutes(z.minutes)}</Text>
+          </View>
+        ))}
+
+        {eighty20 && (
+          <Text style={[styles.totalTime, { color: balanceColor, fontFamily: SIGNAL.font.bodySemi }]}>
+            Easy: {eighty20.easyPct}% · Hard: {eighty20.hardPct}%
+          </Text>
+        )}
+        <Text style={styles.totalTime}>
+          {formatMinutes(totalMins)} total · {hasPaceStream ? 'second-by-second GPS data' : 'from stored pace zones'}
         </Text>
-      )}
-      <Text style={zoneStyles.totalTime}>
-        {formatMinutes(totalMins)} total · {hasPaceStream ? 'second-by-second GPS data' : 'from stored pace zones'}
-      </Text>
+      </View>
     </View>
   );
 }
@@ -158,62 +172,53 @@ function RunZoneBreakdown({ run, athleteAge, zoneSettings, primaryColor }) {
   const totalMins = breakdown.reduce((s, z) => s + z.minutes, 0);
 
   return (
-    <View style={zoneStyles.section}>
-      <View style={zoneStyles.titleRow}>
-        <Text style={zoneStyles.sectionTitle}>Heart rate zones</Text>
-        {hasStreamData
-          ? <View style={zoneStyles.preciseBadge}><Text style={zoneStyles.preciseBadgeText}>Precise ✓</Text></View>
-          : <Text style={zoneStyles.estimatedText}>estimated from avg HR</Text>
-        }
-      </View>
-
-      {/* Stacked bar */}
-      <View style={zoneStyles.stackedBar}>
-        {breakdown.map(z => (
-          <View key={z.zone} style={[zoneStyles.stackedSegment, { flex: z.minutes, backgroundColor: ZONE_META[z.zone].color }]} />
-        ))}
-      </View>
-
-      {/* Zone rows */}
-      {breakdown.map(z => (
-        <View key={z.zone} style={zoneStyles.zoneRow}>
-          <View style={[zoneStyles.zoneDot, { backgroundColor: ZONE_META[z.zone].color }]} />
-          <Text style={zoneStyles.zoneName}>Z{z.zone} {ZONE_META[z.zone].name}</Text>
-          <View style={zoneStyles.zoneBarBg}>
-            <View style={[zoneStyles.zoneBarFill, { width: z.pct + '%', backgroundColor: ZONE_META[z.zone].color }]} />
+    <View style={styles.card}>
+      <View style={styles.cardPad}>
+        <View style={styles.zoneTitleRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.eyebrow}>Heart rate zones</Text>
+            <Text style={styles.sectionTitle}>Heart rate</Text>
           </View>
-          <Text style={zoneStyles.zoneTime}>{formatMinutes(z.minutes)}</Text>
+          {hasStreamData
+            ? (
+              <View style={styles.preciseChip}>
+                <Text style={styles.preciseChipText}>Precise</Text>
+              </View>
+            )
+            : <Text style={styles.estimatedText}>estimated from avg HR</Text>
+          }
         </View>
-      ))}
 
-      <Text style={zoneStyles.totalTime}>
-        {formatMinutes(totalMins)} total · {hasStreamData ? 'second-by-second HR data' : 'estimated from avg HR'}
-      </Text>
+        {/* Stacked bar */}
+        <View style={styles.stackedBar}>
+          {breakdown.map(z => (
+            <View key={z.zone} style={[styles.stackedSegment, { flex: z.minutes, backgroundColor: ZONE_META[z.zone].color }]} />
+          ))}
+        </View>
+
+        {/* Zone rows */}
+        {breakdown.map(z => (
+          <View key={z.zone} style={styles.zoneRow}>
+            <View style={[styles.zoneDot, { backgroundColor: ZONE_META[z.zone].color }]} />
+            <Text style={styles.zoneName}>Z{z.zone} {ZONE_META[z.zone].name}</Text>
+            <View style={styles.zoneBarBg}>
+              <View style={[styles.zoneBarFill, { width: z.pct + '%', backgroundColor: ZONE_META[z.zone].color }]} />
+            </View>
+            <Text style={styles.zoneTime}>{formatMinutes(z.minutes)}</Text>
+          </View>
+        ))}
+
+        <Text style={styles.totalTime}>
+          {formatMinutes(totalMins)} total · {hasStreamData ? 'second-by-second HR data' : 'estimated from avg HR'}
+        </Text>
+      </View>
     </View>
   );
 }
 
-const zoneStyles = StyleSheet.create({
-  section:         { backgroundColor: '#fff', borderRadius: 14, margin: 16, marginBottom: 0, padding: 16 },
-  titleRow:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  sectionTitle:    { fontSize: 13, fontWeight: '700', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5 },
-  preciseBadge:    { backgroundColor: '#e8f5e9', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-  preciseBadgeText:{ fontSize: 11, color: '#213f96', fontWeight: '700' },
-  estimatedText:   { fontSize: 11, color: '#bbb' },
-  stackedBar:      { flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginBottom: 14 },
-  stackedSegment:  { height: '100%' },
-  zoneRow:         { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  zoneDot:         { width: 10, height: 10, borderRadius: 5 },
-  zoneName:        { fontSize: 13, color: '#6B7280', width: 116 },
-  zoneBarBg:       { flex: 1, height: 6, backgroundColor: '#f0f0f0', borderRadius: 3, overflow: 'hidden' },
-  zoneBarFill:     { height: '100%', borderRadius: 3 },
-  zoneTime:        { fontSize: 12, fontWeight: '600', color: '#6B7280', width: 52, textAlign: 'right' },
-  totalTime:       { fontSize: 11, color: '#bbb', textAlign: 'right', marginTop: 4 },
-});
-
 export default function RunDetailModal({
   run, visible, onClose, onDeleted, onUpdated,
-  primaryColor = '#213f96', athleteAge = 16, zoneSettings = null, showHRZones = true, trainingPaces = null,
+  primaryColor = SIGNAL.color.indigo, athleteAge = 16, zoneSettings = null, showHRZones = true, trainingPaces = null,
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [saving,    setSaving]    = useState(false);
@@ -230,7 +235,10 @@ export default function RunDetailModal({
 
   const isOwner     = auth.currentUser?.uid === run.userId;
   const date        = run.date?.toDate?.() || new Date();
-  const effortColor = EFFORT_COLORS[run.effort] || primaryColor;
+  const effortColor = (run.effort >= 1 && run.effort <= 10)
+    ? SIGNAL.effort[run.effort]
+    : SIGNAL.color.indigo;
+  const typeColor   = run.type ? (SIGNAL_TYPE_COLORS[run.type] || SIGNAL.color.indigo) : null;
 
   // Calculate pace from miles + duration
   let pace = null;
@@ -342,6 +350,14 @@ export default function RunDetailModal({
     );
   };
 
+  // Effort gradient based on effort tier
+  const effortGradient = (() => {
+    if (!run.effort) return [SIGNAL.color.indigo, SIGNAL.color.cyan];
+    if (run.effort <= 4) return [SIGNAL.color.indigo, SIGNAL.color.cyan];
+    if (run.effort <= 7) return [SIGNAL.color.amber, SIGNAL.color.coral];
+    return [SIGNAL.color.coral, SIGNAL.color.effort10];
+  })();
+
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       {isEditing ? (
@@ -354,37 +370,40 @@ export default function RunDetailModal({
               <Text style={styles.editHeaderTitle}>Edit Run</Text>
               <TouchableOpacity onPress={handleSaveEdit} disabled={saving}>
                 {saving
-                  ? <ActivityIndicator color={primaryColor} />
-                  : <Text style={[styles.saveBtn, { color: primaryColor }]}>Save</Text>
+                  ? <ActivityIndicator color={SIGNAL.color.indigo} />
+                  : <Text style={styles.saveBtn}>Save</Text>
                 }
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.editScroll} keyboardShouldPersistTaps="handled">
-              <DatePickerField label="Run date" value={editDate} onChange={setEditDate} primaryColor={primaryColor} maximumDate={new Date()} />
+              <DatePickerField label="Run date" value={editDate} onChange={setEditDate} primaryColor={SIGNAL.color.indigo} maximumDate={new Date()} />
               <Text style={styles.editLabel}>Miles *</Text>
-              <TextInput style={styles.editInput} value={editMiles} onChangeText={setEditMiles} keyboardType="decimal-pad" placeholder="e.g. 5.2" placeholderTextColor="#9CA3AF" />
+              <TextInput style={styles.editInput} value={editMiles} onChangeText={setEditMiles} keyboardType="decimal-pad" placeholder="e.g. 5.2" placeholderTextColor={SIGNAL.color.mute2} />
               <Text style={styles.editLabel}>Duration (optional)</Text>
-              <TextInput style={styles.editInput} value={editDuration} onChangeText={setEditDuration} placeholder="e.g. 42:30" placeholderTextColor="#9CA3AF" />
+              <TextInput style={styles.editInput} value={editDuration} onChangeText={setEditDuration} placeholder="e.g. 42:30" placeholderTextColor={SIGNAL.color.mute2} />
               <Text style={styles.editLabel}>Avg heart rate (optional)</Text>
-              <TextInput style={styles.editInput} value={editHR} onChangeText={setEditHR} keyboardType="numeric" placeholder="e.g. 155" placeholderTextColor="#9CA3AF" />
+              <TextInput style={styles.editInput} value={editHR} onChangeText={setEditHR} keyboardType="numeric" placeholder="e.g. 155" placeholderTextColor={SIGNAL.color.mute2} />
               <Text style={styles.editLabel}>How did it feel? {editEffort}/10 — {EFFORT_LABELS[editEffort]}</Text>
               <View style={styles.effortRow}>
-                {[1,2,3,4,5,6,7,8,9,10].map(n => (
-                  <TouchableOpacity key={n}
-                    style={[styles.effortBtn, editEffort === n && { backgroundColor: primaryColor }]}
-                    onPress={() => setEditEffort(n)}>
-                    <Text style={[styles.effortBtnText, editEffort === n && { color: '#fff' }]}>{n}</Text>
-                  </TouchableOpacity>
-                ))}
+                {[1,2,3,4,5,6,7,8,9,10].map(n => {
+                  const active = editEffort === n;
+                  return (
+                    <TouchableOpacity key={n}
+                      style={[styles.effortBtn, active && { backgroundColor: SIGNAL.effort[n] || SIGNAL.color.indigo, borderColor: SIGNAL.effort[n] || SIGNAL.color.indigo }]}
+                      onPress={() => setEditEffort(n)}>
+                      <Text style={[styles.effortBtnText, active && { color: '#fff' }]}>{n}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
               <Text style={styles.editLabel}>Notes (optional)</Text>
               <TextInput style={[styles.editInput, { height: 90, textAlignVertical: 'top' }]}
                 value={editNotes} onChangeText={setEditNotes}
-                placeholder="How did the run go?" placeholderTextColor="#9CA3AF" multiline />
+                placeholder="How did the run go?" placeholderTextColor={SIGNAL.color.mute2} multiline />
               <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete} disabled={deleting}>
                 {deleting
-                  ? <ActivityIndicator color="#dc2626" />
-                  : <Text style={styles.deleteBtnText}>🗑  Delete this run</Text>
+                  ? <ActivityIndicator color={SIGNAL.color.coral} />
+                  : <Text style={styles.deleteBtnText}>Delete this run</Text>
                 }
               </TouchableOpacity>
               <View style={{ height: 40 }} />
@@ -393,69 +412,106 @@ export default function RunDetailModal({
         </KeyboardAvoidingView>
       ) : (
         <View style={styles.container}>
+          {/* Header — hero card */}
           <View style={styles.header}>
             <View style={styles.headerTop}>
-              <TouchableOpacity onPress={onClose}>
-                <Text style={[styles.closeText, { color: primaryColor }]}>✕ Close</Text>
+              <TouchableOpacity onPress={onClose} style={styles.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="chevron-back" size={22} color={SIGNAL.color.inkSoft} />
+                <Text style={styles.backText}>Close</Text>
               </TouchableOpacity>
-              {isOwner && (
-                <TouchableOpacity onPress={handleStartEdit} style={[styles.editBtn, { backgroundColor: primaryColor }]}>
-                  <Text style={styles.editBtnText}>✏️ Edit</Text>
-                </TouchableOpacity>
-              )}
+              <Text style={styles.headerDateEyebrow} numberOfLines={1}>
+                {date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase()}
+                {' · '}
+                {date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+              </Text>
+              <View style={styles.headerRight} />
             </View>
-            <Text style={styles.headerMiles}>{run.miles} miles</Text>
-            <Text style={styles.headerDate}>
-              {date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-            </Text>
-            {run.duration && <Text style={styles.headerDuration}>{run.duration}</Text>}
+
+            <View style={styles.heroRow}>
+              <View style={styles.heroLeft}>
+                <Text style={styles.heroMiles}>{run.miles}</Text>
+                <Text style={styles.heroMilesLabel}>MILES</Text>
+              </View>
+              {run.duration ? (
+                <View style={styles.heroRightCol}>
+                  <Text style={styles.heroDuration}>{run.duration}</Text>
+                  {pace ? <Text style={styles.heroPace}>{pace}</Text> : null}
+                </View>
+              ) : null}
+            </View>
+
+            {/* Chip row: workout type + effort badge */}
+            {(typeColor || run.effort) && (
+              <View style={styles.chipRow}>
+                {typeColor && (
+                  <View style={[styles.typeChip, { backgroundColor: `${typeColor}${SIGNAL.tint.chip}`, borderColor: `${typeColor}40` }]}>
+                    <View style={[styles.typeChipDot, { backgroundColor: typeColor }]} />
+                    <Text style={[styles.typeChipText, { color: typeColor }]}>{run.type}</Text>
+                  </View>
+                )}
+                {run.effort ? (
+                  <View style={[styles.effortChip, { backgroundColor: `${effortColor}${SIGNAL.tint.chip}`, borderColor: `${effortColor}40` }]}>
+                    <Text style={[styles.effortChipText, { color: effortColor }]}>
+                      Effort {run.effort}/10 · {EFFORT_LABELS[run.effort]}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            )}
           </View>
 
-          <ScrollView style={styles.scroll}>
+          <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
 
-            {/* Effort */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Effort</Text>
-              <View style={styles.effortContainer}>
-                <View style={styles.effortCircle}>
-                  <Text style={[styles.effortNumber, { color: effortColor }]}>{run.effort}</Text>
-                  <Text style={styles.effortDivider}>/10</Text>
-                </View>
-                <View style={styles.effortInfo}>
-                  <Text style={[styles.effortLabel, { color: effortColor }]}>{EFFORT_LABELS[run.effort]}</Text>
-                  <View style={styles.effortBar}>
-                    <View style={[styles.effortFill, { width: ((run.effort / 10) * 100) + '%', backgroundColor: effortColor }]} />
-                  </View>
+            {/* Effort hero */}
+            {run.effort ? (
+              <View style={styles.card}>
+                <View style={styles.cardPad}>
+                  <Text style={styles.eyebrow}>Effort</Text>
+                  <LinearGradient
+                    colors={effortGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.effortHero}
+                  >
+                    <Text style={styles.effortHeroNum}>{run.effort}</Text>
+                    <Text style={styles.effortHeroDivider}>/10</Text>
+                    <View style={styles.effortHeroLabelWrap}>
+                      <Text style={styles.effortHeroLabel}>{EFFORT_LABELS[run.effort]}</Text>
+                    </View>
+                  </LinearGradient>
                 </View>
               </View>
-            </View>
+            ) : null}
 
             {/* Run stats */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Run stats</Text>
-              <View style={styles.statsGrid}>
-                <View style={styles.statBox}>
-                  <Text style={styles.statValue}>{run.miles}</Text>
-                  <Text style={styles.statLabel}>Miles</Text>
+            <View style={styles.card}>
+              <View style={styles.cardPad}>
+                <Text style={styles.eyebrow}>Run stats</Text>
+                <Text style={styles.sectionTitle}>Stats</Text>
+                <View style={styles.statsGrid}>
+                  <View style={styles.statBox}>
+                    <Text style={styles.statValue}>{run.miles}</Text>
+                    <Text style={styles.statLabel}>Miles</Text>
+                  </View>
+                  {run.duration && (
+                    <View style={styles.statBox}>
+                      <Text style={styles.statValueMono}>{run.duration}</Text>
+                      <Text style={styles.statLabel}>Duration</Text>
+                    </View>
+                  )}
+                  {pace && (
+                    <View style={styles.statBox}>
+                      <Text style={styles.statValueMono}>{pace}</Text>
+                      <Text style={styles.statLabel}>Avg pace</Text>
+                    </View>
+                  )}
+                  {run.heartRate && (
+                    <View style={styles.statBox}>
+                      <Text style={styles.statValueMono}>{run.heartRate}</Text>
+                      <Text style={styles.statLabel}>Avg HR (bpm)</Text>
+                    </View>
+                  )}
                 </View>
-                {run.duration && (
-                  <View style={styles.statBox}>
-                    <Text style={styles.statValue}>{run.duration}</Text>
-                    <Text style={styles.statLabel}>Duration</Text>
-                  </View>
-                )}
-                {pace && (
-                  <View style={styles.statBox}>
-                    <Text style={styles.statValue}>{pace}</Text>
-                    <Text style={styles.statLabel}>Avg pace</Text>
-                  </View>
-                )}
-                {run.heartRate && (
-                  <View style={styles.statBox}>
-                    <Text style={styles.statValue}>{run.heartRate}</Text>
-                    <Text style={styles.statLabel}>Avg HR (bpm)</Text>
-                  </View>
-                )}
               </View>
             </View>
 
@@ -473,40 +529,67 @@ export default function RunDetailModal({
             )}
 
             {/* Data source */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Data source</Text>
-              <View style={styles.sourceBox}>
-                <Text style={styles.sourceText}>
-                  {run.source === 'strava' ? '🟠 Synced from Strava'
-                    : run.source === 'garmin' ? '🟢 Synced from Garmin'
-                    : '✏️ Manually entered'}
-                </Text>
+            <View style={styles.card}>
+              <View style={styles.cardPad}>
+                <Text style={styles.eyebrow}>Data source</Text>
+                <View style={styles.sourceRow}>
+                  <View style={[styles.sourceDot, {
+                    backgroundColor: run.source === 'strava' ? '#fc4c02'
+                      : run.source === 'garmin' ? SIGNAL.color.emerald
+                      : SIGNAL.color.indigo,
+                  }]} />
+                  <Text style={styles.sourceText}>
+                    {run.source === 'strava' ? 'Synced from Strava'
+                      : run.source === 'garmin' ? 'Synced from Garmin'
+                      : 'Manually entered'}
+                  </Text>
+                </View>
               </View>
             </View>
 
             {/* Notes */}
-            {run.notes && (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Notes</Text>
-                <View style={styles.notesBox}>
+            {run.notes ? (
+              <View style={styles.card}>
+                <View style={styles.cardPad}>
+                  <Text style={styles.eyebrow}>Notes</Text>
                   <Text style={styles.notesText}>{run.notes}</Text>
                 </View>
               </View>
-            )}
+            ) : null}
 
-            <View style={styles.footer}>
-              <Text style={styles.footerText}>
-                Logged at {date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-              </Text>
-              {isOwner && (
-                <TouchableOpacity onPress={handleDelete} disabled={deleting} style={styles.footerDeleteBtn}>
+            {/* Actions */}
+            {isOwner && (
+              <View style={styles.actionsBlock}>
+                <TouchableOpacity
+                  style={styles.primaryCta}
+                  onPress={handleStartEdit}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="create-outline" size={16} color="#fff" />
+                  <Text style={styles.primaryCtaText}>Edit run</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.destructiveCta}
+                  onPress={handleDelete}
+                  disabled={deleting}
+                  activeOpacity={0.85}
+                >
                   {deleting
-                    ? <ActivityIndicator color="#dc2626" size="small" />
-                    : <Text style={styles.footerDeleteText}>Delete run</Text>
+                    ? <ActivityIndicator color={SIGNAL.color.coral} size="small" />
+                    : (
+                      <>
+                        <Ionicons name="trash-outline" size={15} color={SIGNAL.color.coral} />
+                        <Text style={styles.destructiveCtaText}>Delete run</Text>
+                      </>
+                    )
                   }
                 </TouchableOpacity>
-              )}
-            </View>
+              </View>
+            )}
+
+            <Text style={styles.footerText}>
+              Logged at {date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+            </Text>
 
           </ScrollView>
         </View>
@@ -516,48 +599,471 @@ export default function RunDetailModal({
 }
 
 const styles = StyleSheet.create({
-  container:        { flex: 1, backgroundColor: NEUTRAL.bg },
-  header:           { backgroundColor: NEUTRAL.card, paddingTop: Platform.OS === 'ios' ? SPACE['5xl'] : SPACE['3xl'], paddingBottom: SPACE['2xl'], paddingHorizontal: SPACE['2xl'], borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
-  headerTop:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  closeText:        { fontSize: 15, fontWeight: '600' },
-  editBtn:          { borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
-  editBtnText:      { color: '#fff', fontWeight: '700', fontSize: 14 },
-  headerMiles:      { fontSize: 42, fontWeight: 'bold', color: BRAND_DARK },
-  headerDate:       { fontSize: 16, color: NEUTRAL.body, marginTop: 4 },
-  headerDuration:   { fontSize: 22, color: NEUTRAL.text, marginTop: 6, fontWeight: '600' },
-  scroll:           { flex: 1 },
-  section:          { backgroundColor: '#fff', borderRadius: 14, margin: 16, marginBottom: 0, padding: 16 },
-  sectionTitle:     { fontSize: 13, fontWeight: '700', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 14 },
-  effortContainer:  { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  effortCircle:     { flexDirection: 'row', alignItems: 'baseline' },
-  effortNumber:     { fontSize: 52, fontWeight: 'bold' },
-  effortDivider:    { fontSize: 20, color: '#ccc', marginLeft: 2 },
-  effortInfo:       { flex: 1 },
-  effortLabel:      { fontSize: 18, fontWeight: '700', marginBottom: 10 },
-  effortBar:        { height: 8, backgroundColor: '#E5E7EB', borderRadius: 4, overflow: 'hidden' },
-  effortFill:       { height: '100%', borderRadius: 4 },
-  statsGrid:        { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  statBox:          { backgroundColor: '#f8f8f8', borderRadius: 10, padding: 14, minWidth: '45%', flex: 1 },
-  statValue:        { fontSize: 22, fontWeight: 'bold', color: '#111827' },
-  statLabel:        { fontSize: 12, color: '#9CA3AF', marginTop: 4 },
-  sourceBox:        { backgroundColor: '#f8f8f8', borderRadius: 10, padding: 14 },
-  sourceText:       { fontSize: 15, color: '#6B7280' },
-  notesBox:         { backgroundColor: '#f8f8f8', borderRadius: 10, padding: 14 },
-  notesText:        { fontSize: 15, color: '#444', lineHeight: 22 },
-  footer:           { padding: 24, alignItems: 'center', gap: 12 },
-  footerText:       { fontSize: 13, color: '#bbb' },
-  footerDeleteBtn:  { padding: 8 },
-  footerDeleteText: { fontSize: 14, color: '#dc2626', fontWeight: '600' },
-  editHeader:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 60, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
-  editHeaderTitle:  { fontSize: 18, fontWeight: 'bold', color: '#111827' },
-  cancelBtn:        { color: '#dc2626', fontSize: 16, fontWeight: '600', width: 60 },
-  saveBtn:          { fontSize: 16, fontWeight: '700', width: 60, textAlign: 'right' },
-  editScroll:       { padding: 20 },
-  editLabel:        { fontSize: 14, fontWeight: '600', color: '#444', marginBottom: 8, marginTop: 4 },
-  editInput:        { backgroundColor: '#fff', borderRadius: 10, padding: 14, fontSize: 16, marginBottom: 16, borderWidth: 1, borderColor: '#E5E7EB', color: '#111827' },
-  effortRow:        { flexDirection: 'row', gap: 6, marginBottom: 16, flexWrap: 'wrap' },
-  effortBtn:        { width: 44, height: 44, borderRadius: 22, backgroundColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' },
-  effortBtnText:    { fontSize: 15, fontWeight: '600', color: '#6B7280' },
-  deleteBtn:        { borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 16, backgroundColor: '#fee2e2', borderWidth: 1, borderColor: '#fca5a5' },
-  deleteBtnText:    { color: '#dc2626', fontSize: 16, fontWeight: '700' },
+  container: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper2,
+  },
+
+  // ── Header ──
+  header: {
+    backgroundColor: SIGNAL.color.white,
+    paddingTop: Platform.OS === 'ios' ? 68 : 44,
+    paddingBottom: 18,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: 80,
+  },
+  backText: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 15,
+    color: SIGNAL.color.inkSoft,
+    marginLeft: 2,
+  },
+  headerRight: {
+    width: 80,
+  },
+  headerDateEyebrow: {
+    flex: 1,
+    textAlign: 'center',
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: 11,
+    letterSpacing: 1.43,
+    textTransform: 'uppercase',
+    color: SIGNAL.color.mute,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    paddingTop: 4,
+  },
+  heroLeft: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  heroMiles: {
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 56,
+    lineHeight: 60,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.numTight,
+  },
+  heroMilesLabel: {
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: 11,
+    color: SIGNAL.color.mute,
+    letterSpacing: 1.43,
+    marginLeft: 8,
+  },
+  heroRightCol: {
+    alignItems: 'flex-end',
+  },
+  heroDuration: {
+    fontFamily: SIGNAL.font.mono,
+    fontSize: 22,
+    color: SIGNAL.color.ink,
+    letterSpacing: -0.4,
+  },
+  heroPace: {
+    fontFamily: SIGNAL.font.mono,
+    fontSize: 12,
+    color: SIGNAL.color.mute,
+    marginTop: 2,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 14,
+  },
+  typeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: SIGNAL.radius.chip,
+    borderWidth: 1,
+  },
+  typeChipDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  typeChipText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 12,
+    letterSpacing: 0.1,
+  },
+  effortChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: SIGNAL.radius.chip,
+    borderWidth: 1,
+  },
+  effortChipText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 12,
+    letterSpacing: 0.1,
+  },
+
+  // ── Scroll layout ──
+  scroll: { flex: 1 },
+  scrollContent: {
+    padding: 14,
+    paddingBottom: 32,
+    gap: 12,
+  },
+
+  // ── Card shell ──
+  card: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    overflow: 'hidden',
+    ...SIGNAL.border.hairline,
+  },
+  cardPad: {
+    padding: 16,
+  },
+
+  // ── Typography ──
+  eyebrow: {
+    ...SIGNAL.style.eyebrow,
+    marginBottom: 8,
+  },
+  sectionTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 18,
+    color: SIGNAL.color.indigo,
+    letterSpacing: -0.36,
+    marginBottom: 12,
+  },
+
+  // ── Effort hero ──
+  effortHero: {
+    borderRadius: SIGNAL.radius.card,
+    paddingVertical: 18,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  effortHeroNum: {
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 54,
+    lineHeight: 58,
+    color: '#fff',
+    letterSpacing: SIGNAL.letter.numTight,
+  },
+  effortHeroDivider: {
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: 18,
+    color: 'rgba(255,255,255,0.75)',
+    marginTop: 18,
+  },
+  effortHeroLabelWrap: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  effortHeroLabel: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 18,
+    color: '#fff',
+    letterSpacing: -0.2,
+    textAlign: 'right',
+  },
+
+  // ── Stats grid ──
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  statBox: {
+    backgroundColor: SIGNAL.color.paper,
+    borderRadius: SIGNAL.radius.control,
+    padding: 14,
+    minWidth: '45%',
+    flex: 1,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+  },
+  statValue: {
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 22,
+    color: SIGNAL.color.ink,
+    letterSpacing: -0.4,
+  },
+  statValueMono: {
+    fontFamily: SIGNAL.font.mono,
+    fontSize: 18,
+    color: SIGNAL.color.ink,
+    letterSpacing: -0.3,
+  },
+  statLabel: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 11,
+    color: SIGNAL.color.mute,
+    marginTop: 4,
+    letterSpacing: 0.2,
+  },
+
+  // ── Zone breakdown shared ──
+  zoneTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 4,
+  },
+  preciseChip: {
+    backgroundColor: `${SIGNAL.color.emerald}${SIGNAL.tint.chip}`,
+    borderRadius: SIGNAL.radius.chip,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: `${SIGNAL.color.emerald}40`,
+    alignSelf: 'flex-start',
+    marginTop: 2,
+  },
+  preciseChipText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 11,
+    color: SIGNAL.color.emerald,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  estimatedText: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 11,
+    color: SIGNAL.color.mute2,
+    marginTop: 4,
+  },
+  stackedBar: {
+    flexDirection: 'row',
+    height: 12,
+    borderRadius: 6,
+    overflow: 'hidden',
+    marginTop: 10,
+    marginBottom: 14,
+  },
+  stackedSegment: {
+    height: '100%',
+  },
+  zoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    marginBottom: 8,
+  },
+  zoneDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  zoneName: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 12.5,
+    color: SIGNAL.color.inkSoft,
+    width: 116,
+  },
+  zoneBarBg: {
+    flex: 1,
+    height: 6,
+    backgroundColor: SIGNAL.color.line,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  zoneBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  zoneTime: {
+    fontFamily: SIGNAL.font.mono,
+    fontSize: 11,
+    color: SIGNAL.color.inkSoft,
+    width: 56,
+    textAlign: 'right',
+  },
+  totalTime: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 11,
+    color: SIGNAL.color.mute,
+    textAlign: 'right',
+    marginTop: 4,
+  },
+
+  // ── Data source ──
+  sourceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  sourceDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  sourceText: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 14,
+    color: SIGNAL.color.inkSoft,
+  },
+
+  // ── Notes ──
+  notesText: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 14,
+    color: SIGNAL.color.inkSoft,
+    lineHeight: 21,
+  },
+
+  // ── Actions ──
+  actionsBlock: {
+    marginTop: 4,
+    gap: 10,
+  },
+  primaryCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: SIGNAL.color.ink,
+    borderRadius: SIGNAL.radius.button,
+    paddingVertical: 14,
+  },
+  primaryCtaText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 15,
+    color: '#fff',
+    letterSpacing: -0.2,
+  },
+  destructiveCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: `${SIGNAL.color.coral}${SIGNAL.tint.chip}`,
+    borderRadius: SIGNAL.radius.button,
+    paddingVertical: 13,
+    borderWidth: 1,
+    borderColor: `${SIGNAL.color.coral}40`,
+  },
+  destructiveCtaText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 14,
+    color: SIGNAL.color.coral,
+    letterSpacing: -0.1,
+  },
+  footerText: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 11,
+    color: SIGNAL.color.mute2,
+    textAlign: 'center',
+    marginTop: 12,
+  },
+
+  // ── Edit screen ──
+  editHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 68 : 44,
+    paddingBottom: 16,
+    backgroundColor: SIGNAL.color.white,
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  editHeaderTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 18,
+    color: SIGNAL.color.indigo,
+    letterSpacing: -0.36,
+  },
+  cancelBtn: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 15,
+    color: SIGNAL.color.coral,
+    width: 60,
+  },
+  saveBtn: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 15,
+    color: SIGNAL.color.indigo,
+    width: 60,
+    textAlign: 'right',
+  },
+  editScroll: {
+    padding: 20,
+    backgroundColor: SIGNAL.color.paper2,
+  },
+  editLabel: {
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: 13,
+    color: SIGNAL.color.inkSoft,
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  editInput: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.control,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    fontFamily: SIGNAL.font.body,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    color: SIGNAL.color.ink,
+  },
+  effortRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 16,
+    flexWrap: 'wrap',
+  },
+  effortBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: SIGNAL.radius.chip,
+    backgroundColor: SIGNAL.color.white,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  effortBtnText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 14,
+    color: SIGNAL.color.inkSoft,
+  },
+  deleteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: SIGNAL.radius.button,
+    paddingVertical: 14,
+    marginTop: 16,
+    backgroundColor: `${SIGNAL.color.coral}${SIGNAL.tint.chip}`,
+    borderWidth: 1,
+    borderColor: `${SIGNAL.color.coral}40`,
+  },
+  deleteBtnText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 15,
+    color: SIGNAL.color.coral,
+  },
 });

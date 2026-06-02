@@ -20,7 +20,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../firebaseConfig';
-import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, SPACE, STRAVA_ORANGE } from '../constants/design';
+import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, SIGNAL, SPACE, STRAVA_ORANGE } from '../constants/design';
 import {
   STRAVA_CONFIG, exchangeStravaCode,
   fetchStravaActivities,
@@ -318,14 +318,12 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-            <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
-            <Text style={styles.backText}>Back</Text>
+          <Text style={styles.headerTitle}>Connect Strava</Text>
+          <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={10}>
+            <Ionicons name="close" size={22} color={SIGNAL.color.ink} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Strava Sync</Text>
-          <View style={{ width: 60 }} />
         </View>
-        <View style={styles.center}><ActivityIndicator size="large" color={primaryColor} /></View>
+        <View style={styles.center}><ActivityIndicator size="large" color={SIGNAL.color.indigo} /></View>
       </View>
     );
   }
@@ -333,49 +331,47 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
-          <Text style={styles.backText}>Back</Text>
+        <Text style={styles.headerTitle}>Connect Strava</Text>
+        <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={10}>
+          <Ionicons name="close" size={22} color={SIGNAL.color.ink} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Strava Sync</Text>
-        <View style={{ width: 60 }} />
       </View>
 
-      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-
-        {/* Strava logo / branding area */}
-        <View style={styles.brandCard}>
-          <View style={styles.stravaLogo}>
-            <Text style={styles.stravaLogoText}>STRAVA</Text>
-          </View>
-          <Text style={styles.brandTitle}>
-            {stravaLinked ? 'Strava connected' : 'Connect Strava'}
-          </Text>
-          <Text style={styles.brandSubtitle}>
-            {stravaLinked
-              ? `Syncing as ${stravaAthlete?.firstName || 'athlete'} ${stravaAthlete?.lastName || ''}`
-              : 'Automatically import your runs — no manual entry needed'
-            }
-          </Text>
-        </View>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
         {stravaLinked ? (
           <>
-            {/* Last sync info */}
-            <View style={styles.infoCard}>
-              <Text style={styles.infoLabel}>Last synced</Text>
-              <Text style={styles.infoValue}>
-                {lastSyncDate
-                  ? lastSyncDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-                  : 'Never'}
-              </Text>
+            {/* Connected status card */}
+            <View style={styles.card}>
+              <View style={styles.statusRow}>
+                <View style={styles.checkBadge}>
+                  <Ionicons name="checkmark" size={18} color={SIGNAL.color.white} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.eyebrow}>Status</Text>
+                  <Text style={styles.statusTitle}>
+                    Connected as {stravaAthlete?.firstName || 'athlete'} {stravaAthlete?.lastName || ''}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.divider} />
+
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Last synced</Text>
+                <Text style={styles.infoValue}>
+                  {lastSyncDate
+                    ? lastSyncDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+                    : 'Never'}
+                </Text>
+              </View>
             </View>
 
             {/* Sync result */}
             {syncResult && (
-              <View style={[styles.resultCard, { borderLeftColor: syncResult.imported > 0 ? primaryColor : '#999' }]}>
-                <Text style={[styles.resultTitle, { color: syncResult.imported > 0 ? primaryColor : '#666' }]}>
-                  {syncResult.imported > 0 ? '✅ Sync complete' : 'ℹ️ Already up to date'}
+              <View style={[styles.card, styles.resultCard, { borderLeftColor: syncResult.imported > 0 ? SIGNAL.color.emerald : SIGNAL.color.mute2 }]}>
+                <Text style={[styles.resultTitle, { color: syncResult.imported > 0 ? SIGNAL.color.emerald : SIGNAL.color.mute }]}>
+                  {syncResult.imported > 0 ? 'Sync complete' : 'Already up to date'}
                 </Text>
                 <Text style={styles.resultMessage}>{syncResult.message}</Text>
                 {syncResult.imported > 0 && (
@@ -386,34 +382,41 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
               </View>
             )}
 
-            {/* Sync button */}
+            {/* Sync button (indigo primary action) */}
             <TouchableOpacity
-              style={[styles.syncBtn, { backgroundColor: syncing ? '#ccc' : '#fc4c02' }]}
+              style={[styles.primaryBtn, syncing && styles.btnDisabled]}
               onPress={() => handleSync()}
               disabled={syncing}
+              activeOpacity={0.85}
             >
               {syncing
-                ? <ActivityIndicator color="#fff" />
-                : <Text style={styles.syncBtnText}>↻  Sync runs now</Text>
+                ? <ActivityIndicator color={SIGNAL.color.white} />
+                : (
+                  <>
+                    <Ionicons name="refresh" size={18} color={SIGNAL.color.white} style={{ marginRight: 8 }} />
+                    <Text style={styles.primaryBtnText}>Sync runs now</Text>
+                  </>
+                )
               }
             </TouchableOpacity>
 
-            <Text style={styles.syncHint}>
+            <Text style={styles.helperText}>
               Syncs all running activities from the past 90 days on first sync, then only new runs after that.
             </Text>
 
             {/* What gets imported */}
-            <View style={styles.detailCard}>
-              <Text style={styles.detailTitle}>What gets imported</Text>
+            <View style={styles.card}>
+              <Text style={styles.eyebrow}>What gets imported</Text>
+              <View style={{ height: 8 }} />
               {[
                 'Miles (converted from km automatically)',
                 'Duration and calculated pace',
-                'Average heart rate → auto-classified to Zone 1–5',
+                'Average heart rate, auto-classified to Zone 1–5',
                 'Elevation gain',
                 'Activity name (used as run notes)',
               ].map((item, i) => (
                 <View key={i} style={styles.detailRow}>
-                  <Text style={[styles.detailDot, { color: primaryColor }]}>✓</Text>
+                  <Ionicons name="checkmark" size={16} color={SIGNAL.color.emerald} style={{ marginTop: 2 }} />
                   <Text style={styles.detailText}>{item}</Text>
                 </View>
               ))}
@@ -422,40 +425,48 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
               </Text>
             </View>
 
-            {/* Disconnect */}
-            <TouchableOpacity style={styles.disconnectBtn} onPress={handleDisconnect}>
+            {/* Disconnect (coral destructive) */}
+            <TouchableOpacity style={styles.disconnectBtn} onPress={handleDisconnect} activeOpacity={0.85}>
               <Text style={styles.disconnectBtnText}>Disconnect Strava</Text>
             </TouchableOpacity>
 
           </>
         ) : (
           <>
-            {/* Benefits */}
-            <View style={styles.detailCard}>
-              <Text style={styles.detailTitle}>Why connect Strava?</Text>
+            {/* Info / benefits card */}
+            <View style={styles.card}>
+              <Text style={styles.eyebrow}>Why connect</Text>
+              <Text style={styles.cardHeading}>Automatic run tracking</Text>
+              <Text style={styles.cardBody}>
+                Pull runs, heart rate, and pace directly from Strava so your log stays complete.
+              </Text>
+
+              <View style={styles.divider} />
+
               {[
-                'Runs sync automatically — no manual entry needed',
-                'Heart rate zones calculated from your actual HR data',
-                'Pace and mileage pulled directly from GPS',
-                'Keeps your training log complete even when you forget to log',
-                'Your coach sees your real data, not estimated data',
+                'Runs sync automatically — no manual entry',
+                'Heart rate zones from real HR data',
+                'Pace and mileage pulled from GPS',
+                'Keeps your log complete when you forget',
+                'Your coach sees real data, not estimates',
               ].map((item, i) => (
                 <View key={i} style={styles.detailRow}>
-                  <Text style={[styles.detailDot, { color: primaryColor }]}>✓</Text>
+                  <Ionicons name="checkmark" size={16} color={SIGNAL.color.emerald} style={{ marginTop: 2 }} />
                   <Text style={styles.detailText}>{item}</Text>
                 </View>
               ))}
             </View>
 
-            {/* Connect button */}
+            {/* Connect with Strava (Strava orange CTA) */}
             <TouchableOpacity
-              style={[styles.connectBtn]}
+              style={styles.connectBtn}
               onPress={handleConnect}
+              activeOpacity={0.85}
             >
               <Text style={styles.connectBtnText}>Connect with Strava</Text>
             </TouchableOpacity>
 
-            <Text style={styles.syncHint}>
+            <Text style={styles.helperText}>
               You'll be taken to Strava to authorize TeamBase to read your activities. We never post or modify your Strava data.
             </Text>
           </>
@@ -468,37 +479,234 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
 }
 
 const styles = StyleSheet.create({
-  container:          { flex: 1, backgroundColor: '#f5f5f5' },
-  center:             { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header:             { backgroundColor: NEUTRAL.card, paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
-  backBtn:            { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6 },
-  backText:           { color: BRAND_DARK, fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.semibold },
-  headerTitle:        { fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  scroll:             { flex: 1 },
-  brandCard:          { backgroundColor: '#fff', margin: 16, borderRadius: 14, padding: 24, alignItems: 'center' },
-  stravaLogo:         { backgroundColor: '#fc4c02', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8, marginBottom: 12 },
-  stravaLogoText:     { color: '#fff', fontSize: 18, fontWeight: '900', letterSpacing: 2 },
-  brandTitle:         { fontSize: 20, fontWeight: '700', color: '#333', marginBottom: 6 },
-  brandSubtitle:      { fontSize: 14, color: '#666', textAlign: 'center', lineHeight: 20 },
-  infoCard:           { backgroundColor: '#fff', marginHorizontal: 16, marginBottom: 12, borderRadius: 12, padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  infoLabel:          { fontSize: 14, color: '#999' },
-  infoValue:          { fontSize: 14, fontWeight: '600', color: '#333' },
-  resultCard:         { backgroundColor: '#fff', marginHorizontal: 16, marginBottom: 12, borderRadius: 12, padding: 16, borderLeftWidth: 4 },
-  resultTitle:        { fontSize: 15, fontWeight: '700', marginBottom: 4 },
-  resultMessage:      { fontSize: 14, color: '#444', marginBottom: 6 },
-  resultHint:         { fontSize: 12, color: '#999', fontStyle: 'italic' },
-  syncBtn:            { marginHorizontal: 16, borderRadius: 12, padding: 18, alignItems: 'center', marginBottom: 10 },
-  syncBtnText:        { color: '#fff', fontSize: 17, fontWeight: 'bold' },
-  syncHint:           { marginHorizontal: 16, fontSize: 12, color: '#999', textAlign: 'center', marginBottom: 16, lineHeight: 18 },
-  detailCard:         { backgroundColor: '#fff', marginHorizontal: 16, marginBottom: 16, borderRadius: 14, padding: 16 },
-  detailTitle:        { fontSize: 16, fontWeight: '700', color: '#333', marginBottom: 12 },
-  detailRow:          { flexDirection: 'row', gap: 8, marginBottom: 8 },
-  detailDot:          { fontSize: 14, fontWeight: '700', width: 16 },
-  detailText:         { flex: 1, fontSize: 14, color: '#444', lineHeight: 20 },
-  detailNote:         { fontSize: 12, color: '#999', marginTop: 8, fontStyle: 'italic' },
-  connectBtn:         { marginHorizontal: 16, backgroundColor: '#fc4c02', borderRadius: 12, padding: 18, alignItems: 'center', marginBottom: 10 },
-  connectBtnDisabled: { backgroundColor: '#ccc' },
-  connectBtnText:     { color: '#fff', fontSize: 17, fontWeight: 'bold' },
-  disconnectBtn:      { marginHorizontal: 16, marginBottom: 16, borderRadius: 12, padding: 14, alignItems: 'center', backgroundColor: '#fee2e2' },
-  disconnectBtnText:  { color: '#dc2626', fontSize: 15, fontWeight: '600' },
+  container: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper2,
+  },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ── Header ──────────────────────────────────────────────────────────────────
+  header: {
+    paddingTop: Platform.OS === 'ios' ? 68 : 44,
+    paddingBottom: SIGNAL.space[5],
+    paddingHorizontal: SIGNAL.space.screen,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: SIGNAL.color.paper2,
+  },
+  headerTitle: {
+    fontFamily: SIGNAL.font.display,
+    fontSize: 29,
+    color: SIGNAL.color.indigo,
+    letterSpacing: SIGNAL.letter.titleTight,
+  },
+  closeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: SIGNAL.radius.chip,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: SIGNAL.color.white,
+    ...SIGNAL.border.hairline,
+  },
+
+  // ── Scroll ──────────────────────────────────────────────────────────────────
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: SIGNAL.space.screen,
+    paddingTop: SIGNAL.space[2],
+  },
+
+  // ── Cards ───────────────────────────────────────────────────────────────────
+  card: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    padding: SIGNAL.space.card,
+    marginBottom: SIGNAL.space[4],
+    ...SIGNAL.border.hairline,
+  },
+
+  // ── Eyebrow / typography ────────────────────────────────────────────────────
+  eyebrow: {
+    ...SIGNAL.style.eyebrow,
+  },
+  cardHeading: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: SIGNAL.size.heading,
+    color: SIGNAL.color.ink,
+    marginTop: 6,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  cardBody: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: SIGNAL.size.body,
+    color: SIGNAL.color.inkSoft,
+    lineHeight: 20,
+    marginTop: 6,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+
+  // ── Connected status ────────────────────────────────────────────────────────
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SIGNAL.space[4],
+  },
+  checkBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: SIGNAL.radius.chip,
+    backgroundColor: SIGNAL.color.emerald,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: SIGNAL.size.bodyLg,
+    color: SIGNAL.color.ink,
+    marginTop: 2,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+
+  divider: {
+    height: 1,
+    backgroundColor: SIGNAL.color.line,
+    marginVertical: SIGNAL.space[4],
+  },
+
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  infoLabel: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: SIGNAL.size.body,
+    color: SIGNAL.color.mute,
+  },
+  infoValue: {
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: SIGNAL.size.body,
+    color: SIGNAL.color.ink,
+  },
+
+  // ── Result card ─────────────────────────────────────────────────────────────
+  resultCard: {
+    borderLeftWidth: 4,
+  },
+  resultTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: SIGNAL.size.bodyLg,
+    marginBottom: 4,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  resultMessage: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: SIGNAL.size.body,
+    color: SIGNAL.color.inkSoft,
+    marginBottom: 6,
+    lineHeight: 20,
+  },
+  resultHint: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: SIGNAL.size.label,
+    color: SIGNAL.color.mute,
+    lineHeight: 18,
+  },
+
+  // ── Detail rows (bulleted lists) ────────────────────────────────────────────
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SIGNAL.space[2],
+    marginBottom: SIGNAL.space[2],
+  },
+  detailText: {
+    flex: 1,
+    fontFamily: SIGNAL.font.body,
+    fontSize: SIGNAL.size.body,
+    color: SIGNAL.color.inkSoft,
+    lineHeight: 20,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  detailNote: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: SIGNAL.size.label,
+    color: SIGNAL.color.mute,
+    marginTop: SIGNAL.space[2],
+    lineHeight: 18,
+  },
+
+  // ── Buttons ─────────────────────────────────────────────────────────────────
+  primaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: SIGNAL.color.indigo,
+    borderRadius: SIGNAL.radius.button,
+    paddingVertical: 16,
+    paddingHorizontal: SIGNAL.space[6],
+    marginBottom: SIGNAL.space[3],
+  },
+  primaryBtnText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: SIGNAL.size.bodyLg,
+    color: SIGNAL.color.white,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  btnDisabled: {
+    opacity: 0.5,
+  },
+
+  connectBtn: {
+    backgroundColor: STRAVA_ORANGE,
+    borderRadius: SIGNAL.radius.button,
+    paddingVertical: 16,
+    paddingHorizontal: SIGNAL.space[6],
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SIGNAL.space[3],
+  },
+  connectBtnText: {
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: SIGNAL.size.bodyLg,
+    color: SIGNAL.color.white,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+
+  disconnectBtn: {
+    borderRadius: SIGNAL.radius.button,
+    paddingVertical: 14,
+    paddingHorizontal: SIGNAL.space[6],
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: SIGNAL.color.white,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.coral,
+    marginBottom: SIGNAL.space[4],
+  },
+  disconnectBtnText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: SIGNAL.size.body,
+    color: SIGNAL.color.coral,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+
+  // ── Helper / hint text ──────────────────────────────────────────────────────
+  helperText: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: SIGNAL.size.label,
+    color: SIGNAL.color.mute,
+    textAlign: 'center',
+    marginBottom: SIGNAL.space[5],
+    lineHeight: 18,
+    paddingHorizontal: SIGNAL.space[2],
+  },
 });

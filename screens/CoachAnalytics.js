@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
@@ -13,8 +14,9 @@ import {
 import { db } from '../firebaseConfig';
 import {
   BRAND, BRAND_ACCENT, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
+  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS, SIGNAL,
 } from '../constants/design';
+import { SIGNAL_TYPE_COLORS } from '../constants/training';
 import { calcPackAnalysis, formatTime, formatPace } from '../utils/raceUtils';
 import { getAthleteWeeklyTarget, getWeekStatus, computeVolumeCompliance } from '../utils/complianceUtils';
 import { getCompletedSeasons } from './SeasonPlanner';
@@ -339,9 +341,14 @@ export default function CoachAnalytics({
 
   const toggle = (section) => setExpandedSection(expandedSection === section ? null : section);
 
+  // ── Status → gradient helpers (mirrors Athlete Stats hero pill pattern) ──
+  const GRAD_OK    = [SIGNAL.color.emerald, SIGNAL.color.cyan];
+  const GRAD_WARN  = [SIGNAL.color.amber, SIGNAL.color.coral];
+  const GRAD_ALERT = [SIGNAL.color.coral, SIGNAL.color.effort10];
+
   const renderGauge = (value, label, max = 5) => {
     const pct = value ? (value / max) * 100 : 0;
-    const color = value >= 3.5 ? STATUS.success : value >= 2.5 ? STATUS.warning : STATUS.error;
+    const color = value >= 3.5 ? SIGNAL.color.emerald : value >= 2.5 ? SIGNAL.color.amber : SIGNAL.color.coral;
     return (
       <View style={styles.gauge}>
         <Text style={styles.gaugeLabel}>{label}</Text>
@@ -354,7 +361,7 @@ export default function CoachAnalytics({
   };
 
   const renderRateGauge = (pctValue, label) => {
-    const color = pctValue <= 10 ? STATUS.success : pctValue <= 25 ? STATUS.warning : STATUS.error;
+    const color = pctValue <= 10 ? SIGNAL.color.emerald : pctValue <= 25 ? SIGNAL.color.amber : SIGNAL.color.coral;
     return (
       <View style={styles.gauge}>
         <Text style={styles.gaugeLabel}>{label}</Text>
@@ -366,558 +373,686 @@ export default function CoachAnalytics({
     );
   };
 
+  // Section card with expandable body (matches Signal handoff)
+  const Section = ({ id, n, title, sub, summary, children }) => {
+    const open = expandedSection === id;
+    return (
+      <View style={styles.card}>
+        <TouchableOpacity onPress={() => toggle(id)} activeOpacity={0.7} style={styles.sectionHeaderBtn}>
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.numBadge}><Text style={styles.numBadgeText}>{n}</Text></View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.sectionTitle}>{title}</Text>
+              <Text style={styles.eyebrow}>{sub}</Text>
+            </View>
+            <Ionicons
+              name={open ? 'chevron-up' : 'chevron-down'}
+              size={16}
+              color={SIGNAL.color.mute2}
+            />
+          </View>
+          {summary}
+        </TouchableOpacity>
+        {open && <View style={styles.cardBody}>{children}</View>}
+      </View>
+    );
+  };
+
+  // Avatar
+  const Avatar = ({ color, initials, size = 28, faded = false }) => (
+    <View style={[
+      styles.avatar,
+      { width: size, height: size, borderRadius: size / 2, backgroundColor: color || SIGNAL.color.indigo, opacity: faded ? 0.4 : 1 },
+    ]}>
+      <Text style={[styles.avatarText, { fontSize: Math.round(size * 0.36) }]}>{initials}</Text>
+    </View>
+  );
+
   return (
     <View style={styles.container}>
+      {/* ── Header ── */}
       <View style={styles.header}>
         <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+          <Ionicons name="chevron-back" size={20} color={SIGNAL.color.inkSoft} />
           <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Team Analytics</Text>
-        <View style={{ width: 60 }} />
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>Team Analytics</Text>
+          {!!school?.name && (
+            <Text style={styles.headerSub}>{school.name} · {athletes.length} athlete{athletes.length === 1 ? '' : 's'}</Text>
+          )}
+        </View>
+        <View style={{ width: 64 }} />
       </View>
 
-      {/* Tab bar */}
+      {/* ── Tab bar ── */}
       <View style={styles.tabRow}>
-        {[{ key: 'training', label: 'Training' }, { key: 'races', label: 'Races' }].map(t => (
-          <TouchableOpacity
-            key={t.key}
-            style={[styles.tab, analyticsTab === t.key && { borderBottomColor: BRAND, borderBottomWidth: 2 }]}
-            onPress={() => setAnalyticsTab(t.key)}
-          >
-            <Text style={[styles.tabText, analyticsTab === t.key && { color: BRAND, fontWeight: FONT_WEIGHT.bold }]}>{t.label}</Text>
-          </TouchableOpacity>
-        ))}
+        {[{ key: 'training', label: 'Training' }, { key: 'races', label: 'Race' }].map(t => {
+          const active = analyticsTab === t.key;
+          return (
+            <TouchableOpacity
+              key={t.key}
+              style={[styles.tab, active && styles.tabActive]}
+              onPress={() => setAnalyticsTab(t.key)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.tabText, active && styles.tabTextActive]}>{t.label} Analytics</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       {analyticsTab === 'training' ? (
-      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
 
-        {/* ── 1. Mileage Volume (last 3 weeks) ── */}
-        <TouchableOpacity style={styles.section} onPress={() => toggle('volume')} activeOpacity={0.8}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionNum}>1</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.sectionTitle}>Mileage Volume</Text>
-              <Text style={styles.sectionSub}>Last 3 weeks — consistently under or over target?</Text>
-            </View>
-            <Ionicons name={expandedSection === 'volume' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />
-          </View>
-          <View style={styles.summaryRow}>
-            <View style={[styles.summaryCard, { backgroundColor: STATUS.warningBg }]}>
-              <Text style={[styles.summaryNum, { color: STATUS.warning }]}>{underTarget.length}</Text>
-              <Text style={styles.summaryLabel}>Under</Text>
-            </View>
-            <View style={[styles.summaryCard, { backgroundColor: STATUS.successBg }]}>
-              <Text style={[styles.summaryNum, { color: STATUS.success }]}>{onTarget.length}</Text>
-              <Text style={styles.summaryLabel}>On target</Text>
-            </View>
-            <View style={[styles.summaryCard, { backgroundColor: STATUS.errorBg }]}>
-              <Text style={[styles.summaryNum, { color: STATUS.error }]}>{overTarget.length}</Text>
-              <Text style={styles.summaryLabel}>Over</Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-        {expandedSection === 'volume' && (
-          <View style={styles.detail}>
-            {[...underTarget, ...overTarget].map(a => {
+        {/* ── 1. Mileage Volume ── */}
+        <Section
+          id="volume"
+          n="1"
+          title="Mileage Compliance"
+          sub={`Last 3 weeks vs target · ${onTarget.length} on target`}
+          summary={(() => {
+            // Status: alert if more than 25% off-target, warn if any off-target, ok otherwise
+            const total = onTarget.length + underTarget.length + overTarget.length;
+            const off = underTarget.length + overTarget.length;
+            const grad = total === 0
+              ? null
+              : off === 0
+                ? GRAD_OK
+                : off / total > 0.25
+                  ? GRAD_ALERT
+                  : GRAD_WARN;
+            return (
+              <View style={styles.heroWrap}>
+                {grad ? (
+                  <LinearGradient colors={grad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroPill}>
+                    <View style={styles.heroPillCol}>
+                      <Text style={styles.heroPillNum}>{underTarget.length}</Text>
+                      <Text style={styles.heroPillLabel}>Under</Text>
+                    </View>
+                    <View style={styles.heroPillDivider} />
+                    <View style={styles.heroPillCol}>
+                      <Text style={styles.heroPillNum}>{onTarget.length}</Text>
+                      <Text style={styles.heroPillLabel}>On target</Text>
+                    </View>
+                    <View style={styles.heroPillDivider} />
+                    <View style={styles.heroPillCol}>
+                      <Text style={styles.heroPillNum}>{overTarget.length}</Text>
+                      <Text style={styles.heroPillLabel}>Over</Text>
+                    </View>
+                  </LinearGradient>
+                ) : (
+                  <View style={[styles.heroPill, { backgroundColor: SIGNAL.color.mute2 }]}>
+                    <Text style={styles.heroPillLabel}>No volume data yet</Text>
+                  </View>
+                )}
+              </View>
+            );
+          })()}
+        >
+          {[...underTarget, ...overTarget].length === 0 ? (
+            <Text style={styles.detailEmpty}>All athletes have been on target over the last 3 weeks.</Text>
+          ) : (
+            [...underTarget, ...overTarget].map(a => {
               const weekDots = [
-                { label: '3w ago', miles: a.wb.w3, status: a.w3Status },
-                { label: '2w ago', miles: a.wb.w2, status: a.w2Status },
-                { label: 'Last wk', miles: a.wb.w1, status: a.w1Status },
+                { label: '3w', miles: a.wb.w3, status: a.w3Status },
+                { label: '2w', miles: a.wb.w2, status: a.w2Status },
+                { label: '1w', miles: a.wb.w1, status: a.w1Status },
               ];
-              const statusIcon = { on: 'checkmark-circle', under: 'arrow-down-circle', over: 'arrow-up-circle' };
+              const statusColor = (s) => s === 'on' ? SIGNAL.color.emerald : s === 'under' ? SIGNAL.color.amber : s === 'over' ? SIGNAL.color.coral : SIGNAL.color.mute2;
+              const statusIcon = { on: '✓', under: '↓', over: '↑' };
               return (
                 <View key={a.id} style={styles.detailRow}>
-                  <View style={[styles.detailAvatar, { backgroundColor: a.avatarColor || BRAND }]}>
-                    <Text style={styles.detailAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
+                  <Avatar color={a.avatarColor} initials={`${a.firstName?.[0] || ''}${a.lastName?.[0] || ''}`} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.detailName}>{a.firstName} {a.lastName}</Text>
-                    <Text style={styles.detailSub}>Target: {a.target || '—'} mi/wk</Text>
-                    <View style={styles.weekDotsRow}>
-                      {weekDots.map((w, i) => (
-                        <View key={i} style={styles.weekDot}>
-                          <Ionicons
-                            name={statusIcon[w.status] || 'ellipse'}
-                            size={16}
-                            color={w.status === 'on' ? STATUS.success : w.status === 'under' ? STATUS.warning : w.status === 'over' ? STATUS.error : NEUTRAL.input}
-                          />
-                          <Text style={styles.weekDotMiles}>{w.miles}</Text>
-                          <Text style={styles.weekDotLabel}>{w.label}</Text>
-                        </View>
-                      ))}
-                    </View>
+                    <Text style={styles.detailSub}>Target {a.target || '—'} mi/wk</Text>
                   </View>
-                  <View style={[styles.statusBadge, { backgroundColor: a.status === 'under' ? STATUS.warningBg : STATUS.errorBg }]}>
-                    <Text style={[styles.statusText, { color: a.status === 'under' ? STATUS.warning : STATUS.error }]}>{a.status === 'under' ? 'Under' : 'Over'}</Text>
+                  <View style={styles.weekDotsRow}>
+                    {weekDots.map((w, i) => (
+                      <View key={i} style={styles.weekDot}>
+                        <Text style={[styles.weekDotNum, { color: statusColor(w.status) }]}>
+                          {statusIcon[w.status] || ''}{w.miles}
+                        </Text>
+                        <Text style={styles.weekDotLabel}>{w.label}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  <View style={[styles.chip, {
+                    backgroundColor: `${a.status === 'under' ? SIGNAL.color.amber : SIGNAL.color.coral}${SIGNAL.tint.chip}`,
+                  }]}>
+                    <Text style={[styles.chipText, { color: a.status === 'under' ? SIGNAL.color.amber : SIGNAL.color.coral }]}>
+                      {a.status === 'under' ? 'Under' : 'Over'}
+                    </Text>
                   </View>
                 </View>
               );
-            })}
-            {underTarget.length === 0 && overTarget.length === 0 && (
-              <Text style={styles.detailEmpty}>All athletes have been on target over the last 3 weeks.</Text>
-            )}
-          </View>
-        )}
+            })
+          )}
+        </Section>
 
         {/* ── 2. Easy-Hard Balance ── */}
-        <TouchableOpacity style={styles.section} onPress={() => toggle('intensity')} activeOpacity={0.8}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionNum}>2</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.sectionTitle}>Easy-Hard Balance</Text>
-              <Text style={styles.sectionSub}>Last 30 days · is the team running easy enough?</Text>
-            </View>
-            <Ionicons name={expandedSection === 'intensity' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />
-          </View>
-          <View style={styles.summaryRow}>
-            <View style={[styles.summaryCard, {
-              backgroundColor: teamAvgEasy === null ? NEUTRAL.bg
-                : teamAvgEasy >= 78 ? STATUS.successBg
-                : teamAvgEasy >= 68 ? STATUS.warningBg
-                : STATUS.errorBg,
-            }]}>
-              <Text style={[styles.summaryNum, {
-                color: teamAvgEasy === null ? NEUTRAL.muted
-                  : teamAvgEasy >= 78 ? STATUS.success
-                  : teamAvgEasy >= 68 ? STATUS.warning
-                  : STATUS.error,
-              }]}>
-                {teamAvgEasy !== null ? teamAvgEasy + '%' : '—'}
-              </Text>
-              <Text style={styles.summaryLabel}>Team avg easy</Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-        {expandedSection === 'intensity' && (
-          <View style={styles.detail}>
-            {paceTooHard.length > 0 && (
-              <View style={{ marginBottom: SPACE.md }}>
-                <Text style={[styles.detailGroupLabel, { color: STATUS.error }]}>Too hard (easy &lt; 68%)</Text>
-                {paceTooHard.map(a => (
-                  <View key={a.id} style={styles.detailRow}>
-                    <View style={[styles.detailAvatar, { backgroundColor: a.avatarColor || BRAND }]}>
-                      <Text style={styles.detailAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.detailName}>{a.firstName} {a.lastName}</Text>
-                      <Text style={styles.detailSub}>Easy: {a.easyPct}% (target: 80%)</Text>
-                    </View>
-                    <Text style={[styles.pctBadge, { color: STATUS.error }]}>{a.easyPct}%</Text>
+        <Section
+          id="intensity"
+          n="2"
+          title="Easy-Hard Balance"
+          sub="Is the team running easy enough?"
+          summary={(() => {
+            const grad = teamAvgEasy === null
+              ? null
+              : teamAvgEasy >= 78 ? GRAD_OK
+                : teamAvgEasy >= 68 ? GRAD_WARN
+                : GRAD_ALERT;
+            return (
+              <View style={styles.heroWrap}>
+                {grad ? (
+                  <LinearGradient colors={grad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroPillSolo}>
+                    <Text style={styles.heroSoloNum}>{teamAvgEasy}%</Text>
+                    <Text style={styles.heroSoloSub}>
+                      Team avg easy
+                      {paceTooHard.length > 0 ? ` · ${paceTooHard.length} too hard` : ''}
+                      {paceNoPaces.length > 0 ? ` · ${paceNoPaces.length} need paces` : ''}
+                    </Text>
+                  </LinearGradient>
+                ) : (
+                  <View style={[styles.heroPillSolo, { backgroundColor: SIGNAL.color.mute2 }]}>
+                    <Text style={styles.heroSoloNum}>—</Text>
+                    <Text style={styles.heroSoloSub}>No pace data yet</Text>
                   </View>
-                ))}
-              </View>
-            )}
-            {paceCaution.length > 0 && (
-              <View style={{ marginBottom: SPACE.md }}>
-                <Text style={[styles.detailGroupLabel, { color: STATUS.warning }]}>Caution (68–77%)</Text>
-                {paceCaution.map(a => (
-                  <View key={a.id} style={styles.detailRow}>
-                    <View style={[styles.detailAvatar, { backgroundColor: a.avatarColor || BRAND }]}>
-                      <Text style={styles.detailAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.detailName}>{a.firstName} {a.lastName}</Text>
-                      <Text style={styles.detailSub}>Easy: {a.easyPct}% (target: 80%)</Text>
-                    </View>
-                    <Text style={[styles.pctBadge, { color: STATUS.warning }]}>{a.easyPct}%</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-            {paceOnTarget.length > 0 && (
-              <View style={{ marginBottom: SPACE.md }}>
-                <Text style={[styles.detailGroupLabel, { color: STATUS.success }]}>On target (≥ 78%)</Text>
-                {paceOnTarget.map(a => (
-                  <View key={a.id} style={styles.detailRow}>
-                    <View style={[styles.detailAvatar, { backgroundColor: a.avatarColor || BRAND }]}>
-                      <Text style={styles.detailAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.detailName}>{a.firstName} {a.lastName}</Text>
-                      <Text style={styles.detailSub}>Easy: {a.easyPct}%</Text>
-                    </View>
-                    <Text style={[styles.pctBadge, { color: STATUS.success }]}>{a.easyPct}%</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-            {paceNoPaces.length > 0 && (
-              <View style={{ marginBottom: SPACE.md }}>
-                <Text style={[styles.detailGroupLabel, { color: NEUTRAL.muted }]}>Need training paces</Text>
-                {paceNoPaces.map(a => (
-                  <View key={a.id} style={styles.detailRow}>
-                    <View style={[styles.detailAvatar, { backgroundColor: a.avatarColor || BRAND }]}>
-                      <Text style={styles.detailAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.detailName}>{a.firstName} {a.lastName}</Text>
-                      <Text style={[styles.detailSub, { fontStyle: 'italic' }]}>No paces set</Text>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            )}
-            {athletesWithData.length === 0 && paceNoPaces.length === 0 && (
-              <Text style={styles.detailEmpty}>No pace data yet. Athletes need to set training paces in their profile.</Text>
-            )}
-          </View>
-        )}
-
-        {/* ── 3. Load Progression ── */}
-        <TouchableOpacity style={styles.section} onPress={() => toggle('load')} activeOpacity={0.8}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionNum}>3</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.sectionTitle}>Load & Injury Risk</Text>
-              <Text style={styles.sectionSub}>Last week vs prior 2-week avg — anyone >15% up?</Text>
-            </View>
-            <Ionicons name={expandedSection === 'load' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />
-          </View>
-          <View style={styles.summaryRow}>
-            <View style={[styles.summaryCard, { backgroundColor: loadRisks.length === 0 ? STATUS.successBg : STATUS.errorBg }]}>
-              <Text style={[styles.summaryNum, { color: loadRisks.length === 0 ? STATUS.success : STATUS.error }]}>{loadRisks.length}</Text>
-              <Text style={styles.summaryLabel}>At risk</Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-        {expandedSection === 'load' && (
-          <View style={styles.detail}>
-            {loadRisks.length === 0 ? (
-              <Text style={styles.detailEmpty}>No athletes showing elevated injury risk this week.</Text>
-            ) : loadRisks.map(a => (
-              <View key={a.id} style={styles.detailRow}>
-                <View style={[styles.detailAvatar, { backgroundColor: a.avatarColor || BRAND }]}>
-                  <Text style={styles.detailAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.detailName}>{a.firstName} {a.lastName}</Text>
-                  <Text style={styles.detailSub}>Last wk: {a.lastWeek} mi (prior avg {a.priorAvg}){a.pctChange > 15 ? ` · ${a.pctChange}% up` : ''}</Text>
-                  {a.signals.map((sig, i) => (
-                    <Text key={i} style={styles.signalText}>• {sig}</Text>
-                  ))}
-                  {a.hasInjury && !a.signals.some(s => s.includes('injury')) && (
-                    <Text style={styles.signalText}>• Reported injury this week</Text>
-                  )}
-                  {a.hasIllness && !a.signals.some(s => s.includes('illness')) && (
-                    <Text style={styles.signalText}>• Reported illness this week</Text>
-                  )}
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* ── 4. Attendance ── */}
-        <TouchableOpacity style={styles.section} onPress={() => toggle('attendance')} activeOpacity={0.8}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionNum}>4</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.sectionTitle}>Attendance</Text>
-              <Text style={styles.sectionSub}>
-                {attendanceData?.practiceDays
-                  ? `Last 30 days — ${attendanceData.practiceDays} practice day${attendanceData.practiceDays !== 1 ? 's' : ''}`
-                  : 'Take attendance from Program tab to see data'}
-              </Text>
-            </View>
-            <Ionicons name={expandedSection === 'attendance' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />
-          </View>
-          {loadingAttendance ? (
-            <ActivityIndicator color={BRAND} style={{ marginVertical: SPACE.md }} />
-          ) : attendanceData?.totalRecorded > 0 ? (
-            <View style={styles.summaryRow}>
-              <View style={[styles.summaryCard, {
-                backgroundColor: attendanceData.teamRate >= 0.9 ? STATUS.successBg
-                  : attendanceData.teamRate >= 0.75 ? STATUS.warningBg : STATUS.errorBg,
-              }]}>
-                <Text style={[styles.summaryNum, {
-                  color: attendanceData.teamRate >= 0.9 ? STATUS.success
-                    : attendanceData.teamRate >= 0.75 ? STATUS.warning : STATUS.error,
-                }]}>
-                  {Math.round(attendanceData.teamRate * 100)}%
-                </Text>
-                <Text style={styles.summaryLabel}>Team rate</Text>
-              </View>
-              <View style={[styles.summaryCard, {
-                backgroundColor: attendanceData.concernCount === 0 ? STATUS.successBg : STATUS.warningBg,
-              }]}>
-                <Text style={[styles.summaryNum, {
-                  color: attendanceData.concernCount === 0 ? STATUS.success : STATUS.warning,
-                }]}>
-                  {attendanceData.concernCount}
-                </Text>
-                <Text style={styles.summaryLabel}>{'<'}90%</Text>
-              </View>
-            </View>
-          ) : null}
-        </TouchableOpacity>
-        {expandedSection === 'attendance' && (
-          <View style={styles.detail}>
-            {!attendanceData || attendanceData.totalRecorded === 0 ? (
-              <Text style={styles.detailEmpty}>No attendance recorded in the last 30 days.</Text>
-            ) : (
-              <>
-                {athletes
-                  .map(a => ({ ...a, ...attendanceData.byAthlete[a.id] }))
-                  .filter(a => a.totalRecorded > 0)
-                  .sort((a, b) => a.rate - b.rate)
-                  .map(a => {
-                    const pct = Math.round(a.rate * 100);
-                    const rowColor = pct >= 90 ? STATUS.success : pct >= 75 ? STATUS.warning : STATUS.error;
-                    return (
-                      <View key={a.id} style={styles.detailRow}>
-                        <View style={[styles.detailAvatar, { backgroundColor: a.avatarColor || BRAND }]}>
-                          <Text style={styles.detailAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.detailName}>{a.firstName} {a.lastName}</Text>
-                          <Text style={styles.detailSub}>
-                            <Text style={{ color: rowColor, fontWeight: FONT_WEIGHT.bold }}>{pct}%</Text>
-                            {' · '}{a.present}/{a.totalRecorded} present
-                            {a.absent  > 0 ? ` · ${a.absent} absent`   : ''}
-                            {a.excused > 0 ? ` · ${a.excused} excused` : ''}
-                          </Text>
-                        </View>
-                      </View>
-                    );
-                  })}
-                {attendanceData.noRecordsCount > 0 && (
-                  <Text style={styles.signalText}>
-                    • {attendanceData.noRecordsCount} athlete{attendanceData.noRecordsCount !== 1 ? 's' : ''} without recorded attendance in this window
-                  </Text>
                 )}
-              </>
-            )}
-          </View>
-        )}
-
-        {/* ── 5. Pack Compression ── */}
-        <TouchableOpacity style={styles.section} onPress={() => toggle('pack')} activeOpacity={0.8}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionNum}>5</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.sectionTitle}>Pack Compression</Text>
-              <Text style={styles.sectionSub}>Top 5 spread and bench depth</Text>
-            </View>
-            <Ionicons name={expandedSection === 'pack' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />
-          </View>
-          {/* At-a-glance: boys and girls spread */}
-          <View style={styles.packSummaryRow}>
-            {boysData.count > 0 && (
-              <View style={styles.packSummaryCol}>
-                <Text style={styles.packSummaryTitle}>Boys Top {boysData.topN}</Text>
-                <Text style={styles.spreadNum}>{boysData.sTop !== null ? boysData.sTop + ' mi' : '—'}</Text>
-                {boysData.sTop !== null && <Text style={styles.packSummaryHint}>spread</Text>}
               </View>
-            )}
-            {girlsData.count > 0 && (
-              <View style={styles.packSummaryCol}>
-                <Text style={styles.packSummaryTitle}>Girls Top {girlsData.topN}</Text>
-                <Text style={styles.spreadNum}>{girlsData.sTop !== null ? girlsData.sTop + ' mi' : '—'}</Text>
-                {girlsData.sTop !== null && <Text style={styles.packSummaryHint}>spread</Text>}
-              </View>
-            )}
-          </View>
-        </TouchableOpacity>
-        {expandedSection === 'pack' && (
-          <View style={styles.detail}>
-            <View style={styles.packGenderRow}>
-              {['boys', 'girls'].map(g => (
-                <TouchableOpacity key={g} style={[styles.packGenderBtn, packGender === g && styles.packGenderBtnActive]} onPress={() => setPackGender(g)}>
-                  <Text style={[styles.packGenderText, packGender === g && styles.packGenderTextActive]}>{g === 'boys' ? 'Boys' : 'Girls'}</Text>
-                </TouchableOpacity>
+            );
+          })()}
+        >
+          {paceTooHard.length > 0 && (
+            <View style={{ marginBottom: 10 }}>
+              <Text style={[styles.groupLabel, { color: SIGNAL.color.coral }]}>Too hard (easy &lt; 68%)</Text>
+              {paceTooHard.map(a => (
+                <View key={a.id} style={styles.detailRow}>
+                  <Avatar color={a.avatarColor} initials={`${a.firstName?.[0] || ''}${a.lastName?.[0] || ''}`} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.detailName}>{a.firstName} {a.lastName}</Text>
+                    <Text style={styles.detailSub}>Easy {a.easyPct}% · target 80%</Text>
+                  </View>
+                  <Text style={[styles.numBig, { color: SIGNAL.color.coral }]}>{a.easyPct}%</Text>
+                </View>
               ))}
             </View>
-            {activePackData.sTop !== null && (
-              <View style={styles.spreadGroup}>
-                <View style={styles.spreadRow}>
-                  <Text style={styles.spreadNum}>{activePackData.sTop} mi</Text>
-                  <Text style={styles.spreadLabel}>spread #1–#{activePackData.topN}</Text>
-                </View>
-                {activePackData.s10 !== null && (
-                  <View style={styles.spreadRow}>
-                    <Text style={[styles.spreadNum, { color: NEUTRAL.body }]}>{activePackData.s10} mi</Text>
-                    <Text style={styles.spreadLabel}>spread #1–#10 (bench)</Text>
+          )}
+          {paceCaution.length > 0 && (
+            <View style={{ marginBottom: 10 }}>
+              <Text style={[styles.groupLabel, { color: SIGNAL.color.amber }]}>Caution (68–77%)</Text>
+              {paceCaution.map(a => (
+                <View key={a.id} style={styles.detailRow}>
+                  <Avatar color={a.avatarColor} initials={`${a.firstName?.[0] || ''}${a.lastName?.[0] || ''}`} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.detailName}>{a.firstName} {a.lastName}</Text>
+                    <Text style={styles.detailSub}>Easy {a.easyPct}% · target 80%</Text>
                   </View>
+                  <Text style={[styles.numBig, { color: SIGNAL.color.amber }]}>{a.easyPct}%</Text>
+                </View>
+              ))}
+            </View>
+          )}
+          {paceOnTarget.length > 0 && (
+            <View style={{ marginBottom: 10 }}>
+              <Text style={[styles.groupLabel, { color: SIGNAL.color.emerald }]}>On target (≥ 78%)</Text>
+              {paceOnTarget.map(a => (
+                <View key={a.id} style={styles.detailRow}>
+                  <Avatar color={a.avatarColor} initials={`${a.firstName?.[0] || ''}${a.lastName?.[0] || ''}`} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.detailName}>{a.firstName} {a.lastName}</Text>
+                    <Text style={styles.detailSub}>Easy {a.easyPct}%</Text>
+                  </View>
+                  <Text style={[styles.numBig, { color: SIGNAL.color.emerald }]}>{a.easyPct}%</Text>
+                </View>
+              ))}
+            </View>
+          )}
+          {paceNoPaces.length > 0 && (
+            <View style={{ marginBottom: 10 }}>
+              <Text style={[styles.groupLabel, { color: SIGNAL.color.mute2 }]}>Need training paces</Text>
+              {paceNoPaces.map(a => (
+                <View key={a.id} style={styles.detailRow}>
+                  <Avatar color={a.avatarColor} initials={`${a.firstName?.[0] || ''}${a.lastName?.[0] || ''}`} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.detailName}>{a.firstName} {a.lastName}</Text>
+                    <Text style={styles.detailSub}>No paces set</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+          {athletesWithData.length === 0 && paceNoPaces.length === 0 && (
+            <Text style={styles.detailEmpty}>No pace data yet. Athletes need to set training paces in their profile.</Text>
+          )}
+        </Section>
+
+        {/* ── 3. Load & Injury Risk ── */}
+        <Section
+          id="load"
+          n="3"
+          title="Load & Injury Risk"
+          sub="Last wk vs prior 2-wk avg"
+          summary={(() => {
+            const grad = loadRisks.length === 0 ? GRAD_OK : loadRisks.length <= 2 ? GRAD_WARN : GRAD_ALERT;
+            return (
+              <View style={styles.heroWrap}>
+                <LinearGradient colors={grad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroPillSolo}>
+                  <Text style={styles.heroSoloNum}>{loadRisks.length}</Text>
+                  <Text style={styles.heroSoloSub}>
+                    {loadRisks.length === 0
+                      ? 'No elevated risk this week'
+                      : `Athlete${loadRisks.length === 1 ? '' : 's'} at risk`}
+                  </Text>
+                </LinearGradient>
+              </View>
+            );
+          })()}
+        >
+          {loadRisks.length === 0 ? (
+            <Text style={styles.detailEmpty}>No athletes showing elevated injury risk this week.</Text>
+          ) : loadRisks.map(a => (
+            <View key={a.id} style={styles.detailRow}>
+              <Avatar color={a.avatarColor} initials={`${a.firstName?.[0] || ''}${a.lastName?.[0] || ''}`} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.detailName}>{a.firstName} {a.lastName}</Text>
+                <Text style={styles.detailSub}>
+                  Last wk {a.lastWeek} mi (prior {a.priorAvg}){a.pctChange > 15 ? ` · ${a.pctChange}% up` : ''}
+                </Text>
+                {a.signals.map((sig, i) => (
+                  <Text key={i} style={styles.signalText}>• {sig}</Text>
+                ))}
+                {a.hasInjury && !a.signals.some(s => s.includes('injury')) && (
+                  <Text style={styles.signalText}>• Reported injury this week</Text>
+                )}
+                {a.hasIllness && !a.signals.some(s => s.includes('illness')) && (
+                  <Text style={styles.signalText}>• Reported illness this week</Text>
                 )}
               </View>
-            )}
-            {top10.map((a, i) => {
-              const miles = athleteMiles[a.id] || 0;
-              const barWidth = maxMiles > 0 ? (miles / maxMiles) * 100 : 0;
-              const isTop5 = i < 5;
+            </View>
+          ))}
+        </Section>
+
+        {/* ── 4. Attendance ── */}
+        <Section
+          id="attendance"
+          n="4"
+          title="Attendance"
+          sub={
+            attendanceData?.practiceDays
+              ? `Last 30 days · ${attendanceData.practiceDays} practice day${attendanceData.practiceDays !== 1 ? 's' : ''}`
+              : 'Take attendance from Program tab to see data'
+          }
+          summary={(() => {
+            if (loadingAttendance) {
               return (
-                <View key={a.id} style={styles.packRow}>
-                  <Text style={[styles.packRank, !isTop5 && { color: NEUTRAL.input }]}>#{i + 1}</Text>
-                  <View style={[styles.packAvatar, { backgroundColor: a.avatarColor || BRAND, opacity: isTop5 ? 1 : 0.6 }]}>
-                    <Text style={styles.packAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.packName, !isTop5 && { color: NEUTRAL.body }]}>{a.firstName} {a.lastName}</Text>
-                    <View style={styles.packBarBg}>
-                      <View style={[styles.packBarFill, { width: barWidth + '%', backgroundColor: isTop5 ? BRAND : BRAND_ACCENT }]} />
-                    </View>
-                  </View>
-                  <Text style={[styles.packMiles, !isTop5 && { color: NEUTRAL.body }]}>{miles.toFixed(1)}</Text>
+                <View style={styles.heroWrap}>
+                  <ActivityIndicator color={SIGNAL.color.indigo} />
                 </View>
               );
-            })}
-            {top10.length === 0 && <Text style={styles.detailEmpty}>No {packGender} athletes with data for this period.</Text>}
-          </View>
-        )}
-
-        {/* ── 6. Wellness Trends ── */}
-        <TouchableOpacity style={styles.section} onPress={() => toggle('wellness')} activeOpacity={0.8}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionNum}>6</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.sectionTitle}>Wellness & Readiness</Text>
-              <Text style={styles.sectionSub}>Last 7 days — {wellnessAthletes.length}/{athletes.length} athletes reporting</Text>
-            </View>
-            <Ionicons name={expandedSection === 'wellness' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />
-          </View>
-          {loadingWellness ? (
-            <ActivityIndicator color={BRAND} style={{ marginVertical: SPACE.md }} />
-          ) : wellnessData?.totalCheckins > 0 ? (
-            <View>
-              <View style={styles.gaugeGroup}>
-                {renderGauge(wellnessData.teamAvgSleep, 'Sleep')}
-                {renderGauge(wellnessData.teamAvgLegs, 'Legs')}
-                {renderGauge(wellnessData.teamAvgMood, 'Mood')}
+            }
+            if (!attendanceData || attendanceData.totalRecorded === 0) return null;
+            const rate = attendanceData.teamRate;
+            const grad = rate >= 0.9 ? GRAD_OK : rate >= 0.75 ? GRAD_WARN : GRAD_ALERT;
+            return (
+              <View style={styles.heroWrap}>
+                <LinearGradient colors={grad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroPill}>
+                  <View style={styles.heroPillCol}>
+                    <Text style={styles.heroPillNum}>{Math.round(rate * 100)}%</Text>
+                    <Text style={styles.heroPillLabel}>Team rate</Text>
+                  </View>
+                  <View style={styles.heroPillDivider} />
+                  <View style={styles.heroPillCol}>
+                    <Text style={styles.heroPillNum}>{attendanceData.concernCount}</Text>
+                    <Text style={styles.heroPillLabel}>{'<'} 90%</Text>
+                  </View>
+                </LinearGradient>
               </View>
-              {(wellnessData.injuryRate > 0 || wellnessData.illnessRate > 0) && (
-                <View style={[styles.gaugeGroup, { marginTop: SPACE.md }]}>
-                  {renderRateGauge(wellnessData.injuryRate, '🩹 Injury rate')}
-                  {renderRateGauge(wellnessData.illnessRate, '🤒 Illness rate')}
-                </View>
-              )}
-              {concernAthletes.length > 0 && (
-                <Text style={styles.wellnessConcernHint}>{concernAthletes.length} athlete{concernAthletes.length > 1 ? 's' : ''} showing concern signals</Text>
-              )}
-            </View>
+            );
+          })()}
+        >
+          {!attendanceData || attendanceData.totalRecorded === 0 ? (
+            <Text style={styles.detailEmpty}>No attendance recorded in the last 30 days.</Text>
           ) : (
-            <Text style={styles.noDataText}>No check-in data yet. Athletes will be prompted to check in daily.</Text>
-          )}
-        </TouchableOpacity>
-        {expandedSection === 'wellness' && (
-          <View style={styles.detail}>
-            {/* Active injuries grouped by athlete */}
-            {wellnessData?.activeInjuries?.length > 0 && (
-              <View style={styles.activeInjurySection}>
-                <Text style={styles.activeInjurySectionTitle}>🩹 Active injuries this week</Text>
-                {wellnessData.activeInjuries.map(inj => {
-                  const sevColor = inj.severity === 'severe' ? STATUS.error : inj.severity === 'moderate' ? STATUS.warning : NEUTRAL.body;
+            <>
+              {athletes
+                .map(a => ({ ...a, ...attendanceData.byAthlete[a.id] }))
+                .filter(a => a.totalRecorded > 0)
+                .sort((a, b) => a.rate - b.rate)
+                .map(a => {
+                  const pct = Math.round(a.rate * 100);
+                  const rowColor = pct >= 90 ? SIGNAL.color.emerald : pct >= 75 ? SIGNAL.color.amber : SIGNAL.color.coral;
                   return (
-                    <View key={inj.id} style={styles.activeInjuryChip}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
-                        <View style={[styles.detailAvatar, { backgroundColor: inj.avatarColor || BRAND }]}>
-                          <Text style={styles.detailAvatarText}>{inj.initials}</Text>
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.activeInjuryLabel}>{inj.name}</Text>
-                          <Text style={styles.activeInjuryNames}>
-                            {inj.locationSeverity
-                              ? inj.locations.map(l => `${l.charAt(0).toUpperCase() + l.slice(1)} (${inj.locationSeverity[l] || 'mild'})`).join(', ')
-                              : `${inj.locations.map(l => l.charAt(0).toUpperCase() + l.slice(1)).join(', ')}${inj.severity !== 'mild' ? ` · ${inj.severity}` : ''}`
-                            }
-                          </Text>
-                        </View>
-                        <View style={{ alignItems: 'flex-end' }}>
-                          <Text style={[styles.activeInjuryDays, { color: sevColor }]}>{inj.days} of 7d</Text>
-                          <Text style={styles.activeInjuryWhen}>{inj.lastReported}</Text>
-                        </View>
+                    <View key={a.id} style={styles.detailRow}>
+                      <Avatar color={a.avatarColor} initials={`${a.firstName?.[0] || ''}${a.lastName?.[0] || ''}`} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.detailName}>{a.firstName} {a.lastName}</Text>
+                        <Text style={styles.detailSub}>
+                          <Text style={{ color: rowColor, fontFamily: SIGNAL.font.bodyBold }}>{pct}%</Text>
+                          {' · '}{a.present}/{a.totalRecorded} present
+                          {a.absent  > 0 ? ` · ${a.absent} absent`   : ''}
+                          {a.excused > 0 ? ` · ${a.excused} excused` : ''}
+                        </Text>
                       </View>
                     </View>
                   );
                 })}
+              {attendanceData.noRecordsCount > 0 && (
+                <Text style={styles.signalText}>
+                  • {attendanceData.noRecordsCount} athlete{attendanceData.noRecordsCount !== 1 ? 's' : ''} without recorded attendance in this window
+                </Text>
+              )}
+            </>
+          )}
+        </Section>
+
+        {/* ── 5. Pack Compression ── */}
+        <Section
+          id="pack"
+          n="5"
+          title="Pack Compression"
+          sub="Top 5 spread & bench depth"
+          summary={(() => {
+            // Status: ok if both sides have <=20% spread vs top, warn moderate, alert if large
+            const ratio = (d) => {
+              if (!d.sorted.length || !d.sTop || !athleteMiles[d.sorted[0]?.id]) return null;
+              return d.sTop / athleteMiles[d.sorted[0].id];
+            };
+            const rB = ratio(boysData);
+            const rG = ratio(girlsData);
+            const worst = [rB, rG].filter(r => r !== null).reduce((m, r) => Math.max(m, r), 0);
+            const grad = worst === 0
+              ? null
+              : worst <= 0.25 ? GRAD_OK
+                : worst <= 0.45 ? GRAD_WARN
+                : GRAD_ALERT;
+            const noData = boysData.count === 0 && girlsData.count === 0;
+            return (
+              <View style={styles.heroWrap}>
+                {noData ? (
+                  <View style={[styles.heroPill, { backgroundColor: SIGNAL.color.mute2 }]}>
+                    <Text style={styles.heroPillLabel}>No athletes with miles yet</Text>
+                  </View>
+                ) : (
+                  <LinearGradient colors={grad || GRAD_OK} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroPill}>
+                    {boysData.count > 0 && (
+                      <View style={styles.heroPillCol}>
+                        <Text style={styles.heroPillEyebrow}>Boys top {boysData.topN}</Text>
+                        <Text style={styles.heroPillNumMono}>{boysData.sTop !== null ? `${boysData.sTop} mi` : '—'}</Text>
+                      </View>
+                    )}
+                    {boysData.count > 0 && girlsData.count > 0 && <View style={styles.heroPillDivider} />}
+                    {girlsData.count > 0 && (
+                      <View style={styles.heroPillCol}>
+                        <Text style={styles.heroPillEyebrow}>Girls top {girlsData.topN}</Text>
+                        <Text style={styles.heroPillNumMono}>{girlsData.sTop !== null ? `${girlsData.sTop} mi` : '—'}</Text>
+                      </View>
+                    )}
+                  </LinearGradient>
+                )}
               </View>
-            )}
-            {/* Active illnesses grouped by athlete */}
-            {wellnessData?.activeIllnesses?.length > 0 && (
-              <View style={styles.activeInjurySection}>
-                <Text style={styles.activeInjurySectionTitle}>🤒 Active illness this week</Text>
-                {wellnessData.activeIllnesses.map(ill => (
-                  <View key={ill.id} style={[styles.activeInjuryChip, { borderLeftColor: STATUS.warning }]}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
-                      <View style={[styles.detailAvatar, { backgroundColor: ill.avatarColor || BRAND }]}>
-                        <Text style={styles.detailAvatarText}>{ill.initials}</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.activeInjuryLabel}>{ill.name}</Text>
-                        <Text style={styles.activeInjuryNames}>
-                          {ill.symptoms.map(s => s.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase())).join(', ')}
-                        </Text>
-                      </View>
-                      <View style={{ alignItems: 'flex-end' }}>
-                        <Text style={[styles.activeInjuryDays, { color: STATUS.warning }]}>{ill.days} of 7d</Text>
-                        <Text style={styles.activeInjuryWhen}>{ill.lastReported}</Text>
-                      </View>
+            );
+          })()}
+        >
+          <View style={styles.packGenderRow}>
+            {['boys', 'girls'].map(g => {
+              const active = packGender === g;
+              return (
+                <TouchableOpacity
+                  key={g}
+                  style={[styles.packGenderBtn, active && styles.packGenderBtnActive]}
+                  onPress={() => setPackGender(g)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.packGenderText, active && styles.packGenderTextActive]}>{g === 'boys' ? 'Boys' : 'Girls'}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          {activePackData.sTop !== null && (
+            <View style={styles.spreadGroup}>
+              <View style={styles.spreadRow}>
+                <Text style={styles.spreadNum}>{activePackData.sTop} mi</Text>
+                <Text style={styles.spreadLabel}>spread #1–#{activePackData.topN}</Text>
+              </View>
+              {activePackData.s10 !== null && (
+                <View style={styles.spreadRow}>
+                  <Text style={[styles.spreadNum, { color: SIGNAL.color.inkSoft }]}>{activePackData.s10} mi</Text>
+                  <Text style={styles.spreadLabel}>spread #1–#10 (bench)</Text>
+                </View>
+              )}
+            </View>
+          )}
+          {top10.map((a, i) => {
+            const miles = athleteMiles[a.id] || 0;
+            const barWidth = maxMiles > 0 ? (miles / maxMiles) * 100 : 0;
+            const isTop5 = i < 5;
+            return (
+              <View key={a.id} style={styles.packRow}>
+                <Text style={[styles.packRank, !isTop5 && { color: SIGNAL.color.mute2 }]}>#{i + 1}</Text>
+                <Avatar
+                  color={a.avatarColor}
+                  initials={`${a.firstName?.[0] || ''}${a.lastName?.[0] || ''}`}
+                  size={24}
+                  faded={!isTop5}
+                />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={[styles.packName, !isTop5 && { color: SIGNAL.color.mute }]} numberOfLines={1}>
+                    {a.firstName} {a.lastName}
+                  </Text>
+                  <View style={styles.packBarBg}>
+                    <View style={[
+                      styles.packBarFill,
+                      { width: barWidth + '%', backgroundColor: isTop5 ? SIGNAL.color.indigo : SIGNAL.color.mute2 },
+                    ]} />
+                  </View>
+                </View>
+                <Text style={[styles.packMiles, !isTop5 && { color: SIGNAL.color.mute }]}>{miles.toFixed(1)}</Text>
+              </View>
+            );
+          })}
+          {top10.length === 0 && (
+            <Text style={styles.detailEmpty}>No {packGender} athletes with data for this period.</Text>
+          )}
+          {top10.length > 0 && (
+            <Text style={styles.detailHint}>Faded = bench (#6+). Tighter top-5 spread = stronger scoring pack.</Text>
+          )}
+        </Section>
+
+        {/* ── 6. Wellness & Readiness ── */}
+        <Section
+          id="wellness"
+          n="6"
+          title="Wellness & Readiness"
+          sub={`Last 7 days · ${wellnessAthletes.length}/${athletes.length} reporting`}
+          summary={(() => {
+            if (loadingWellness) {
+              return (
+                <View style={styles.heroWrap}>
+                  <ActivityIndicator color={SIGNAL.color.indigo} />
+                </View>
+              );
+            }
+            if (!wellnessData || wellnessData.totalCheckins === 0) {
+              return (
+                <View style={styles.heroWrap}>
+                  <View style={[styles.heroPill, { backgroundColor: SIGNAL.color.mute2 }]}>
+                    <Text style={styles.heroPillLabel}>No check-ins yet</Text>
+                  </View>
+                </View>
+              );
+            }
+            // Status: worst of (sleep, legs, mood, concerns)
+            const minAvg = Math.min(
+              wellnessData.teamAvgSleep ?? 5,
+              wellnessData.teamAvgLegs ?? 5,
+              wellnessData.teamAvgMood ?? 5,
+            );
+            const grad = minAvg >= 3.5 && concernAthletes.length === 0
+              ? GRAD_OK
+              : minAvg >= 2.5 || concernAthletes.length <= 2
+                ? GRAD_WARN
+                : GRAD_ALERT;
+            return (
+              <View style={styles.heroWrap}>
+                <LinearGradient colors={grad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroPill}>
+                  <View style={styles.heroPillCol}>
+                    <Text style={styles.heroPillEyebrow}>😴 Sleep</Text>
+                    <Text style={styles.heroPillNum}>{wellnessData.teamAvgSleep ? wellnessData.teamAvgSleep.toFixed(1) : '—'}</Text>
+                  </View>
+                  <View style={styles.heroPillDivider} />
+                  <View style={styles.heroPillCol}>
+                    <Text style={styles.heroPillEyebrow}>🦵 Legs</Text>
+                    <Text style={styles.heroPillNum}>{wellnessData.teamAvgLegs ? wellnessData.teamAvgLegs.toFixed(1) : '—'}</Text>
+                  </View>
+                  <View style={styles.heroPillDivider} />
+                  <View style={styles.heroPillCol}>
+                    <Text style={styles.heroPillEyebrow}>😊 Mood</Text>
+                    <Text style={styles.heroPillNum}>{wellnessData.teamAvgMood ? wellnessData.teamAvgMood.toFixed(1) : '—'}</Text>
+                  </View>
+                </LinearGradient>
+                {(wellnessData.injuryRate > 0 || wellnessData.illnessRate > 0) && (
+                  <View style={{ marginTop: 12 }}>
+                    {renderRateGauge(wellnessData.injuryRate, '🩹 Injury rate')}
+                    <View style={{ height: 6 }} />
+                    {renderRateGauge(wellnessData.illnessRate, '🤒 Illness rate')}
+                  </View>
+                )}
+                {concernAthletes.length > 0 && (
+                  <Text style={styles.wellnessConcernHint}>
+                    {concernAthletes.length} athlete{concernAthletes.length > 1 ? 's' : ''} showing concern signals
+                  </Text>
+                )}
+              </View>
+            );
+          })()}
+        >
+          {/* Active injuries grouped by athlete */}
+          {wellnessData?.activeInjuries?.length > 0 && (
+            <View style={styles.activeSection}>
+              <Text style={styles.activeSectionTitle}>🩹 Active injuries this week</Text>
+              {wellnessData.activeInjuries.map(inj => {
+                const sevColor = inj.severity === 'severe'
+                  ? SIGNAL.color.coral
+                  : inj.severity === 'moderate'
+                    ? SIGNAL.color.amber
+                    : SIGNAL.color.inkSoft;
+                return (
+                  <View key={inj.id} style={styles.activeChip}>
+                    <Avatar color={inj.avatarColor} initials={inj.initials} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.activeLabel}>{inj.name}</Text>
+                      <Text style={styles.activeSub}>
+                        {inj.locationSeverity
+                          ? inj.locations.map(l => `${l.charAt(0).toUpperCase() + l.slice(1)} (${inj.locationSeverity[l] || 'mild'})`).join(', ')
+                          : `${inj.locations.map(l => l.charAt(0).toUpperCase() + l.slice(1)).join(', ')}${inj.severity !== 'mild' ? ` · ${inj.severity}` : ''}`
+                        }
+                      </Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={[styles.activeDays, { color: sevColor }]}>{inj.days} of 7d</Text>
+                      <Text style={styles.activeWhen}>{inj.lastReported}</Text>
                     </View>
                   </View>
-                ))}
-              </View>
-            )}
+                );
+              })}
+            </View>
+          )}
+          {/* Active illnesses grouped by athlete */}
+          {wellnessData?.activeIllnesses?.length > 0 && (
+            <View style={styles.activeSection}>
+              <Text style={styles.activeSectionTitle}>🤒 Active illness this week</Text>
+              {wellnessData.activeIllnesses.map(ill => (
+                <View key={ill.id} style={[styles.activeChip, { borderLeftColor: SIGNAL.color.amber }]}>
+                  <Avatar color={ill.avatarColor} initials={ill.initials} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.activeLabel}>{ill.name}</Text>
+                    <Text style={styles.activeSub}>
+                      {ill.symptoms.map(s => s.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase())).join(', ')}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={[styles.activeDays, { color: SIGNAL.color.amber }]}>{ill.days} of 7d</Text>
+                    <Text style={styles.activeWhen}>{ill.lastReported}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
 
-            {/* All athletes sorted: concerns first, then healthy reporters, then non-reporting */}
-            {athletes.length === 0 ? (
-              <Text style={styles.detailEmpty}>No athletes on the team.</Text>
-            ) : (
-              <>
-                {/* Athletes with data — sorted by concern level */}
-                {[...wellnessAthletes]
-                  .sort((a, b) => {
-                    const aConcern = concernAthletes.includes(a) ? 0 : 1;
-                    const bConcern = concernAthletes.includes(b) ? 0 : 1;
-                    return aConcern - bConcern;
-                  })
-                  .map(a => {
-                    const d = wellnessData.athleteAvgs[a.id];
-                    const hasConcern = concernAthletes.includes(a);
-                    return (
-                      <View key={a.id} style={[styles.detailRow, hasConcern && { backgroundColor: STATUS.errorBg, borderRadius: RADIUS.sm, marginHorizontal: -SPACE.xs, paddingHorizontal: SPACE.xs }]}>
-                        <View style={[styles.detailAvatar, { backgroundColor: a.avatarColor || BRAND }]}>
-                          <Text style={styles.detailAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.detailName}>{a.firstName} {a.lastName}</Text>
-                          {hasConcern && d.avgSleep < 2.5 && <Text style={styles.signalText}>• Poor sleep</Text>}
-                          {hasConcern && d.avgLegs < 2.5 && <Text style={styles.signalText}>• Heavy legs</Text>}
-                          {hasConcern && d.moodDeclining && <Text style={styles.signalText}>• Mood declining</Text>}
-                          {hasConcern && d.hasChronicInjury && <Text style={styles.signalText}>• Chronic injury risk</Text>}
-                        </View>
-                        <View style={styles.wellnessScores}>
-                          <Text style={[styles.wellnessScore, { color: d.avgSleep < 2.5 ? STATUS.error : d.avgSleep < 3.5 ? STATUS.warning : STATUS.success }]}>😴 {d.avgSleep.toFixed(1)}</Text>
-                          <Text style={[styles.wellnessScore, { color: d.avgLegs < 2.5 ? STATUS.error : d.avgLegs < 3.5 ? STATUS.warning : STATUS.success }]}>🦵 {d.avgLegs.toFixed(1)}</Text>
-                          <Text style={[styles.wellnessScore, { color: d.avgMood < 2.5 ? STATUS.error : d.avgMood < 3.5 ? STATUS.warning : STATUS.success }]}>😊 {d.avgMood.toFixed(1)}</Text>
-                          {d.injuryDays > 0 && <Text style={[styles.wellnessScore, { color: STATUS.warning }]}>🩹 {d.injuryDays}/7d</Text>}
-                          {d.illnessDays > 0 && <Text style={[styles.wellnessScore, { color: STATUS.warning }]}>🤒 {d.illnessDays}/7d</Text>}
-                        </View>
+          {/* All athletes sorted: concerns first, then healthy reporters, then non-reporting */}
+          {athletes.length === 0 ? (
+            <Text style={styles.detailEmpty}>No athletes on the team.</Text>
+          ) : (
+            <>
+              {/* Athletes with data — sorted by concern level */}
+              {[...wellnessAthletes]
+                .sort((a, b) => {
+                  const aConcern = concernAthletes.includes(a) ? 0 : 1;
+                  const bConcern = concernAthletes.includes(b) ? 0 : 1;
+                  return aConcern - bConcern;
+                })
+                .map(a => {
+                  const d = wellnessData.athleteAvgs[a.id];
+                  const hasConcern = concernAthletes.includes(a);
+                  const scoreColor = (v) =>
+                    v < 2.5 ? SIGNAL.color.coral
+                      : v < 3.5 ? SIGNAL.color.amber
+                      : SIGNAL.color.emerald;
+                  return (
+                    <View
+                      key={a.id}
+                      style={[
+                        styles.detailRow,
+                        hasConcern && {
+                          backgroundColor: `${SIGNAL.color.coral}${SIGNAL.tint.wash}`,
+                          borderRadius: 10,
+                          paddingHorizontal: 8,
+                        },
+                      ]}
+                    >
+                      <Avatar color={a.avatarColor} initials={`${a.firstName?.[0] || ''}${a.lastName?.[0] || ''}`} />
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.detailName}>{a.firstName} {a.lastName}</Text>
+                        {hasConcern && d.avgSleep < 2.5 && <Text style={styles.signalText}>• Poor sleep</Text>}
+                        {hasConcern && d.avgLegs < 2.5 && <Text style={styles.signalText}>• Heavy legs</Text>}
+                        {hasConcern && d.moodDeclining && <Text style={styles.signalText}>• Mood declining</Text>}
+                        {hasConcern && d.hasChronicInjury && <Text style={styles.signalText}>• Chronic injury risk</Text>}
                       </View>
-                    );
-                  })}
+                      <View style={styles.wellnessScores}>
+                        <Text style={[styles.wellnessScore, { color: scoreColor(d.avgSleep) }]}>😴 {d.avgSleep.toFixed(1)}</Text>
+                        <Text style={[styles.wellnessScore, { color: scoreColor(d.avgLegs) }]}>🦵 {d.avgLegs.toFixed(1)}</Text>
+                        <Text style={[styles.wellnessScore, { color: scoreColor(d.avgMood) }]}>😊 {d.avgMood.toFixed(1)}</Text>
+                        {d.injuryDays > 0 && <Text style={[styles.wellnessScore, { color: SIGNAL.color.amber }]}>🩹 {d.injuryDays}/7</Text>}
+                        {d.illnessDays > 0 && <Text style={[styles.wellnessScore, { color: SIGNAL.color.amber }]}>🤒 {d.illnessDays}/7</Text>}
+                      </View>
+                    </View>
+                  );
+                })}
 
-                {/* Non-reporting athletes */}
-                {nonReportingAthletes.length > 0 && (
-                  <>
-                    <Text style={[styles.detailSectionLabel, { marginTop: SPACE.md }]}>Not reporting ({nonReportingAthletes.length})</Text>
-                    {nonReportingAthletes.map(a => (
-                      <View key={a.id} style={styles.detailRow}>
-                        <View style={[styles.detailAvatar, { backgroundColor: a.avatarColor || BRAND, opacity: 0.4 }]}>
-                          <Text style={styles.detailAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.detailName, { color: NEUTRAL.muted }]}>{a.firstName} {a.lastName}</Text>
-                        </View>
-                        <Text style={styles.detailSub}>No data</Text>
+              {/* Non-reporting athletes */}
+              {nonReportingAthletes.length > 0 && (
+                <>
+                  <Text style={[styles.sectionLabel, { marginTop: 12 }]}>
+                    Not reporting ({nonReportingAthletes.length})
+                  </Text>
+                  {nonReportingAthletes.map(a => (
+                    <View key={a.id} style={styles.detailRow}>
+                      <Avatar color={a.avatarColor} initials={`${a.firstName?.[0] || ''}${a.lastName?.[0] || ''}`} faded />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.detailName, { color: SIGNAL.color.mute }]}>
+                          {a.firstName} {a.lastName}
+                        </Text>
                       </View>
-                    ))}
-                  </>
-                )}
-              </>
-            )}
-          </View>
-        )}
+                      <Text style={styles.detailSub}>No data</Text>
+                    </View>
+                  ))}
+                </>
+              )}
+            </>
+          )}
+        </Section>
 
         {/* ── Season in Review (permanent access) ── */}
         {(() => {
@@ -926,20 +1061,34 @@ export default function CoachAnalytics({
           const SPORT_LABELS = { cross_country: 'Cross Country', indoor_track: 'Indoor Track', outdoor_track: 'Outdoor Track' };
           const SPORT_ICONS = { cross_country: '🏔️', indoor_track: '🏟️', outdoor_track: '🏃' };
           return (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Season in Review</Text>
-              {completed.map((s, i) => (
-                <TouchableOpacity key={i} style={styles.seasonReviewCard} onPress={() => setSeasonReviewSeason(s)}>
-                  <Text style={styles.seasonReviewIcon}>{SPORT_ICONS[s.sport] || '🏃'}</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.seasonReviewName}>{s.name || SPORT_LABELS[s.sport] || 'Season'}</Text>
-                    <Text style={styles.seasonReviewDate}>
-                      {new Date(s.seasonStart).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} – {new Date(s.championshipDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={NEUTRAL.muted} />
-                </TouchableOpacity>
-              ))}
+            <View style={styles.card}>
+              <View style={[styles.sectionHeaderBtn, { paddingBottom: 6 }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sectionTitle}>Season in Review</Text>
+                </View>
+              </View>
+              <View style={styles.cardBody}>
+                {completed.map((s, i) => (
+                  <TouchableOpacity
+                    key={i}
+                    style={[
+                      styles.seasonReviewCard,
+                      i < completed.length - 1 && { borderBottomWidth: 1, borderBottomColor: SIGNAL.color.line },
+                    ]}
+                    onPress={() => setSeasonReviewSeason(s)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.seasonReviewIcon}>{SPORT_ICONS[s.sport] || '🏃'}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.seasonReviewName}>{s.name || SPORT_LABELS[s.sport] || 'Season'}</Text>
+                      <Text style={styles.seasonReviewDate}>
+                        {new Date(s.seasonStart).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} – {new Date(s.championshipDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={SIGNAL.color.mute2} />
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           );
         })()}
@@ -947,14 +1096,16 @@ export default function CoachAnalytics({
       </ScrollView>
       ) : (
       /* ── Race Analytics Tab ── */
-      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {loadingRaces ? (
-          <View style={{ padding: 40, alignItems: 'center' }}><ActivityIndicator size="large" color={BRAND} /></View>
+          <View style={{ padding: 40, alignItems: 'center' }}>
+            <ActivityIndicator size="large" color={SIGNAL.color.indigo} />
+          </View>
         ) : raceMeets.length === 0 ? (
-          <View style={[styles.section, { alignItems: 'center', marginTop: SPACE.xl }]}>
-            <Text style={{ fontSize: 40, marginBottom: SPACE.md }}>🏁</Text>
+          <View style={[styles.card, { padding: 24, alignItems: 'center' }]}>
+            <Text style={{ fontSize: 40, marginBottom: 12 }}>🏁</Text>
             <Text style={styles.sectionTitle}>No race data yet</Text>
-            <Text style={[styles.sectionSub, { textAlign: 'center', marginTop: SPACE.sm }]}>
+            <Text style={[styles.eyebrow, { textAlign: 'center', marginTop: 8 }]}>
               Create meets and enter results in Training {'>'} Races to see analytics here.
             </Text>
           </View>
@@ -976,9 +1127,9 @@ export default function CoachAnalytics({
 
           if (raceAnalytics.length === 0) {
             return (
-              <View style={[styles.section, { alignItems: 'center', marginTop: SPACE.xl }]}>
+              <View style={[styles.card, { padding: 24, alignItems: 'center' }]}>
                 <Text style={styles.sectionTitle}>No complete results yet</Text>
-                <Text style={[styles.sectionSub, { textAlign: 'center', marginTop: SPACE.sm }]}>
+                <Text style={[styles.eyebrow, { textAlign: 'center', marginTop: 8 }]}>
                   Enter results for at least 5 athletes in a race to see pack analysis.
                 </Text>
               </View>
@@ -993,25 +1144,39 @@ export default function CoachAnalytics({
           return (
             <>
               {/* Season overview */}
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionNum}>{raceAnalytics.length}</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.sectionTitle}>Races with Results</Text>
-                    <Text style={styles.sectionSub}>Season pack spread trend</Text>
+              <View style={styles.card}>
+                <View style={styles.sectionHeaderBtn}>
+                  <View style={styles.sectionHeaderRow}>
+                    <View style={styles.numBadge}>
+                      <Text style={styles.numBadgeText}>{raceAnalytics.length}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.sectionTitle}>Races with Results</Text>
+                      <Text style={styles.eyebrow}>Season pack spread trend</Text>
+                    </View>
                   </View>
                 </View>
                 {raceAnalytics.length >= 2 && (
-                  <View style={[styles.summaryRow, { marginTop: SPACE.md }]}>
-                    <View style={[styles.summaryCard, { backgroundColor: spreadImproved ? '#e8f5e9' : '#fff3e0' }]}>
-                      <Text style={[styles.summaryNum, { color: spreadImproved ? '#2e7d32' : '#e65100' }]}>
-                        {spreadImproved ? '↓' : '↑'} {formatTime(Math.abs(latestPack.spread15 - firstPack.spread15))}
-                      </Text>
-                      <Text style={styles.summaryLabel}>Spread change</Text>
-                    </View>
-                    <View style={[styles.summaryCard, { backgroundColor: BRAND_LIGHT }]}>
-                      <Text style={[styles.summaryNum, { color: BRAND }]}>{formatTime(latestPack.spread15)}</Text>
-                      <Text style={styles.summaryLabel}>Current 1-5 spread</Text>
+                  <View style={styles.cardBody}>
+                    <View style={styles.heroWrap}>
+                      <LinearGradient
+                        colors={spreadImproved ? GRAD_OK : GRAD_WARN}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.heroPill}
+                      >
+                        <View style={styles.heroPillCol}>
+                          <Text style={styles.heroPillNumMono}>
+                            {spreadImproved ? '↓' : '↑'} {formatTime(Math.abs(latestPack.spread15 - firstPack.spread15))}
+                          </Text>
+                          <Text style={styles.heroPillLabel}>Spread change</Text>
+                        </View>
+                        <View style={styles.heroPillDivider} />
+                        <View style={styles.heroPillCol}>
+                          <Text style={styles.heroPillNumMono}>{formatTime(latestPack.spread15)}</Text>
+                          <Text style={styles.heroPillLabel}>Current 1–5</Text>
+                        </View>
+                      </LinearGradient>
                     </View>
                   </View>
                 )}
@@ -1019,32 +1184,39 @@ export default function CoachAnalytics({
 
               {/* Per-race breakdown */}
               {raceAnalytics.map((ra, i) => (
-                <View key={`${ra.race.id}`} style={styles.section}>
-                  <Text style={styles.sectionTitle}>{ra.meet.name}</Text>
-                  <Text style={styles.sectionSub}>
-                    {ra.race.label} · {ra.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                  </Text>
-                  <View style={[styles.summaryRow, { marginTop: SPACE.md }]}>
-                    <View style={[styles.summaryCard, { backgroundColor: NEUTRAL.bg }]}>
-                      <Text style={[styles.summaryNum, { color: BRAND_DARK }]}>{formatTime(ra.pack.spread15)}</Text>
-                      <Text style={styles.summaryLabel}>1-5 Spread</Text>
+                <View key={`${ra.race.id}`} style={styles.card}>
+                  <View style={[styles.sectionHeaderBtn, { paddingBottom: 4 }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.sectionTitle}>{ra.meet.name}</Text>
+                      <Text style={styles.eyebrow}>
+                        {ra.race.label} · {ra.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </Text>
                     </View>
-                    <View style={[styles.summaryCard, { backgroundColor: NEUTRAL.bg }]}>
-                      <Text style={[styles.summaryNum, { color: BRAND_DARK }]}>{formatTime(ra.pack.teamAvg)}</Text>
-                      <Text style={styles.summaryLabel}>Team Avg</Text>
-                    </View>
-                    {ra.pack.teamScore && (
-                      <View style={[styles.summaryCard, { backgroundColor: NEUTRAL.bg }]}>
-                        <Text style={[styles.summaryNum, { color: BRAND_DARK }]}>{ra.pack.teamScore}</Text>
-                        <Text style={styles.summaryLabel}>Score</Text>
+                  </View>
+                  <View style={styles.cardBody}>
+                    <View style={styles.statRow}>
+                      <View style={styles.statTile}>
+                        <Text style={styles.statTileNum}>{formatTime(ra.pack.spread15)}</Text>
+                        <Text style={styles.statTileLabel}>1–5 Spread</Text>
                       </View>
+                      <View style={styles.statTile}>
+                        <Text style={styles.statTileNum}>{formatTime(ra.pack.teamAvg)}</Text>
+                        <Text style={styles.statTileLabel}>Team Avg</Text>
+                      </View>
+                      {ra.pack.teamScore && (
+                        <View style={styles.statTile}>
+                          <Text style={styles.statTileNum}>{ra.pack.teamScore}</Text>
+                          <Text style={styles.statTileLabel}>Score</Text>
+                        </View>
+                      )}
+                    </View>
+                    {ra.pack.runner6 && (
+                      <Text style={[styles.detailHint, { marginTop: 10, marginBottom: 0 }]}>
+                        #6 {ra.pack.runner6.name} (+{formatTime(ra.pack.gap6to5)})
+                        {ra.pack.runner7 ? ` · #7 ${ra.pack.runner7.name} (+${formatTime(ra.pack.gap7to5)})` : ''}
+                      </Text>
                     )}
                   </View>
-                  {ra.pack.runner6 && (
-                    <Text style={[styles.sectionSub, { marginTop: SPACE.sm }]}>
-                      #6 {ra.pack.runner6.name} (+{formatTime(ra.pack.gap6to5)}) · #7 {ra.pack.runner7?.name || '—'} {ra.pack.gap7to5 ? `(+${formatTime(ra.pack.gap7to5)})` : ''}
-                    </Text>
-                  )}
                 </View>
               ))}
             </>
@@ -1062,93 +1234,520 @@ export default function CoachAnalytics({
 }
 
 const styles = StyleSheet.create({
-  container:       { flex: 1, backgroundColor: NEUTRAL.bg },
-  header:          { backgroundColor: NEUTRAL.card, paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  tabRow:          { flexDirection: 'row', backgroundColor: NEUTRAL.card, borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
-  tab:             { flex: 1, paddingVertical: 12, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  tabText:         { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted },
-  backBtn:         { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6 },
-  backText:        { color: BRAND_DARK, fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.semibold },
-  headerTitle:     { fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  scroll:          { flex: 1 },
-  section:         { backgroundColor: NEUTRAL.card, marginHorizontal: SPACE.lg, marginTop: SPACE.md, borderRadius: RADIUS.lg, padding: SPACE.lg, ...SHADOW.sm },
-  sectionHeader:   { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
-  sectionNum:      { width: 28, height: 28, borderRadius: RADIUS.full, backgroundColor: BRAND_LIGHT, textAlign: 'center', lineHeight: 28, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND, overflow: 'hidden' },
-  sectionTitle:    { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  sectionSub:      { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 1 },
-  summaryRow:      { flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md },
-  summaryCard:     { flex: 1, borderRadius: RADIUS.md, padding: SPACE.md, alignItems: 'center' },
-  summaryNum:      { fontSize: FONT_SIZE['2xl'], fontWeight: FONT_WEIGHT.bold },
-  summaryLabel:    { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: 2 },
-  intensityRow:    { flexDirection: 'row', alignItems: 'center', gap: SPACE.lg, marginTop: SPACE.md },
-  intensityNum:    { fontSize: FONT_SIZE['2xl'], fontWeight: FONT_WEIGHT.bold },
-  intensityLabel:  { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: BRAND_DARK },
-  intensitySub:    { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 2 },
-  packSummaryRow:  { flexDirection: 'row', gap: SPACE.lg, marginTop: SPACE.md },
-  packSummaryCol:  { flex: 1, alignItems: 'center' },
-  packSummaryTitle:{ fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.body, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: SPACE.xs },
-  packSummaryHint: { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 2 },
-  weekDotsRow:     { flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.sm },
-  weekDot:         { alignItems: 'center', gap: 2 },
-  weekDotCircle:   { width: 10, height: 10, borderRadius: 5 },
-  weekDotMiles:    { fontSize: 10, fontWeight: FONT_WEIGHT.semibold, color: BRAND_DARK },
-  weekDotLabel:    { fontSize: 9, color: NEUTRAL.muted },
-  packGenderRow:   { flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md, marginBottom: SPACE.sm },
-  packGenderBtn:   { borderRadius: RADIUS.sm, borderWidth: 1.5, borderColor: NEUTRAL.border, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm, backgroundColor: NEUTRAL.card },
-  packGenderBtnActive: { backgroundColor: BRAND, borderColor: BRAND },
-  packGenderText:  { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.body },
-  packGenderTextActive: { color: '#fff' },
-  spreadGroup:     { gap: SPACE.sm, marginTop: SPACE.md },
-  spreadRow:       { flexDirection: 'row', alignItems: 'baseline', gap: SPACE.sm },
-  spreadNum:       { fontSize: FONT_SIZE['2xl'], fontWeight: FONT_WEIGHT.bold, color: BRAND },
-  spreadLabel:     { fontSize: FONT_SIZE.sm, color: NEUTRAL.body },
-  detail:          { backgroundColor: NEUTRAL.card, marginHorizontal: SPACE.lg, marginTop: 1, borderBottomLeftRadius: RADIUS.lg, borderBottomRightRadius: RADIUS.lg, padding: SPACE.lg, paddingTop: SPACE.sm, ...SHADOW.sm },
-  detailRow:       { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, paddingVertical: SPACE.sm, borderBottomWidth: 1, borderBottomColor: NEUTRAL.bg },
-  detailAvatar:    { width: 32, height: 32, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center' },
-  detailAvatarText:{ color: '#fff', fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
-  detailGroupLabel:{ fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, marginBottom: SPACE.xs, letterSpacing: 0.5 },
-  detailName:      { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: BRAND_DARK },
-  detailSub:       { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 1 },
-  detailEmpty:     { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted, textAlign: 'center', paddingVertical: SPACE.md },
-  statusBadge:     { borderRadius: RADIUS.sm, paddingHorizontal: SPACE.sm, paddingVertical: 3 },
-  statusText:      { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
-  pctBadge:        { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
-  signalText:      { fontSize: FONT_SIZE.xs, color: STATUS.error, marginTop: 2 },
-  noDataText:      { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted, marginTop: SPACE.md, textAlign: 'center' },
-  activeInjurySection:      { marginTop: SPACE.lg },
-  activeInjurySectionTitle: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.sm },
-  activeInjuryChip:         { backgroundColor: STATUS.errorBg, borderRadius: RADIUS.md, padding: SPACE.md, marginBottom: SPACE.sm, borderLeftWidth: 3, borderLeftColor: STATUS.error },
-  activeInjuryLabel:        { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  activeInjuryNames:        { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginTop: 2 },
-  activeInjuryDays:         { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold },
-  activeInjuryWhen:         { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: 1 },
-  wellnessConcernHint: { fontSize: FONT_SIZE.xs, color: STATUS.warning, fontWeight: FONT_WEIGHT.semibold, marginTop: SPACE.md },
-  wellnessScores:  { flexDirection: 'row', gap: SPACE.sm },
-  wellnessScore:   { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
-  detailSectionLabel: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, color: NEUTRAL.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: SPACE.sm, marginTop: SPACE.xs },
-  packGlanceSection: { marginTop: SPACE.md },
-  packGlanceTitle: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.sm },
-  packGlanceRow:   { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, paddingVertical: 3 },
-  packGlanceRank:  { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, color: NEUTRAL.muted, width: 20 },
-  packGlanceName:  { fontSize: FONT_SIZE.sm, color: BRAND_DARK, flex: 1 },
-  packGlanceMiles: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, width: 36, textAlign: 'right' },
-  packGlanceGap:   { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, width: 30, textAlign: 'right' },
-  packRow:         { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, paddingVertical: SPACE.sm },
-  packRank:        { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: NEUTRAL.muted, width: 24 },
-  packAvatar:      { width: 28, height: 28, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center' },
-  packAvatarText:  { color: '#fff', fontSize: 10, fontWeight: FONT_WEIGHT.bold },
-  packName:        { fontSize: FONT_SIZE.sm, color: BRAND_DARK, marginBottom: 3 },
-  packBarBg:       { height: 8, backgroundColor: NEUTRAL.bg, borderRadius: 4, overflow: 'hidden' },
-  packBarFill:     { height: '100%', borderRadius: 4 },
-  packMiles:       { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, width: 40, textAlign: 'right' },
-  gaugeGroup:      { gap: SPACE.sm, marginTop: SPACE.md },
-  gauge:           { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
-  gaugeLabel:      { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, minWidth: 40 },
-  gaugeBg:         { flex: 1, height: 8, backgroundColor: NEUTRAL.bg, borderRadius: 4, overflow: 'hidden' },
-  gaugeFill:       { height: '100%', borderRadius: 4 },
-  gaugeValue:      { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, minWidth: 28, textAlign: 'right' },
-  seasonReviewCard: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, marginBottom: SPACE.sm, ...SHADOW.sm },
-  seasonReviewIcon: { fontSize: 24 },
-  seasonReviewName: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  seasonReviewDate: { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 2 },
+  container: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper2,
+  },
+
+  // ── Header ──
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: Platform.OS === 'ios' ? 68 : 44,
+    paddingBottom: 14,
+    paddingHorizontal: 14,
+    backgroundColor: SIGNAL.color.white,
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: 64,
+  },
+  backText: {
+    fontSize: 15,
+    color: SIGNAL.color.inkSoft,
+    fontFamily: SIGNAL.font.body,
+    marginLeft: 2,
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 8,
+  },
+  headerTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 18,
+    color: SIGNAL.color.indigo,
+    letterSpacing: -0.36,
+  },
+  headerSub: {
+    ...SIGNAL.style.eyebrow,
+    marginTop: 3,
+  },
+
+  // ── Tab bar ──
+  tabRow: {
+    flexDirection: 'row',
+    backgroundColor: SIGNAL.color.white,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 11,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabActive: {
+    borderBottomColor: SIGNAL.color.indigo,
+  },
+  tabText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 13.5,
+    color: SIGNAL.color.mute,
+  },
+  tabTextActive: {
+    color: SIGNAL.color.indigo,
+  },
+
+  scroll: { flex: 1 },
+  scrollContent: {
+    padding: 14,
+    paddingBottom: 110,
+    gap: 12,
+  },
+
+  // ── Card shell ──
+  card: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    overflow: 'hidden',
+    ...SIGNAL.border.hairline,
+    marginBottom: 12,
+  },
+  sectionHeaderBtn: {
+    padding: 16,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+  },
+  numBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: `${SIGNAL.color.indigo}${SIGNAL.tint.chip}`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  numBadgeText: {
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 12,
+    color: SIGNAL.color.indigo,
+    letterSpacing: SIGNAL.letter.numTight,
+  },
+  sectionTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 18,
+    color: SIGNAL.color.indigo,
+    letterSpacing: -0.36,
+  },
+  eyebrow: {
+    ...SIGNAL.style.eyebrow,
+    marginTop: 3,
+  },
+  cardBody: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    paddingTop: 0,
+  },
+
+  // ── Hero pill (gradient summary) ──
+  heroWrap: {
+    marginTop: 12,
+  },
+  heroPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: SIGNAL.radius.card,
+  },
+  heroPillCol: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  heroPillDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: 'rgba(255,255,255,0.28)',
+  },
+  heroPillNum: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 22,
+    lineHeight: 26,
+    color: '#fff',
+    letterSpacing: SIGNAL.letter.numTight,
+  },
+  heroPillNumMono: {
+    fontFamily: SIGNAL.font.mono,
+    fontSize: 18,
+    lineHeight: 22,
+    color: '#fff',
+  },
+  heroPillLabel: {
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: 10.5,
+    color: 'rgba(255,255,255,0.88)',
+    marginTop: 3,
+  },
+  heroPillEyebrow: {
+    fontSize: 9.5,
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.85)',
+    fontFamily: SIGNAL.font.bodyMedium,
+    marginBottom: 2,
+  },
+  heroPillSolo: {
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: SIGNAL.radius.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroSoloNum: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 36,
+    lineHeight: 40,
+    color: '#fff',
+    letterSpacing: SIGNAL.letter.numTight,
+  },
+  heroSoloSub: {
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: 11.5,
+    color: 'rgba(255,255,255,0.88)',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+
+  // ── Detail rows ──
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 9,
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  avatar: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    color: '#fff',
+    fontFamily: SIGNAL.font.bodyBold,
+    letterSpacing: SIGNAL.letter.numTight,
+  },
+  detailName: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 13,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  detailSub: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 10.5,
+    color: SIGNAL.color.mute,
+    marginTop: 1,
+  },
+  detailEmpty: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 13,
+    color: SIGNAL.color.mute,
+    textAlign: 'center',
+    paddingVertical: 16,
+  },
+  detailHint: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 10.5,
+    color: SIGNAL.color.mute,
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  groupLabel: {
+    fontSize: 10.5,
+    fontFamily: SIGNAL.font.bodyBold,
+    letterSpacing: 0.42,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+    marginTop: 4,
+  },
+  sectionLabel: {
+    fontSize: 10.5,
+    fontFamily: SIGNAL.font.bodyBold,
+    letterSpacing: 0.42,
+    textTransform: 'uppercase',
+    color: SIGNAL.color.mute,
+    marginBottom: 6,
+  },
+  signalText: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 10.5,
+    color: SIGNAL.color.coral,
+    marginTop: 2,
+  },
+  numBig: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 15,
+    letterSpacing: SIGNAL.letter.numTight,
+  },
+
+  // ── Volume week dots ──
+  weekDotsRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  weekDot: {
+    alignItems: 'center',
+    minWidth: 26,
+  },
+  weekDotNum: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 11.5,
+    letterSpacing: SIGNAL.letter.numTight,
+  },
+  weekDotLabel: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 8.5,
+    color: SIGNAL.color.mute2,
+    marginTop: 1,
+  },
+
+  // ── Chips ──
+  chip: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: SIGNAL.radius.chip,
+  },
+  chipText: {
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 10,
+    letterSpacing: 0.3,
+  },
+
+  // ── Pack ──
+  packGenderRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 12,
+  },
+  packGenderBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: SIGNAL.radius.button,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    backgroundColor: SIGNAL.color.white,
+  },
+  packGenderBtnActive: {
+    backgroundColor: SIGNAL.color.indigo,
+    borderColor: SIGNAL.color.indigo,
+  },
+  packGenderText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 12,
+    color: SIGNAL.color.inkSoft,
+  },
+  packGenderTextActive: {
+    color: '#fff',
+  },
+  spreadGroup: {
+    gap: 6,
+    marginBottom: 10,
+  },
+  spreadRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  spreadNum: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 20,
+    color: SIGNAL.color.indigo,
+    letterSpacing: SIGNAL.letter.numTight,
+  },
+  spreadLabel: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 11.5,
+    color: SIGNAL.color.mute,
+  },
+  packRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingVertical: 5,
+  },
+  packRank: {
+    fontFamily: SIGNAL.font.mono,
+    fontSize: 10,
+    color: SIGNAL.color.mute,
+    width: 22,
+  },
+  packName: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 12,
+    color: SIGNAL.color.ink,
+    marginBottom: 3,
+  },
+  packBarBg: {
+    height: 7,
+    backgroundColor: SIGNAL.color.line,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  packBarFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  packMiles: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 12,
+    color: SIGNAL.color.ink,
+    width: 38,
+    textAlign: 'right',
+    letterSpacing: SIGNAL.letter.numTight,
+  },
+
+  // ── Wellness gauges ──
+  gauge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  gaugeLabel: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 12,
+    color: SIGNAL.color.inkSoft,
+    minWidth: 96,
+  },
+  gaugeBg: {
+    flex: 1,
+    height: 7,
+    backgroundColor: SIGNAL.color.line,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  gaugeFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  gaugeValue: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 12,
+    minWidth: 32,
+    textAlign: 'right',
+    letterSpacing: SIGNAL.letter.numTight,
+  },
+  wellnessConcernHint: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 11,
+    color: SIGNAL.color.amber,
+    marginTop: 10,
+    textAlign: 'center',
+  },
+  wellnessScores: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  wellnessScore: {
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 11,
+    letterSpacing: SIGNAL.letter.numTight,
+  },
+
+  // ── Active injuries / illness ──
+  activeSection: {
+    marginBottom: 12,
+  },
+  activeSectionTitle: {
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 11.5,
+    color: SIGNAL.color.coral,
+    marginBottom: 8,
+  },
+  activeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: `${SIGNAL.color.coral}${SIGNAL.tint.wash}`,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 6,
+    borderLeftWidth: 3,
+    borderLeftColor: SIGNAL.color.coral,
+  },
+  activeLabel: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 13,
+    color: SIGNAL.color.ink,
+  },
+  activeSub: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 11,
+    color: SIGNAL.color.inkSoft,
+    marginTop: 2,
+  },
+  activeDays: {
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 12,
+    letterSpacing: SIGNAL.letter.numTight,
+  },
+  activeWhen: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 10,
+    color: SIGNAL.color.mute,
+    marginTop: 1,
+  },
+
+  // ── Race tab stat tiles ──
+  statRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  statTile: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper2,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+  },
+  statTileNum: {
+    fontFamily: SIGNAL.font.mono,
+    fontSize: 16,
+    color: SIGNAL.color.ink,
+  },
+  statTileLabel: {
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: 9.5,
+    color: SIGNAL.color.mute,
+    marginTop: 2,
+  },
+
+  // ── Season Review tiles ──
+  seasonReviewCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    paddingVertical: 10,
+  },
+  seasonReviewIcon: {
+    fontSize: 20,
+  },
+  seasonReviewName: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 13,
+    color: SIGNAL.color.ink,
+  },
+  seasonReviewDate: {
+    ...SIGNAL.style.eyebrow,
+    marginTop: 2,
+  },
 });

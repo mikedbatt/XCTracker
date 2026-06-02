@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
@@ -14,8 +15,9 @@ import { auth, db } from '../firebaseConfig';
 import {
   BRAND, BRAND_ACCENT, BRAND_DARK, BRAND_LIGHT,
   FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
-  EFFORT_COLORS,
+  EFFORT_COLORS, SIGNAL,
 } from '../constants/design';
+import { SIGNAL_TYPE_COLORS } from '../constants/training';
 import { getActiveSeason, getPhaseForSeason, getCompletedSeasons, generateVolumeCurve } from './SeasonPlanner';
 import SeasonReview from './SeasonReview';
 import { formatTime, calcPace, formatPace } from '../utils/raceUtils';
@@ -94,6 +96,71 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
     isCurrent: mon === currentMonday,
     isPast: mon < currentMonday,
   }));
+
+  // Prepend up to 3 weeks of prior-season actuals when the current season is
+  // brand new — gives athletes visual context for what they were running
+  // before this season's volume curve kicks in. Prior weeks have target=null
+  // so the chart renders just the actual bar (no ghost target behind it).
+  const elapsedSeasonWeeks = activeSeason
+    ? Math.max(0, Math.floor((new Date() - new Date(activeSeason.seasonStart)) / (7 * 86400000)))
+    : 99;
+  const priorWeeks = [];
+  if (elapsedSeasonWeeks < 3 && activeSeason) {
+    const seasonStart = new Date(activeSeason.seasonStart);
+    for (let w = 3; w >= 1; w--) {
+      const monday = new Date(seasonStart);
+      monday.setDate(seasonStart.getDate() - 7 * w);
+      monday.setHours(0, 0, 0, 0);
+      const mondayISO = monday.toISOString().split('T')[0];
+      const wRuns = weeklyRunData[mondayISO];
+      priorWeeks.push({
+        monday: mondayISO,
+        target: null,
+        actual: wRuns ? Math.round(wRuns.reduce((s, r) => s + (r.miles || 0), 0) * 10) / 10 : 0,
+        isCurrent: false,
+        isPast: true,
+        isPriorSeason: true,
+      });
+    }
+  }
+  const allVolumeWeeks = [...priorWeeks, ...volumeWeeks];
+
+  // Build the last 4 calendar weeks (Monday-aligned, oldest → newest) with
+  // per-week actual + target. Targets come from volumePlan if the week is
+  // inside the current season; otherwise we fall back to the group's static
+  // weeklyMilesTarget so prior-to-season weeks still produce a meaningful
+  // compliance %.
+  const last4WeekData = (() => {
+    const today = new Date();
+    const dow = today.getDay();
+    const thisMon = new Date(today);
+    thisMon.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
+    thisMon.setHours(0, 0, 0, 0);
+    const weeks = [];
+    for (let i = 3; i >= 0; i--) {
+      const monday = new Date(thisMon);
+      monday.setDate(thisMon.getDate() - 7 * i);
+      const mondayISO = monday.toISOString().split('T')[0];
+      const wRuns = weeklyRunData[mondayISO] || [];
+      const actual = Math.round(wRuns.reduce((s, r) => s + (r.miles || 0), 0) * 10) / 10;
+      const target = volumePlan[mondayISO] || myGroup?.weeklyMilesTarget || 0;
+      weeks.push({ monday: mondayISO, actual, target });
+    }
+    return weeks;
+  })();
+
+  // Big-pill compliance: sum(actual) / sum(target) across the 4-week window.
+  const compliance4w = (() => {
+    const sumActual = last4WeekData.reduce((s, w) => s + w.actual, 0);
+    const sumTarget = last4WeekData.reduce((s, w) => s + w.target, 0);
+    if (sumTarget <= 0) return null;
+    return Math.round((sumActual / sumTarget) * 100);
+  })();
+
+  // Per-week trend dots: each value = that week's actual/target × 100.
+  const volumeTrend = last4WeekData.map(w =>
+    w.target > 0 ? Math.round((w.actual / w.target) * 100) : null
+  );
 
   // ── Feature 2: Race Performance data ──
   const myResults = raceResults.map(res => {
@@ -333,23 +400,66 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
     if (c.injury) { injuryStreak++; } else break;
   }
   if (recentCheckins[0]?.injury) {
-    const locs = recentCheckins[0].injury.locations || [];
-    activeInjuries.push({ locations: locs, severity: recentCheckins[0].injury.severity, streak: injuryStreak });
+    const inj = recentCheckins[0].injury;
+    activeInjuries.push({
+      locations: inj.locations || [],
+      perLocation: inj.perLocation,  // undefined for older check-ins without per-location data
+      severity: inj.severity,
+      streak: injuryStreak,
+    });
   }
 
   // ── Render helpers ──
 
-  const renderGauge = (value, label, max = 5) => {
-    const pct = value ? (value / max) * 100 : 0;
-    const color = value >= 3.5 ? STATUS.success : value >= 2.5 ? STATUS.warning : STATUS.error;
+  const gaugeColor = (v) => {
+    if (v == null) return SIGNAL.color.mute2;
+    if (v >= 3.5) return SIGNAL.color.emerald;
+    if (v >= 2.5) return SIGNAL.color.amber;
+    return SIGNAL.color.coral;
+  };
+
+  const renderGauge = (value, label) => {
+    const pct = value ? (value / 5) * 100 : 0;
+    const color = gaugeColor(value);
     return (
       <View style={styles.gauge}>
-        <Text style={styles.gaugeLabel}>{label}</Text>
+        <View style={styles.gaugeHeader}>
+          <Text style={styles.gaugeLabel}>{label}</Text>
+          <Text style={styles.gaugeValue}>
+            {value ? value.toFixed(1) : '—'}
+            <Text style={styles.gaugeValueMute}>/5</Text>
+          </Text>
+        </View>
         <View style={styles.gaugeBg}>
           <View style={[styles.gaugeFill, { width: pct + '%', backgroundColor: color }]} />
         </View>
-        <Text style={[styles.gaugeValue, { color }]}>{value ? value.toFixed(1) : '—'}</Text>
       </View>
+    );
+  };
+
+  // Section header renderer for collapsible cards
+  const renderSectionHeader = (sectionKey, num, title, sub) => {
+    const isOpen = expandedSection === sectionKey;
+    return (
+      <TouchableOpacity
+        onPress={() => toggle(sectionKey)}
+        activeOpacity={0.85}
+        style={styles.sectionHeaderBtn}
+      >
+        <View style={styles.numBadge}>
+          <Text style={styles.numBadgeText}>{num}</Text>
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.sectionTitle}>{title}</Text>
+          {sub ? <Text style={styles.eyebrow}>{sub}</Text> : null}
+        </View>
+        <Ionicons
+          name="chevron-down"
+          size={16}
+          color={SIGNAL.color.mute2}
+          style={{ transform: [{ rotate: isOpen ? '180deg' : '0deg' }] }}
+        />
+      </TouchableOpacity>
     );
   };
 
@@ -360,391 +470,571 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
       <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-            <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+            <Ionicons name="chevron-back" size={22} color={SIGNAL.color.inkSoft} />
             <Text style={styles.backText}>Back</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>My Stats</Text>
           <View style={{ width: 60 }} />
         </View>
-        <View style={styles.loadingWrap}><ActivityIndicator size="large" color={BRAND} /></View>
+        <View style={styles.loadingWrap}><ActivityIndicator size="large" color={SIGNAL.color.indigo} /></View>
       </View>
     );
   }
 
+  // VDOT badge value (header chip)
+  const vdotValue = trainingPaces?.vdot ? Math.round(trainingPaces.vdot * 10) / 10 : null;
+
+  // Header subline — mirrors the design's "Season VI · Build · 40d to championship"
+  const headerSub = (() => {
+    if (!activeSeason) return 'No active season';
+    const parts = [];
+    if (activeSeason.name) parts.push(activeSeason.name);
+    if (phaseInfo?.name) parts.push(phaseInfo.name);
+    if (phaseInfo?.daysToChamp != null && phaseInfo.daysToChamp > 0) parts.push(`${phaseInfo.daysToChamp}d to championship`);
+    return parts.join(' · ');
+  })();
+
   return (
     <View style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+        <TouchableOpacity onPress={onClose} style={styles.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Ionicons name="chevron-back" size={22} color={SIGNAL.color.inkSoft} />
           <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>My Stats</Text>
-        <View style={{ width: 60 }} />
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>My Stats</Text>
+          {!!headerSub && <Text style={styles.headerSub} numberOfLines={1}>{headerSub}</Text>}
+        </View>
+        <View style={styles.headerRight}>
+          {vdotValue != null ? (
+            <View style={styles.vdotChip}>
+              <Text style={styles.vdotChipText}>VDOT {vdotValue}</Text>
+            </View>
+          ) : <View style={{ width: 60 }} />}
+        </View>
       </View>
 
-      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView
+        style={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ padding: 14, paddingBottom: 40, gap: 12 }}
+      >
 
-        {/* ── 1. Season Volume Arc ── */}
-        <TouchableOpacity style={styles.section} onPress={() => toggle('volume')} activeOpacity={0.8}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionNum}>1</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.sectionTitle}>Mileage Volume</Text>
-              <Text style={styles.sectionSub}>
-                {!activeSeason
-                  ? 'No active season'
-                  : phaseInfo.weekNum
-                    ? `Week ${phaseInfo.weekNum}${totalWeeks ? ` of ${totalWeeks}` : ''} · ${phaseInfo.name}`
-                    : phaseInfo.name /* e.g. "Pre-Season" before start date */}
-                {phaseInfo.daysToChamp != null && phaseInfo.daysToChamp > 0 ? ` · ${phaseInfo.daysToChamp}d to championship` : ''}
-              </Text>
-            </View>
-            <Ionicons name={expandedSection === 'volume' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />
-          </View>
+        {/* ── 1. Mileage Volume ── */}
+        <View style={styles.card}>
+          {renderSectionHeader(
+            'volume',
+            '1',
+            'Mileage Volume',
+            !activeSeason
+              ? 'No active season'
+              : phaseInfo.weekNum
+                ? `Week ${phaseInfo.weekNum}${totalWeeks ? ` of ${totalWeeks}` : ''} · ${phaseInfo.name}${phaseInfo.daysToChamp != null && phaseInfo.daysToChamp > 0 ? ` · ${phaseInfo.daysToChamp}d to championship` : ''}`
+                : `${phaseInfo.name}${phaseInfo.daysToChamp != null && phaseInfo.daysToChamp > 0 ? ` · ${phaseInfo.daysToChamp}d to championship` : ''}`
+          )}
 
           {volumeWeeks.length > 0 ? (
-            <View>
-              {/* Phase strip */}
-              <View style={styles.phaseStrip}>
-                {(phaseInfo.phases || []).map((p, i) => (
-                  <View key={i} style={[styles.phaseChip, p.name === phaseInfo.name && { backgroundColor: p.color, borderColor: p.color }]}>
-                    <Text style={[styles.phaseChipText, p.name === phaseInfo.name && { color: '#fff' }]}>{p.name.replace('Pre-Season ', 'Pre-')}</Text>
+            <View style={styles.cardBody}>
+              {/* Hero gauge — gradient pill, colored by status */}
+              {compliance4w != null && (() => {
+                const status = compliance4w >= 90 && compliance4w <= 110 ? 'ok'
+                  : compliance4w < 90 ? 'under' : 'over';
+                const gradient = status === 'ok'
+                  ? [SIGNAL.color.emerald, SIGNAL.color.cyan]
+                  : status === 'under'
+                    ? [SIGNAL.color.amber, SIGNAL.color.coral]
+                    : [SIGNAL.color.coral, SIGNAL.color.effort10];
+                return (
+                  <LinearGradient
+                    colors={gradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.heroCard}
+                  >
+                    <Text style={styles.heroGaugeNum}>{compliance4w}%</Text>
+                    <Text style={styles.heroGaugeSub}>Last 4 weeks · of weekly target</Text>
+                  </LinearGradient>
+                );
+              })()}
+
+              {/* Per-week trend dots */}
+              <View style={styles.trendRow}>
+                {volumeTrend.map((pct, i) => (
+                  <View key={i} style={styles.trendItem}>
+                    <View style={[styles.trendDot, {
+                      backgroundColor: pct == null
+                        ? SIGNAL.color.line
+                        : pct >= 90 && pct <= 110 ? SIGNAL.color.emerald
+                        : pct < 90 ? SIGNAL.color.amber
+                        : SIGNAL.color.coral,
+                    }]} />
+                    <Text style={styles.trendLabel}>{pct != null ? `${pct}%` : '—'}</Text>
                   </View>
                 ))}
+                <Text style={styles.trendArrow}>← 4wk</Text>
               </View>
-              {/* Current week summary */}
-              {volumeWeeks.find(w => w.isCurrent) && (() => {
-                const cw = volumeWeeks.find(w => w.isCurrent);
-                const pct = cw.target > 0 ? Math.round((cw.actual / cw.target) * 100) : 0;
-                return <Text style={styles.volumeSummary}>This week: {cw.actual} of {cw.target} mi target ({pct}%)</Text>;
-              })()}
             </View>
           ) : (
-            <Text style={styles.noDataText}>Your coach hasn't set up a season plan yet. Ask them to create one in Program → Seasons.</Text>
+            <View style={styles.cardBody}>
+              <Text style={styles.noDataText}>
+                Your coach hasn't set up a season plan yet. Ask them to create one in Program → Seasons.
+              </Text>
+            </View>
           )}
-        </TouchableOpacity>
 
-        {expandedSection === 'volume' && volumeWeeks.length > 0 && (
-          <View style={styles.detail}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.volumeChartScroll}>
-              {volumeWeeks.map((w, i) => {
-                const maxTarget = Math.max(...volumeWeeks.map(wk => Math.max(wk.target, wk.actual || 0)), 1);
-                const targetH = (w.target / maxTarget) * 100;
-                const actualH = w.actual != null ? (w.actual / maxTarget) * 100 : 0;
-                const pctOfTarget = w.target > 0 && w.actual != null ? w.actual / w.target : null;
-                const barColor = w.actual == null ? NEUTRAL.border
-                  : pctOfTarget >= 0.9 && pctOfTarget <= 1.1 ? STATUS.success
-                  : pctOfTarget < 0.9 ? STATUS.warning : STATUS.error;
-                return (
-                  <View key={w.monday} style={[styles.volumeBar, w.isCurrent && styles.volumeBarCurrent]}>
-                    <View style={styles.volumeBarInner}>
-                      {/* Target ghost bar */}
-                      <View style={[styles.volumeTarget, { height: targetH + '%' }]} />
-                      {/* Actual filled bar */}
-                      {w.actual != null && <View style={[styles.volumeActual, { height: actualH + '%', backgroundColor: barColor }]} />}
+          {expandedSection === 'volume' && allVolumeWeeks.length > 0 && (
+            <View style={styles.cardBody}>
+              <View style={styles.divider} />
+              <Text style={styles.eyebrowMb}>Week-by-week target vs actual</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.detailChartScroll}>
+                {allVolumeWeeks.map((w, i) => {
+                  const maxBar = Math.max(...allVolumeWeeks.map(wk => Math.max(wk.target || 0, wk.actual || 0)), 1);
+                  const targetH = w.target != null ? (w.target / maxBar) * 100 : 0;
+                  const actualH = w.actual != null ? (w.actual / maxBar) * 100 : 0;
+                  const pctOfTarget = w.target > 0 && w.actual != null ? w.actual / w.target : null;
+                  const barColor = w.isPriorSeason
+                    ? SIGNAL.color.mute2 // prior-season actuals render muted gray (no target to compare to)
+                    : w.actual == null
+                      ? SIGNAL.color.line
+                      : pctOfTarget >= 0.9 && pctOfTarget <= 1.1
+                        ? SIGNAL.color.emerald
+                        : pctOfTarget < 0.9 ? SIGNAL.color.amber : SIGNAL.color.coral;
+                  // Week label: prior weeks count backward from "W1" of the active season
+                  const priorCount = priorWeeks.length;
+                  const label = w.isCurrent
+                    ? 'Now'
+                    : w.isPriorSeason
+                      ? `-${priorCount - i}` // e.g., -3, -2, -1 for the three prior weeks
+                      : `W${i - priorCount + 1}`;
+                  return (
+                    <View
+                      key={w.monday}
+                      style={[styles.detailVolumeBar, w.isCurrent && styles.volumeBarCurrent]}
+                    >
+                      <View style={styles.detailVolumeBarInner}>
+                        {w.target != null && (
+                          <View style={[styles.volumeTarget, { height: `${targetH}%` }]} />
+                        )}
+                        {w.actual != null && (
+                          <View style={[styles.volumeActual, { height: `${actualH}%`, backgroundColor: barColor }]} />
+                        )}
+                      </View>
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          styles.detailVolumeLabel,
+                          w.isCurrent && { color: SIGNAL.color.indigo, fontFamily: SIGNAL.font.bodyBold },
+                          w.isPriorSeason && { color: SIGNAL.color.mute2 },
+                        ]}
+                      >
+                        {label}
+                      </Text>
                     </View>
-                    <Text numberOfLines={1} style={[styles.volumeWeekLabel, w.isCurrent && { color: BRAND, fontWeight: FONT_WEIGHT.bold }]}>
-                      {w.isCurrent ? 'Now' : `W${i + 1}`}
-                    </Text>
-                  </View>
-                );
-              })}
-            </ScrollView>
-            <View style={styles.volumeLegend}>
-              <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: NEUTRAL.border }]} /><Text style={styles.legendText}>Target</Text></View>
-              <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: STATUS.success }]} /><Text style={styles.legendText}>On track</Text></View>
-              <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: STATUS.warning }]} /><Text style={styles.legendText}>Under</Text></View>
-              <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: STATUS.error }]} /><Text style={styles.legendText}>Over</Text></View>
+                  );
+                })}
+              </ScrollView>
             </View>
-          </View>
-        )}
+          )}
+        </View>
 
-        {/* ── 2. Training Quality ── */}
-        <TouchableOpacity style={styles.section} onPress={() => toggle('quality')} activeOpacity={0.8}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionNum}>2</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.sectionTitle}>Easy-Hard Balance</Text>
-              <Text style={styles.sectionSub}>Last 30 days — 80/20 compliance & effort</Text>
-            </View>
-            <Ionicons name={expandedSection === 'quality' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />
-          </View>
+        {/* ── 2. Easy-Hard Balance ── */}
+        <View style={styles.card}>
+          {renderSectionHeader(
+            'quality',
+            '2',
+            'Easy-Hard Balance',
+            'Last 30 days · 80/20 compliance'
+          )}
 
           {displayEighty20 ? (
-            <View>
-              {/* Hero gauge */}
-              <View style={styles.heroGauge}>
-                <Text style={[styles.heroGaugeNum, {
-                  color: displayEighty20.easyPct >= 78 ? STATUS.success : displayEighty20.easyPct >= 70 ? STATUS.warning : STATUS.error,
-                }]}>{displayEighty20.easyPct}%</Text>
-                <Text style={styles.heroGaugeSub}>{usePace ? 'Easy running (pace)' : 'Z1+Z2 (easy running)'}</Text>
-                {!usePace && hasStreamData && <Text style={styles.streamBadge}>Precise ✓</Text>}
-              </View>
+            <View style={styles.cardBody}>
+              {/* Hero gauge — gradient pill, colored by 80/20 status */}
+              {(() => {
+                const pct = displayEighty20.easyPct;
+                const gradient = pct >= 78
+                  ? [SIGNAL.color.emerald, SIGNAL.color.cyan]
+                  : pct >= 70
+                    ? [SIGNAL.color.amber, SIGNAL.color.coral]
+                    : [SIGNAL.color.coral, SIGNAL.color.effort10];
+                return (
+                  <LinearGradient
+                    colors={gradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.heroCard}
+                  >
+                    <Text style={styles.heroGaugeNum}>{pct}%</Text>
+                    <Text style={styles.heroGaugeSub}>
+                      {usePace ? 'Easy running (by pace)' : 'Z1 + Z2 (easy running)'}
+                      {!usePace && hasStreamData ? '  · Precise' : ''}
+                    </Text>
+                  </LinearGradient>
+                );
+              })()}
+
               {/* 4-week trend dots */}
               <View style={styles.trendRow}>
                 {displayWeekTrend.map((pct, i) => (
                   <View key={i} style={styles.trendItem}>
                     <View style={[styles.trendDot, {
-                      backgroundColor: pct == null ? NEUTRAL.border : pct >= 78 ? STATUS.success : pct >= 70 ? STATUS.warning : STATUS.error,
+                      backgroundColor: pct == null
+                        ? SIGNAL.color.line
+                        : pct >= 78 ? SIGNAL.color.emerald
+                        : pct >= 70 ? SIGNAL.color.amber
+                        : SIGNAL.color.coral,
                     }]} />
                     <Text style={styles.trendLabel}>{pct != null ? `${pct}%` : '—'}</Text>
                   </View>
                 ))}
-                <Text style={styles.trendArrow}>← 4 wk ago</Text>
+                <Text style={styles.trendArrow}>← 4wk</Text>
               </View>
             </View>
           ) : (
-            <Text style={styles.noDataText}>{trainingPaces ? 'Not enough pace data yet.' : 'Set your training paces in your profile to see pace-based compliance.'}</Text>
-          )}
-        </TouchableOpacity>
-
-        {expandedSection === 'quality' && (
-          <View style={styles.detail}>
-            {/* Weekly intensity compliance chart (mirrors volume arc) */}
-            {intensityWeeks.length > 0 && intensityWeeks.some(w => w.easyPct != null) && (
-              <View style={{ marginBottom: SPACE.lg }}>
-                <Text style={styles.detailSectionLabel}>Weekly easy % — target {TARGET_EASY_PCT}%</Text>
-                <Text style={styles.detailHint}>Each bar shows the % of training at easy pace. Aim for {TARGET_EASY_PCT}%+.</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.volumeChartScroll}>
-                  {intensityWeeks.map((w, i) => {
-                    const barH = w.easyPct != null ? (w.easyPct / 100) * 80 : 0;
-                    const targetH = (TARGET_EASY_PCT / 100) * 80;
-                    const barColor = w.easyPct == null ? NEUTRAL.border
-                      : w.easyPct >= 78 ? STATUS.success
-                      : w.easyPct >= 68 ? STATUS.warning : STATUS.error;
-                    return (
-                      <View key={w.monday} style={[styles.volumeBar, w.isCurrent && styles.volumeBarCurrent]}>
-                        <View style={styles.volumeBarInner}>
-                          {/* Target line at 80% */}
-                          <View style={[styles.intensityTargetLine, { bottom: targetH }]} />
-                          {/* Actual easy % bar */}
-                          {w.easyPct != null && <View style={[styles.volumeActual, { height: barH, backgroundColor: barColor }]} />}
-                        </View>
-                        <Text numberOfLines={1} style={[styles.volumeWeekLabel, w.isCurrent && { color: BRAND, fontWeight: FONT_WEIGHT.bold }]}>
-                          {w.isCurrent ? 'Now' : `W${i + 1}`}
-                        </Text>
-                      </View>
-                    );
-                  })}
-                </ScrollView>
-                <View style={styles.volumeLegend}>
-                  <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: NEUTRAL.muted, height: 2, borderRadius: 1 }]} /><Text style={styles.legendText}>{TARGET_EASY_PCT}% target</Text></View>
-                  <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: STATUS.success }]} /><Text style={styles.legendText}>On track</Text></View>
-                  <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: STATUS.warning }]} /><Text style={styles.legendText}>Caution</Text></View>
-                  <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: STATUS.error }]} /><Text style={styles.legendText}>Too hard</Text></View>
-                </View>
-              </View>
-            )}
-
-            {/* Pace zone breakdown (primary when VDOT set) */}
-            {usePace && paceZoneBreakdown && (
-              <View style={styles.zoneSection}>
-                <View style={styles.zoneStackedBar}>
-                  {paceZoneBreakdown.map(z => (
-                    <View key={z.key} style={[styles.zoneBarSegment, { flex: z.pct, backgroundColor: z.color }]} />
-                  ))}
-                </View>
-                {paceZoneBreakdown.map(z => (
-                  <View key={z.key} style={styles.zoneRow}>
-                    <View style={[styles.zoneDot, { backgroundColor: z.color }]} />
-                    <Text style={styles.zoneLabel}>{z.short} {z.name}</Text>
-                    <Text style={styles.zonePct}>{z.pct}%</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {/* HR zone breakdown (fallback when no VDOT) */}
-            {!usePace && zoneBreakdown && (
-              <View style={styles.zoneSection}>
-                <View style={styles.zoneStackedBar}>
-                  {zoneBreakdown.map(z => (
-                    <View key={z.zone} style={[styles.zoneBarSegment, { flex: z.pct, backgroundColor: ZONE_META[z.zone]?.color || '#ccc' }]} />
-                  ))}
-                </View>
-                {zoneBreakdown.map(z => (
-                  <View key={z.zone} style={styles.zoneRow}>
-                    <View style={[styles.zoneDot, { backgroundColor: ZONE_META[z.zone]?.color }]} />
-                    <Text style={styles.zoneLabel}>{ZONE_META[z.zone]?.name || `Z${z.zone}`}</Text>
-                    <Text style={styles.zonePct}>{z.pct}%</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {/* Effort polarization */}
-            <Text style={styles.detailSectionLabel}>Effort distribution</Text>
-            <Text style={styles.detailHint}>Peaks at 3-4 and 8-9 = polarized (good). Clustered at 5-7 = junk miles.</Text>
-            <View style={styles.effortChart}>
-              {[1,2,3,4,5,6,7,8,9,10].map(n => (
-                <View key={n} style={styles.effortBarWrap}>
-                  <View style={[styles.effortBar, { height: Math.max((effortDist[n] / maxEffortCount) * 60, 2), backgroundColor: EFFORT_COLORS[n] || NEUTRAL.border }]} />
-                  <Text style={styles.effortBarLabel}>{n}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* ── 3. Race Performance ── */}
-        <TouchableOpacity style={styles.section} onPress={() => toggle('races')} activeOpacity={0.8}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionNum}>3</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.sectionTitle}>Race Performance</Text>
-              <Text style={styles.sectionSub}>{myResults.length} race{myResults.length !== 1 ? 's' : ''} this season</Text>
-            </View>
-            <Ionicons name={expandedSection === 'races' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />
-          </View>
-
-          {(() => {
-            const distResults = primaryDistance ? myResults.filter(r => r.distanceLabel === primaryDistance) : myResults;
-            if (distResults.length === 0) return <Text style={styles.noDataText}>No race results yet. Your coach will enter results after each meet.</Text>;
-            const best = distResults.reduce((b, r) => (!b || (r.finishTime && r.finishTime < b.finishTime)) ? r : b, null);
-            const improvement = distResults.length >= 2 ? distResults[0].finishTime - distResults[distResults.length - 1].finishTime : null;
-            return (
-              <View>
-                {best && <Text style={styles.prBanner}>🏆 {primaryDistance} PR: {formatTime(best.finishTime)} — {best.meet?.name || 'Unknown meet'}</Text>}
-                {improvement != null && improvement < 0 && (
-                  <Text style={[styles.improvementText, { color: STATUS.success }]}>↓ {formatTime(Math.abs(improvement))} improvement this season</Text>
-                )}
-              </View>
-            );
-          })()}
-        </TouchableOpacity>
-
-        {expandedSection === 'races' && (
-          <View style={styles.detail}>
-            {myResults.length === 0 ? (
-              <Text style={styles.detailEmpty}>No race results yet.</Text>
-            ) : (
-              [...myResults].reverse().map((res, i, arr) => {
-                const prev = i < arr.length - 1 ? arr[i + 1] : null;
-                const faster = prev && res.finishTime && prev.finishTime ? res.finishTime < prev.finishTime : null;
-                const pace = res.race?.distanceLabel ? calcPace(res.finishTime, res.race.distanceLabel) : null;
-                return (
-                  <View key={res.id} style={styles.raceCard}>
-                    <View style={styles.raceCardLeft}>
-                      <Text style={styles.raceMeetName}>{res.meet?.name || 'Unknown'}</Text>
-                      <Text style={styles.raceDate}>
-                        {res.meetDate?.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {res.distanceLabel}
-                      </Text>
-                      {res.place && <Text style={styles.racePlace}>Place: {res.place}{res.teamPlace ? ` (team #${res.teamPlace})` : ''}</Text>}
-                    </View>
-                    <View style={styles.raceCardRight}>
-                      <Text style={styles.raceTime}>{formatTime(res.finishTime)}</Text>
-                      {pace && <Text style={styles.racePace}>{formatPace(pace)}</Text>}
-                      {faster != null && (
-                        <Text style={{ fontSize: FONT_SIZE.xs, color: faster ? STATUS.success : STATUS.error, fontWeight: FONT_WEIGHT.bold }}>
-                          {faster ? '▼ PR' : '▲'}
-                        </Text>
-                      )}
-                    </View>
-                  </View>
-                );
-              })
-            )}
-          </View>
-        )}
-
-        {/* ── 4. Readiness & Recovery ── */}
-        <TouchableOpacity style={styles.section} onPress={() => toggle('readiness')} activeOpacity={0.8}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionNum}>4</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.sectionTitle}>Readiness & Recovery</Text>
-              <Text style={styles.sectionSub}>Based on last 7 days of check-ins & training</Text>
-            </View>
-            <Ionicons name={expandedSection === 'readiness' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />
-          </View>
-
-          {readinessScore != null ? (
-            <View style={styles.readinessRow}>
-              <View style={[styles.readinessCircle, {
-                borderColor: readinessScore >= 7 ? STATUS.success : readinessScore >= 5 ? STATUS.warning : STATUS.error,
-              }]}>
-                <Text style={[styles.readinessNum, {
-                  color: readinessScore >= 7 ? STATUS.success : readinessScore >= 5 ? STATUS.warning : STATUS.error,
-                }]}>{readinessScore.toFixed(1)}</Text>
-                <Text style={styles.readinessLabel}>/ 10</Text>
-              </View>
-              <View style={{ flex: 1, gap: SPACE.xs }}>
-                {renderGauge(avg7Sleep, 'Sleep')}
-                {renderGauge(avg7Legs, 'Legs')}
-                {renderGauge(avg7Mood, 'Mood')}
-              </View>
-            </View>
-          ) : (
-            <Text style={styles.noDataText}>Complete your daily check-in to see your readiness score.</Text>
-          )}
-        </TouchableOpacity>
-
-        {expandedSection === 'readiness' && (
-          <View style={styles.detail}>
-            {/* Load comparison */}
-            <View style={styles.loadRow}>
-              <Text style={styles.detailSectionLabel}>Weekly load</Text>
-              <Text style={styles.loadText}>
-                This week: {Math.round(thisWeekMiles * 10) / 10} mi
-                {avg3wk > 0 ? ` · 3-wk avg: ${Math.round(avg3wk * 10) / 10} mi` : ''}
-                {avg3wk > 0 && thisWeekMiles > 0 ? ` (${thisWeekMiles > avg3wk ? '+' : ''}${Math.round(((thisWeekMiles - avg3wk) / avg3wk) * 100)}%)` : ''}
+            <View style={styles.cardBody}>
+              <Text style={styles.noDataText}>
+                {trainingPaces ? 'Not enough pace data yet.' : 'Set your training paces in your profile to see pace-based compliance.'}
               </Text>
             </View>
+          )}
 
-            {/* Alert signals */}
-            {signals.length > 0 && (
-              <View style={styles.signalSection}>
-                <Text style={styles.signalTitle}>⚠️ Watch out</Text>
-                {signals.map((sig, i) => <Text key={i} style={styles.signalText}>• {sig}</Text>)}
-              </View>
-            )}
+          {expandedSection === 'quality' && (
+            <View style={styles.cardBody}>
+              <View style={styles.divider} />
 
-            {/* Active injuries */}
-            {activeInjuries.length > 0 && (
-              <View style={styles.injurySection}>
-                {activeInjuries.map((inj, i) => (
-                  <View key={i} style={styles.injuryChip}>
-                    <Text style={styles.injuryChipText}>
-                      🩹 {inj.locations.map(l => l.charAt(0).toUpperCase() + l.slice(1)).join(', ')} ({inj.severity}) — {inj.streak} consecutive day{inj.streak !== 1 ? 's' : ''}
-                    </Text>
+              {/* Weekly intensity compliance (mirrors volume arc) */}
+              {intensityWeeks.length > 0 && intensityWeeks.some(w => w.easyPct != null) && (
+                <View style={{ marginBottom: 16 }}>
+                  <Text style={styles.eyebrowMb}>
+                    Weekly easy % — target {TARGET_EASY_PCT}%
+                  </Text>
+                  <Text style={styles.detailHint}>
+                    Each bar shows the % of training at easy pace. Aim for {TARGET_EASY_PCT}%+.
+                  </Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.detailChartScroll}>
+                    {intensityWeeks.map((w, i) => {
+                      const barH = w.easyPct != null ? (w.easyPct / 100) * 80 : 0;
+                      const targetH = (TARGET_EASY_PCT / 100) * 80;
+                      const barColor = w.easyPct == null
+                        ? SIGNAL.color.line
+                        : w.easyPct >= 78 ? SIGNAL.color.emerald
+                        : w.easyPct >= 68 ? SIGNAL.color.amber : SIGNAL.color.coral;
+                      return (
+                        <View key={w.monday} style={[styles.detailVolumeBar, w.isCurrent && styles.volumeBarCurrent]}>
+                          <View style={styles.detailVolumeBarInner}>
+                            <View style={[styles.intensityTargetLine, { bottom: targetH }]} />
+                            {w.easyPct != null && (
+                              <View style={[styles.volumeActual, { height: barH, backgroundColor: barColor }]} />
+                            )}
+                          </View>
+                          <Text
+                            numberOfLines={1}
+                            style={[
+                              styles.detailVolumeLabel,
+                              w.isCurrent && { color: SIGNAL.color.indigo, fontFamily: SIGNAL.font.bodyBold },
+                            ]}
+                          >
+                            {w.isCurrent ? 'Now' : `W${i + 1}`}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              )}
+
+              {/* Pace zone breakdown (primary when VDOT set) */}
+              {usePace && paceZoneBreakdown && (
+                <View style={styles.zoneSection}>
+                  <Text style={styles.eyebrowMb}>Pace zone breakdown</Text>
+                  <View style={styles.zoneStackedBar}>
+                    {paceZoneBreakdown.map(z => (
+                      <View key={z.key} style={[styles.zoneBarSegment, { flex: z.pct, backgroundColor: z.color }]} />
+                    ))}
+                  </View>
+                  {paceZoneBreakdown.map(z => (
+                    <View key={z.key} style={styles.zoneRow}>
+                      <View style={[styles.zoneDot, { backgroundColor: z.color }]} />
+                      <Text style={styles.zoneLabel}>{z.short} · {z.name}</Text>
+                      <Text style={styles.zonePct}>{z.pct}%</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* HR zone breakdown (fallback when no VDOT) */}
+              {!usePace && zoneBreakdown && (
+                <View style={styles.zoneSection}>
+                  <Text style={styles.eyebrowMb}>Heart-rate zone breakdown</Text>
+                  <View style={styles.zoneStackedBar}>
+                    {zoneBreakdown.map(z => (
+                      <View key={z.zone} style={[styles.zoneBarSegment, { flex: z.pct, backgroundColor: ZONE_META[z.zone]?.color || SIGNAL.color.line }]} />
+                    ))}
+                  </View>
+                  {zoneBreakdown.map(z => (
+                    <View key={z.zone} style={styles.zoneRow}>
+                      <View style={[styles.zoneDot, { backgroundColor: ZONE_META[z.zone]?.color || SIGNAL.color.line }]} />
+                      <Text style={styles.zoneLabel}>{ZONE_META[z.zone]?.name || `Z${z.zone}`}</Text>
+                      <Text style={styles.zonePct}>{z.pct}%</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Effort polarization */}
+              <Text style={[styles.eyebrowMb, { marginTop: 18 }]}>Effort distribution</Text>
+              <Text style={styles.detailHint}>Peaks at 3–4 and 8–9 = polarized (good).</Text>
+              <View style={styles.effortChart}>
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+                  <View key={n} style={styles.effortBarWrap}>
+                    <View
+                      style={[
+                        styles.effortBar,
+                        {
+                          height: Math.max((effortDist[n] / maxEffortCount) * 54, 3),
+                          backgroundColor: SIGNAL.effort[n] || SIGNAL.color.line,
+                        },
+                      ]}
+                    />
+                    <Text style={styles.effortBarLabel}>{n}</Text>
                   </View>
                 ))}
               </View>
-            )}
+            </View>
+          )}
+        </View>
 
-            {signals.length === 0 && activeInjuries.length === 0 && (
-              <Text style={styles.allClear}>✅ No concerns — you're in good shape to train.</Text>
-            )}
+        {/* ── 3. Race Performance ── */}
+        <View style={styles.card}>
+          {renderSectionHeader(
+            'races',
+            '3',
+            'Race Performance',
+            `${myResults.length} race${myResults.length !== 1 ? 's' : ''} this season`
+          )}
+
+          <View style={styles.cardBody}>
+            {(() => {
+              const distResults = primaryDistance ? myResults.filter(r => r.distanceLabel === primaryDistance) : myResults;
+              if (distResults.length === 0) {
+                return <Text style={styles.noDataText}>No race results yet. Your coach will enter results after each meet.</Text>;
+              }
+              const best = distResults.reduce((b, r) => (!b || (r.finishTime && r.finishTime < b.finishTime)) ? r : b, null);
+              const improvement = distResults.length >= 2 ? distResults[0].finishTime - distResults[distResults.length - 1].finishTime : null;
+              return (
+                <View style={styles.prBanner}>
+                  {best && (
+                    <Text style={styles.prBannerText}>
+                      🏆 {primaryDistance} PR: <Text style={styles.prBannerBold}>{formatTime(best.finishTime)}</Text> — {best.meet?.name || 'Unknown meet'}
+                    </Text>
+                  )}
+                  {improvement != null && improvement < 0 && (
+                    <Text style={styles.improvementText}>
+                      ↓ {formatTime(Math.abs(improvement))} improvement this season
+                    </Text>
+                  )}
+                </View>
+              );
+            })()}
           </View>
-        )}
 
-        {/* ── Season in Review (permanent access) ── */}
+          {expandedSection === 'races' && (
+            <View style={styles.cardBody}>
+              <View style={styles.divider} />
+              {myResults.length === 0 ? (
+                <Text style={styles.detailEmpty}>No race results yet.</Text>
+              ) : (
+                [...myResults].reverse().map((res, i, arr) => {
+                  const prev = i < arr.length - 1 ? arr[i + 1] : null;
+                  const faster = prev && res.finishTime && prev.finishTime ? res.finishTime < prev.finishTime : null;
+                  const pace = res.race?.distanceLabel ? calcPace(res.finishTime, res.race.distanceLabel) : null;
+                  // Determine if this row is the PR
+                  const isBest = res.distanceLabel && (() => {
+                    const sameDist = myResults.filter(r => r.distanceLabel === res.distanceLabel);
+                    const minTime = Math.min(...sameDist.map(r => r.finishTime || Infinity));
+                    return res.finishTime === minTime;
+                  })();
+                  return (
+                    <View
+                      key={res.id}
+                      style={[styles.raceCard, i < arr.length - 1 && styles.raceCardBordered]}
+                    >
+                      <View style={styles.raceCardLeft}>
+                        <Text style={styles.raceMeetName}>{res.meet?.name || 'Unknown'}</Text>
+                        <Text style={styles.raceMeta}>
+                          {res.meetDate?.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {res.distanceLabel}
+                          {res.place ? ` · ${res.place}${res.teamPlace ? ` (team #${res.teamPlace})` : ''}` : ''}
+                        </Text>
+                      </View>
+                      <View style={styles.raceCardRight}>
+                        <Text
+                          style={[
+                            styles.raceTime,
+                            { color: isBest ? SIGNAL.color.pink : SIGNAL.color.ink },
+                          ]}
+                        >
+                          {formatTime(res.finishTime)}
+                        </Text>
+                        <View style={styles.racePaceRow}>
+                          {pace && <Text style={styles.racePace}>{formatPace(pace)}/mi</Text>}
+                          {isBest && <Text style={styles.prBadge}>▼PR</Text>}
+                          {!isBest && faster != null && (
+                            <Text style={{ fontFamily: SIGNAL.font.bodyBold, fontSize: 10, color: faster ? SIGNAL.color.emerald : SIGNAL.color.coral }}>
+                              {faster ? '▼' : '▲'}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })
+              )}
+            </View>
+          )}
+        </View>
+
+        {/* ── 4. Readiness & Recovery ── */}
+        <View style={styles.card}>
+          {renderSectionHeader(
+            'readiness',
+            '4',
+            'Readiness & Recovery',
+            'Based on last 7 days'
+          )}
+
+          {readinessScore != null ? (
+            <View style={styles.cardBody}>
+              <View style={styles.readinessRow}>
+                {/* Ring (rendered with concentric Views — no SVG) */}
+                <View style={styles.readinessRingWrap}>
+                  <View
+                    style={[
+                      styles.readinessRing,
+                      {
+                        borderColor: readinessScore < 4
+                          ? SIGNAL.color.coral
+                          : readinessScore < 7
+                            ? SIGNAL.color.amber
+                            : SIGNAL.color.emerald,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.readinessNum,
+                        {
+                          color: readinessScore < 4
+                            ? SIGNAL.color.coral
+                            : readinessScore < 7
+                              ? SIGNAL.color.amber
+                              : SIGNAL.color.emerald,
+                        },
+                      ]}
+                    >
+                      {readinessScore.toFixed(1)}
+                    </Text>
+                    <Text style={styles.readinessLabel}>/ 10</Text>
+                  </View>
+                </View>
+                <View style={{ flex: 1 }}>
+                  {renderGauge(avg7Sleep, 'Sleep')}
+                  {renderGauge(avg7Legs, 'Legs')}
+                  {renderGauge(avg7Mood, 'Mood')}
+                </View>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.cardBody}>
+              <Text style={styles.noDataText}>Complete your daily check-in to see your readiness score.</Text>
+            </View>
+          )}
+
+          {expandedSection === 'readiness' && (
+            <View style={styles.cardBody}>
+              <View style={styles.divider} />
+
+              {/* Load comparison */}
+              <Text style={styles.loadText}>
+                Weekly load: <Text style={styles.loadBold}>{Math.round(thisWeekMiles * 10) / 10} mi</Text>
+                {avg3wk > 0 ? ` · 3-wk avg ${Math.round(avg3wk * 10) / 10}` : ''}
+                {avg3wk > 0 && thisWeekMiles > 0 ? (
+                  <Text style={{
+                    color: thisWeekMiles > avg3wk * 1.15 ? SIGNAL.color.amber : SIGNAL.color.mute,
+                  }}>
+                    {` (${thisWeekMiles > avg3wk ? '+' : ''}${Math.round(((thisWeekMiles - avg3wk) / avg3wk) * 100)}%)`}
+                  </Text>
+                ) : null}
+              </Text>
+
+              {/* Alert signals */}
+              {signals.length > 0 && (
+                <View style={styles.signalSection}>
+                  <Text style={styles.signalTitle}>⚠️ Watch out</Text>
+                  {signals.map((sig, i) => (
+                    <Text key={i} style={styles.signalText}>• {sig}</Text>
+                  ))}
+                </View>
+              )}
+
+              {/* Active injuries */}
+              {activeInjuries.length > 0 && (
+                <View style={styles.injurySection}>
+                  {activeInjuries.map((inj, i) => (
+                    <View key={i} style={styles.injuryChip}>
+                      <Text style={styles.injuryChipText}>
+                        🩹 {inj.perLocation
+                          ? inj.perLocation.map(p => `${p.location.charAt(0).toUpperCase() + p.location.slice(1)} (${p.severity})`).join(', ')
+                          : `${inj.locations.map(l => l.charAt(0).toUpperCase() + l.slice(1)).join(', ')} (${inj.severity})`
+                        } — {inj.streak} consecutive day{inj.streak !== 1 ? 's' : ''}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {signals.length === 0 && activeInjuries.length === 0 && (
+                <Text style={styles.allClear}>✅ No concerns — you're in good shape to train.</Text>
+              )}
+            </View>
+          )}
+        </View>
+
+        {/* ── 5. Season in Review (permanent access) ── */}
         {(() => {
           const completed = getCompletedSeasons(school);
           if (completed.length === 0) return null;
           const SPORT_LABELS = { cross_country: 'Cross Country', indoor_track: 'Indoor Track', outdoor_track: 'Outdoor Track' };
           const SPORT_ICONS = { cross_country: '🏔️', indoor_track: '🏟️', outdoor_track: '🏃' };
           return (
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionNum}>5</Text>
-                <View style={{ flex: 1 }}>
+            <View style={styles.card}>
+              <View style={styles.sectionHeaderBtn}>
+                <View style={styles.numBadge}>
+                  <Text style={styles.numBadgeText}>5</Text>
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.sectionTitle}>Season in Review</Text>
-                  <Text style={styles.sectionSub}>Tap a season to see your recap</Text>
+                  <Text style={styles.eyebrow}>Tap a season to see your recap</Text>
                 </View>
               </View>
-              {completed.map((s, i) => (
-                <TouchableOpacity key={i} style={styles.seasonReviewCard} onPress={() => setSeasonReviewSeason(s)}>
-                  <Text style={styles.seasonReviewIcon}>{SPORT_ICONS[s.sport] || '🏃'}</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.seasonReviewName}>{s.name || SPORT_LABELS[s.sport] || 'Season'}</Text>
-                    <Text style={styles.seasonReviewDate}>
-                      {new Date(s.seasonStart).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} – {new Date(s.championshipDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={NEUTRAL.muted} />
-                </TouchableOpacity>
-              ))}
+              <View style={styles.cardBody}>
+                {completed.map((s, i) => (
+                  <TouchableOpacity
+                    key={i}
+                    style={[styles.seasonReviewCard, i < completed.length - 1 && styles.seasonReviewCardBordered]}
+                    onPress={() => setSeasonReviewSeason(s)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.seasonReviewIcon}>{SPORT_ICONS[s.sport] || '🏃'}</Text>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.seasonReviewName}>{s.name || SPORT_LABELS[s.sport] || 'Season'}</Text>
+                      <Text style={styles.seasonReviewDate}>
+                        {new Date(s.seasonStart).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} – {new Date(s.championshipDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={SIGNAL.color.mute2} />
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           );
         })()}
@@ -762,126 +1052,543 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
 
 // ── Styles ───────────────────────────────────────────────────────────────────
 
-const ZONE_COLORS_MAP = { 1: '#64b5f6', 2: '#4caf50', 3: '#ff9800', 4: '#f44336', 5: '#9c27b0' };
-
 const styles = StyleSheet.create({
-  container:      { flex: 1, backgroundColor: NEUTRAL.bg },
-  loadingWrap:    { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  container: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper2,
+  },
+  loadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ── Header ──
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingTop: Platform.OS === 'ios' ? SPACE['5xl'] : SPACE['3xl'],
-    paddingBottom: SPACE.md, paddingHorizontal: SPACE.lg,
-    backgroundColor: NEUTRAL.card, borderBottomWidth: 1, borderBottomColor: NEUTRAL.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: Platform.OS === 'ios' ? 68 : 44,
+    paddingBottom: 14,
+    paddingHorizontal: 14,
+    backgroundColor: SIGNAL.color.white,
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
   },
-  backBtn:        { flexDirection: 'row', alignItems: 'center', width: 60 },
-  backText:       { fontSize: FONT_SIZE.base, color: BRAND_DARK, marginLeft: 2 },
-  headerTitle:    { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  scroll:         { flex: 1 },
-
-  // ── Sections ──
-  section: {
-    margin: SPACE.lg, marginBottom: 0, backgroundColor: NEUTRAL.card,
-    borderRadius: RADIUS.lg, padding: SPACE.lg, ...SHADOW.sm,
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: 64,
   },
-  sectionHeader:  { flexDirection: 'row', alignItems: 'flex-start', gap: SPACE.md },
-  sectionNum:     { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.bold, color: BRAND_ACCENT, width: 22 },
-  sectionTitle:   { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  sectionSub:     { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: 2 },
-  detail:         { marginHorizontal: SPACE.lg, backgroundColor: NEUTRAL.card, borderBottomLeftRadius: RADIUS.lg, borderBottomRightRadius: RADIUS.lg, padding: SPACE.lg, paddingTop: SPACE.sm, ...SHADOW.sm, marginTop: -1 },
-  noDataText:     { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted, marginTop: SPACE.md },
-  noDataHint:     { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginTop: SPACE.md },
-  detailEmpty:    { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted, textAlign: 'center', padding: SPACE.lg },
-  detailSectionLabel: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.sm, marginTop: SPACE.md },
-  detailHint:     { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginBottom: SPACE.md },
-
-  // ── Feature 1: Volume Arc ──
-  phaseStrip:     { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.xs, marginTop: SPACE.md },
-  phaseChip: {
-    paddingHorizontal: SPACE.sm, paddingVertical: 3, borderRadius: RADIUS.full,
-    backgroundColor: NEUTRAL.bg, borderWidth: 1, borderColor: NEUTRAL.border,
+  backText: {
+    fontSize: 15,
+    color: SIGNAL.color.inkSoft,
+    fontFamily: SIGNAL.font.body,
+    marginLeft: 2,
   },
-  phaseChipText:  { fontSize: 10, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.body },
-  volumeSummary:  { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginTop: SPACE.md },
-  volumeChartScroll: { flexDirection: 'row', alignItems: 'flex-end', gap: 3, paddingVertical: SPACE.md, minHeight: 130 },
-  volumeBar:      { width: 24, alignItems: 'center', borderWidth: 1.5, borderColor: 'transparent', borderRadius: RADIUS.sm, padding: 1 },
-  volumeBarCurrent: { borderColor: BRAND },
-  volumeBarInner: { height: 80, width: 18, justifyContent: 'flex-end', position: 'relative' },
-  volumeTarget:   { position: 'absolute', bottom: 0, width: '100%', backgroundColor: NEUTRAL.bg, borderWidth: 1, borderColor: NEUTRAL.border, borderRadius: 2 },
-  volumeActual:   { width: '100%', borderRadius: 2 },
-  intensityTargetLine: { position: 'absolute', left: -2, right: -2, height: 2, backgroundColor: NEUTRAL.muted, borderRadius: 1, zIndex: 1 },
-  volumeWeekLabel:{ fontSize: 9, color: NEUTRAL.muted, marginTop: 2, minWidth: 30, textAlign: 'center' },
-  volumeLegend:   { flexDirection: 'row', gap: SPACE.lg, marginTop: SPACE.sm },
-  legendItem:     { flexDirection: 'row', alignItems: 'center', gap: SPACE.xs },
-  legendDot:      { width: 8, height: 8, borderRadius: 4 },
-  legendText:     { fontSize: FONT_SIZE.xs, color: NEUTRAL.body },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 8,
+  },
+  headerTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 18,
+    color: SIGNAL.color.indigo,
+    letterSpacing: -0.36,
+  },
+  headerSub: {
+    fontSize: 11,
+    letterSpacing: 1.43,
+    textTransform: 'uppercase',
+    color: SIGNAL.color.mute,
+    fontFamily: SIGNAL.font.bodyMedium,
+    marginTop: 3,
+  },
+  headerRight: {
+    width: 76,
+    alignItems: 'flex-end',
+  },
+  vdotChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: SIGNAL.radius.chip,
+    backgroundColor: `${SIGNAL.color.indigo}${SIGNAL.tint.chip}`,
+  },
+  vdotChipText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 11,
+    color: SIGNAL.color.indigo,
+    letterSpacing: 0.2,
+  },
 
-  // ── Feature 2: Race Performance ──
-  prBanner:       { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginTop: SPACE.md },
-  improvementText:{ fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, marginTop: SPACE.xs },
+  scroll: { flex: 1 },
+
+  // ── Card shell ──
+  card: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    overflow: 'hidden',
+    ...SIGNAL.border.hairline,
+  },
+  sectionHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    padding: 16,
+  },
+  numBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: `${SIGNAL.color.indigo}${SIGNAL.tint.chip}`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  numBadgeText: {
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 12,
+    color: SIGNAL.color.indigo,
+  },
+  sectionTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 18,
+    color: SIGNAL.color.indigo,
+    letterSpacing: -0.36,
+  },
+  eyebrow: {
+    fontSize: 11,
+    letterSpacing: 1.43,
+    textTransform: 'uppercase',
+    color: SIGNAL.color.mute,
+    fontFamily: SIGNAL.font.bodyMedium,
+    marginTop: 3,
+  },
+  eyebrowMb: {
+    fontSize: 11,
+    letterSpacing: 1.43,
+    textTransform: 'uppercase',
+    color: SIGNAL.color.mute,
+    fontFamily: SIGNAL.font.bodyMedium,
+    marginBottom: 8,
+  },
+  cardBody: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: SIGNAL.color.line,
+    marginVertical: 14,
+  },
+
+  noDataText: {
+    fontSize: 13,
+    color: SIGNAL.color.mute,
+    fontFamily: SIGNAL.font.body,
+    lineHeight: 19,
+  },
+  detailEmpty: {
+    fontSize: 13,
+    color: SIGNAL.color.mute,
+    fontFamily: SIGNAL.font.body,
+    textAlign: 'center',
+    paddingVertical: 16,
+  },
+  detailHint: {
+    fontSize: 11,
+    color: SIGNAL.color.mute,
+    fontFamily: SIGNAL.font.body,
+    marginBottom: 10,
+  },
+
+  // ── 1. Mileage Volume ──
+  // (Collapsed view reuses Easy-Hard heroCard + trendRow styles for visual
+  // parity; only the dropdown chart has its own bar-specific styles below.)
+
+  // Volume bar parts (used by the expanded dropdown chart)
+  volumeBarCurrent: {
+    borderColor: SIGNAL.color.indigo,
+  },
+  volumeTarget: {
+    position: 'absolute',
+    bottom: 0,
+    width: '100%',
+    backgroundColor: SIGNAL.color.paper2,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    borderRadius: 3,
+  },
+  volumeActual: {
+    width: '100%',
+    borderRadius: 3,
+    zIndex: 1,
+  },
+  intensityTargetLine: {
+    position: 'absolute',
+    left: -2,
+    right: -2,
+    height: 2,
+    backgroundColor: SIGNAL.color.mute,
+    borderRadius: 1,
+    zIndex: 2,
+  },
+
+  // ── Detail chart variants (for expanded sections) ──
+  detailChartScroll: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 4,
+    paddingVertical: 8,
+    minHeight: 110,
+  },
+  detailVolumeBar: {
+    width: 26,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+    borderRadius: 4,
+    padding: 1,
+  },
+  detailVolumeBarInner: {
+    height: 80,
+    width: 20,
+    justifyContent: 'flex-end',
+    position: 'relative',
+  },
+  detailVolumeLabel: {
+    fontFamily: SIGNAL.font.mono,
+    fontSize: 9,
+    color: SIGNAL.color.mute,
+    marginTop: 3,
+    minWidth: 28,
+    textAlign: 'center',
+  },
+
+  // ── 2. Easy-Hard Balance ──
+  heroCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: SIGNAL.radius.card,
+    marginBottom: 14,
+  },
+  heroGaugeNum: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 36,
+    lineHeight: 40,
+    color: '#fff',
+    letterSpacing: SIGNAL.letter.numTight,
+  },
+  heroGaugeSub: {
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: 11.5,
+    color: 'rgba(255,255,255,0.85)',
+    marginTop: 4,
+  },
+  trendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 18,
+    marginBottom: 4,
+  },
+  trendItem: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  trendDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  trendLabel: {
+    fontFamily: SIGNAL.font.mono,
+    fontSize: 9,
+    color: SIGNAL.color.mute,
+  },
+  trendArrow: {
+    fontSize: 9,
+    color: SIGNAL.color.mute2,
+    fontFamily: SIGNAL.font.body,
+    marginLeft: 4,
+  },
+
+  zoneSection: {
+    marginTop: 4,
+  },
+  zoneStackedBar: {
+    flexDirection: 'row',
+    height: 12,
+    borderRadius: 6,
+    overflow: 'hidden',
+    marginBottom: 10,
+  },
+  zoneBarSegment: {
+    height: '100%',
+  },
+  zoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingVertical: 3,
+  },
+  zoneDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+  },
+  zoneLabel: {
+    flex: 1,
+    fontFamily: SIGNAL.font.body,
+    fontSize: 11.5,
+    color: SIGNAL.color.inkSoft,
+  },
+  zonePct: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 12,
+    color: SIGNAL.color.ink,
+    letterSpacing: -0.2,
+    width: 38,
+    textAlign: 'right',
+  },
+
+  effortChart: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 4,
+    height: 70,
+  },
+  effortBarWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    height: '100%',
+  },
+  effortBar: {
+    width: '100%',
+    borderRadius: 3,
+    minHeight: 3,
+  },
+  effortBarLabel: {
+    fontFamily: SIGNAL.font.mono,
+    fontSize: 9,
+    color: SIGNAL.color.mute,
+    marginTop: 3,
+  },
+
+  // ── 3. Race Performance ──
+  prBanner: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 11,
+    backgroundColor: `${SIGNAL.color.pink}0D`,
+    borderWidth: 1,
+    borderColor: `${SIGNAL.color.pink}33`,
+  },
+  prBannerText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 13,
+    color: SIGNAL.color.ink,
+  },
+  prBannerBold: {
+    fontFamily: SIGNAL.font.bodyBold,
+  },
+  improvementText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 11.5,
+    color: SIGNAL.color.emerald,
+    marginTop: 4,
+  },
   raceCard: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingVertical: SPACE.md, borderBottomWidth: 1, borderBottomColor: NEUTRAL.bg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
   },
-  raceCardLeft:   { flex: 1 },
-  raceCardRight:  { alignItems: 'flex-end' },
-  raceMeetName:   { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  raceDate:       { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: 2 },
-  racePlace:      { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 2 },
-  raceTime:       { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  racePace:       { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: 2 },
-
-  // ── Feature 3: Training Quality ──
-  heroGauge:      { alignItems: 'center', marginTop: SPACE.md },
-  heroGaugeNum:   { fontSize: FONT_SIZE['3xl'], fontWeight: FONT_WEIGHT.bold },
-  heroGaugeSub:   { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: 2 },
-  streamBadge:    { fontSize: FONT_SIZE.xs, color: STATUS.success, fontWeight: FONT_WEIGHT.semibold, marginTop: SPACE.xs },
-  trendRow:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.lg, marginTop: SPACE.md },
-  trendItem:      { alignItems: 'center', gap: 2 },
-  trendDot:       { width: 12, height: 12, borderRadius: 6 },
-  trendLabel:     { fontSize: 10, color: NEUTRAL.body },
-  trendArrow:     { fontSize: 10, color: NEUTRAL.muted },
-
-  zoneSection:    { marginTop: SPACE.sm },
-  zoneStackedBar: { flexDirection: 'row', height: 12, borderRadius: 6, overflow: 'hidden', marginBottom: SPACE.md },
-  zoneBarSegment: { height: '100%' },
-  zoneRow:        { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, paddingVertical: 3 },
-  zoneDot:        { width: 10, height: 10, borderRadius: 5 },
-  zoneLabel:      { flex: 1, fontSize: FONT_SIZE.xs, color: NEUTRAL.body },
-  zonePct:        { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, width: 36, textAlign: 'right' },
-
-  effortChart:    { flexDirection: 'row', alignItems: 'flex-end', gap: SPACE.xs, height: 80 },
-  effortBarWrap:  { flex: 1, alignItems: 'center', justifyContent: 'flex-end', height: '100%' },
-  effortBar:      { width: '100%', borderRadius: 3, minHeight: 2 },
-  effortBarLabel: { fontSize: 10, color: NEUTRAL.muted, marginTop: 2 },
-
-  // ── Feature 4: Readiness ──
-  readinessRow:   { flexDirection: 'row', alignItems: 'center', gap: SPACE.lg, marginTop: SPACE.md },
-  readinessCircle:{
-    width: 72, height: 72, borderRadius: 36, borderWidth: 3,
-    alignItems: 'center', justifyContent: 'center',
+  raceCardBordered: {
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
   },
-  readinessNum:   { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.bold },
-  readinessLabel: { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted },
-  gauge:          { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
-  gaugeLabel:     { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, width: 36 },
-  gaugeBg:        { flex: 1, height: 6, backgroundColor: NEUTRAL.bg, borderRadius: 3, overflow: 'hidden' },
-  gaugeFill:      { height: '100%', borderRadius: 3 },
-  gaugeValue:     { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, width: 28, textAlign: 'right' },
-  loadRow:        { marginBottom: SPACE.md },
-  loadText:       { fontSize: FONT_SIZE.sm, color: NEUTRAL.body },
-  signalSection:  { backgroundColor: STATUS.warningBg, borderRadius: RADIUS.md, padding: SPACE.md, marginBottom: SPACE.md },
-  signalTitle:    { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: STATUS.warning, marginBottom: SPACE.xs },
-  signalText:     { fontSize: FONT_SIZE.xs, color: STATUS.warning, marginBottom: 2 },
-  injurySection:  { marginBottom: SPACE.md },
+  raceCardLeft: { flex: 1, minWidth: 0 },
+  raceCardRight: { alignItems: 'flex-end' },
+  raceMeetName: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 13,
+    color: SIGNAL.color.ink,
+  },
+  raceMeta: {
+    fontSize: 10.5,
+    color: SIGNAL.color.mute,
+    fontFamily: SIGNAL.font.body,
+    marginTop: 2,
+  },
+  raceTime: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 17,
+    letterSpacing: -0.4,
+  },
+  racePaceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 2,
+  },
+  racePace: {
+    fontFamily: SIGNAL.font.mono,
+    fontSize: 10,
+    color: SIGNAL.color.mute,
+  },
+  prBadge: {
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 10,
+    color: SIGNAL.color.pink,
+  },
+
+  // ── 4. Readiness ──
+  readinessRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  readinessRingWrap: {
+    width: 76,
+    height: 76,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  readinessRing: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    borderWidth: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: SIGNAL.color.white,
+  },
+  readinessNum: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 19,
+    lineHeight: 22,
+    letterSpacing: -0.5,
+  },
+  readinessLabel: {
+    fontSize: 8,
+    color: SIGNAL.color.mute,
+    letterSpacing: 0.8,
+    fontFamily: SIGNAL.font.bodyMedium,
+    marginTop: 1,
+  },
+  gauge: {
+    marginBottom: 8,
+  },
+  gaugeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  gaugeLabel: {
+    fontSize: 11.5,
+    color: SIGNAL.color.inkSoft,
+    fontFamily: SIGNAL.font.bodyMedium,
+  },
+  gaugeValue: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 11.5,
+    color: SIGNAL.color.ink,
+  },
+  gaugeValueMute: {
+    color: SIGNAL.color.mute,
+    fontFamily: SIGNAL.font.body,
+  },
+  gaugeBg: {
+    height: 5,
+    backgroundColor: SIGNAL.color.line,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  gaugeFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  loadText: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 12,
+    color: SIGNAL.color.inkSoft,
+    marginBottom: 10,
+  },
+  loadBold: {
+    fontFamily: SIGNAL.font.bodyBold,
+    color: SIGNAL.color.ink,
+  },
+  signalSection: {
+    backgroundColor: `${SIGNAL.color.amber}10`,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 6,
+    marginBottom: 8,
+  },
+  signalTitle: {
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 11.5,
+    color: SIGNAL.color.amber,
+    marginBottom: 4,
+  },
+  signalText: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 11,
+    color: SIGNAL.color.inkSoft,
+    lineHeight: 18,
+  },
+  injurySection: {
+    marginBottom: 8,
+  },
   injuryChip: {
-    backgroundColor: STATUS.warningBg, borderRadius: RADIUS.full,
-    paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm,
-    borderWidth: 1, borderColor: STATUS.warning + '40', marginBottom: SPACE.xs,
+    backgroundColor: `${SIGNAL.color.coral}14`,
+    borderRadius: SIGNAL.radius.chip,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: `${SIGNAL.color.coral}40`,
+    marginBottom: 6,
   },
-  injuryChipText: { fontSize: FONT_SIZE.sm, color: STATUS.warning, fontWeight: FONT_WEIGHT.semibold },
-  allClear:       { fontSize: FONT_SIZE.sm, color: STATUS.success, fontWeight: FONT_WEIGHT.semibold, textAlign: 'center', padding: SPACE.md },
-  seasonReviewCard: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, marginBottom: SPACE.sm, ...SHADOW.sm },
-  seasonReviewIcon: { fontSize: 24 },
-  seasonReviewName: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  seasonReviewDate: { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 2 },
+  injuryChipText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 12,
+    color: SIGNAL.color.coral,
+  },
+  allClear: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 13,
+    color: SIGNAL.color.emerald,
+    textAlign: 'center',
+    paddingVertical: 8,
+  },
+
+  // ── 5. Season in Review ──
+  seasonReviewCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    paddingVertical: 10,
+  },
+  seasonReviewCardBordered: {
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  seasonReviewIcon: {
+    fontSize: 22,
+  },
+  seasonReviewName: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 13,
+    color: SIGNAL.color.ink,
+  },
+  seasonReviewDate: {
+    fontSize: 10.5,
+    color: SIGNAL.color.mute,
+    fontFamily: SIGNAL.font.body,
+    marginTop: 1,
+  },
 });

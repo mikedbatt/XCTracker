@@ -1,7 +1,7 @@
 import { doc, setDoc, updateDoc } from 'firebase/firestore';
 import React, { useState } from 'react';
 import {
-    Alert, ScrollView,
+    Alert, Platform, ScrollView,
     StyleSheet,
     Text, TextInput, TouchableOpacity,
     View,
@@ -10,7 +10,7 @@ import { auth, db } from '../firebaseConfig';
 import Button from '../components/Button';
 import {
   BRAND, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SPACE, STATUS,
+  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SIGNAL, SPACE, STATUS,
 } from '../constants/design';
 
 const generateJoinCode = () => {
@@ -41,6 +41,7 @@ export default function CoachSetupScreen({ onSetupComplete }) {
   const [customPrimary, setCustomPrimary] = useState('');
   const [customSecondary, setCustomSecondary] = useState('');
   const [loading, setLoading] = useState(false);
+  const [focusedField, setFocusedField] = useState(null);
 
   const handleCreateSchool = async () => {
     if (!schoolName || !city || !state) {
@@ -96,128 +97,168 @@ export default function CoachSetupScreen({ onSetupComplete }) {
     setLoading(false);
   };
 
+  const inputStyle = (field) => [
+    styles.input,
+    focusedField === field && styles.inputFocused,
+  ];
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
 
       <View style={styles.header}>
-        <Text style={styles.title}>Set Up Your Program</Text>
-        <Text style={styles.subtitle}>Tell us about your school so athletes can find you</Text>
+        <Text style={styles.eyebrow}>Coach setup</Text>
+        <Text style={styles.title}>Set up your team</Text>
+        <Text style={styles.subtitle}>Tell us about your school so athletes can find you.</Text>
       </View>
 
-      <Text style={styles.label}>School name</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="e.g. Boise High School"
-        placeholderTextColor={NEUTRAL.muted}
-        value={schoolName}
-        onChangeText={setSchoolName}
-        autoCapitalize="words"
-      />
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>School info</Text>
 
-      <Text style={styles.label}>Mascot (optional)</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="e.g. Braves, Eagles, Warriors"
-        placeholderTextColor={NEUTRAL.muted}
-        value={mascot}
-        onChangeText={setMascot}
-        autoCapitalize="words"
-      />
+        <Text style={styles.label}>School name</Text>
+        <TextInput
+          style={inputStyle('schoolName')}
+          placeholder="e.g. Boise High School"
+          placeholderTextColor={SIGNAL.color.mute2}
+          value={schoolName}
+          onChangeText={setSchoolName}
+          autoCapitalize="words"
+          onFocus={() => setFocusedField('schoolName')}
+          onBlur={() => setFocusedField(null)}
+        />
 
-      <Text style={styles.label}>School logo URL (optional)</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="https://yourschool.edu/logo.png"
-        placeholderTextColor={NEUTRAL.muted}
-        value={logoUrl}
-        onChangeText={setLogoUrl}
-        autoCapitalize="none"
-        autoCorrect={false}
-        keyboardType="url"
-      />
-      <Text style={styles.helperText}>
-        Right-click your school logo on your school website and copy the image URL
-      </Text>
+        <Text style={styles.label}>Mascot (optional)</Text>
+        <TextInput
+          style={inputStyle('mascot')}
+          placeholder="e.g. Braves, Eagles, Warriors"
+          placeholderTextColor={SIGNAL.color.mute2}
+          value={mascot}
+          onChangeText={setMascot}
+          autoCapitalize="words"
+          onFocus={() => setFocusedField('mascot')}
+          onBlur={() => setFocusedField(null)}
+        />
 
-      <View style={styles.row}>
-        <View style={styles.flex}>
-          <Text style={styles.label}>City</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="City"
-            placeholderTextColor={NEUTRAL.muted}
-            value={city}
-            onChangeText={setCity}
-            autoCapitalize="words"
-          />
-        </View>
-        <View style={styles.stateField}>
-          <Text style={styles.label}>State</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="State"
-            placeholderTextColor={NEUTRAL.muted}
-            value={state}
-            onChangeText={setState}
-            autoCapitalize="characters"
-            maxLength={2}
-          />
-        </View>
-      </View>
+        <Text style={styles.label}>School logo URL (optional)</Text>
+        <TextInput
+          style={inputStyle('logoUrl')}
+          placeholder="https://yourschool.edu/logo.png"
+          placeholderTextColor={SIGNAL.color.mute2}
+          value={logoUrl}
+          onChangeText={setLogoUrl}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+          onFocus={() => setFocusedField('logoUrl')}
+          onBlur={() => setFocusedField(null)}
+        />
+        <Text style={styles.helperText}>
+          Right-click your school logo on your school website and copy the image URL.
+        </Text>
 
-      <Text style={styles.label}>School colors</Text>
-      <View style={styles.colorsGrid}>
-        {SCHOOL_COLORS.map((colorOption) => (
-          <TouchableOpacity
-            key={colorOption.name}
-            style={[
-              styles.colorCard,
-              selectedColors?.name === colorOption.name && styles.colorCardActive,
-            ]}
-            onPress={() => setSelectedColors(colorOption)}
-          >
-            {colorOption.primary ? (
-              <View style={styles.colorSwatches}>
-                <View style={[styles.swatch, { backgroundColor: colorOption.primary }]} />
-                <View style={[styles.swatch, { backgroundColor: colorOption.secondary, borderWidth: 1, borderColor: NEUTRAL.border }]} />
-              </View>
-            ) : (
-              <Text style={styles.customLabel}>Custom</Text>
-            )}
-            <Text style={styles.colorName}>{colorOption.name}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {selectedColors?.name === 'Custom' && (
-        <View style={styles.customColors}>
-          <Text style={styles.helperText}>Enter hex color codes (e.g. #1a237e)</Text>
-          <View style={styles.row}>
-            <View style={styles.flex}>
-              <Text style={styles.label}>Primary color</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="#000000"
-                placeholderTextColor={NEUTRAL.muted}
-                value={customPrimary}
-                onChangeText={setCustomPrimary}
-                autoCapitalize="none"
-              />
-            </View>
-            <View style={styles.flex}>
-              <Text style={styles.label}>Secondary color</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="#ffffff"
-                placeholderTextColor={NEUTRAL.muted}
-                value={customSecondary}
-                onChangeText={setCustomSecondary}
-                autoCapitalize="none"
-              />
-            </View>
+        <View style={styles.row}>
+          <View style={styles.flex}>
+            <Text style={styles.label}>City</Text>
+            <TextInput
+              style={inputStyle('city')}
+              placeholder="City"
+              placeholderTextColor={SIGNAL.color.mute2}
+              value={city}
+              onChangeText={setCity}
+              autoCapitalize="words"
+              onFocus={() => setFocusedField('city')}
+              onBlur={() => setFocusedField(null)}
+            />
+          </View>
+          <View style={styles.stateField}>
+            <Text style={styles.label}>State</Text>
+            <TextInput
+              style={inputStyle('state')}
+              placeholder="ST"
+              placeholderTextColor={SIGNAL.color.mute2}
+              value={state}
+              onChangeText={setState}
+              autoCapitalize="characters"
+              maxLength={2}
+              onFocus={() => setFocusedField('state')}
+              onBlur={() => setFocusedField(null)}
+            />
           </View>
         </View>
-      )}
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Team colors</Text>
+        <Text style={styles.helperText}>Pick the palette your athletes will see across the app.</Text>
+
+        <View style={styles.colorsGrid}>
+          {SCHOOL_COLORS.map((colorOption) => {
+            const isActive = selectedColors?.name === colorOption.name;
+            return (
+              <TouchableOpacity
+                key={colorOption.name}
+                style={[styles.colorCard, isActive && styles.colorCardActive]}
+                onPress={() => setSelectedColors(colorOption)}
+                activeOpacity={0.7}
+              >
+                {colorOption.primary ? (
+                  <View style={styles.colorSwatches}>
+                    <View style={[styles.swatch, { backgroundColor: colorOption.primary }]} />
+                    <View
+                      style={[
+                        styles.swatch,
+                        {
+                          backgroundColor: colorOption.secondary,
+                          borderWidth: 1,
+                          borderColor: SIGNAL.color.line,
+                        },
+                      ]}
+                    />
+                  </View>
+                ) : (
+                  <Text style={styles.customLabel}>+</Text>
+                )}
+                <Text style={[styles.colorName, isActive && styles.colorNameActive]}>
+                  {colorOption.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {selectedColors?.name === 'Custom' && (
+          <View style={styles.customColors}>
+            <Text style={styles.helperText}>Enter hex color codes (e.g. #1a237e).</Text>
+            <View style={styles.row}>
+              <View style={styles.flex}>
+                <Text style={styles.label}>Primary color</Text>
+                <TextInput
+                  style={inputStyle('customPrimary')}
+                  placeholder="#000000"
+                  placeholderTextColor={SIGNAL.color.mute2}
+                  value={customPrimary}
+                  onChangeText={setCustomPrimary}
+                  autoCapitalize="none"
+                  onFocus={() => setFocusedField('customPrimary')}
+                  onBlur={() => setFocusedField(null)}
+                />
+              </View>
+              <View style={styles.flex}>
+                <Text style={styles.label}>Secondary color</Text>
+                <TextInput
+                  style={inputStyle('customSecondary')}
+                  placeholder="#ffffff"
+                  placeholderTextColor={SIGNAL.color.mute2}
+                  value={customSecondary}
+                  onChangeText={setCustomSecondary}
+                  autoCapitalize="none"
+                  onFocus={() => setFocusedField('customSecondary')}
+                  onBlur={() => setFocusedField(null)}
+                />
+              </View>
+            </View>
+          </View>
+        )}
+      </View>
 
       <View style={styles.infoBox}>
         <Text style={styles.infoTitle}>Your join code</Text>
@@ -227,47 +268,209 @@ export default function CoachSetupScreen({ onSetupComplete }) {
         </Text>
       </View>
 
-      <Button
-        label="Create My Program"
+      <TouchableOpacity
+        style={[styles.primaryButton, loading && styles.primaryButtonDisabled]}
         onPress={handleCreateSchool}
-        loading={loading}
-        size="lg"
-      />
+        disabled={loading}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.primaryButtonText}>
+          {loading ? 'Creating...' : 'Create team'}
+        </Text>
+      </TouchableOpacity>
 
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container:     { flex: 1, backgroundColor: NEUTRAL.bg },
-  content:       { padding: SPACE['2xl'], paddingBottom: SPACE['4xl'] },
-  header:        { marginBottom: SPACE['2xl'], marginTop: SPACE.xl },
-  title:         { fontSize: 26, fontWeight: FONT_WEIGHT.bold, color: BRAND },
-  subtitle:      { fontSize: FONT_SIZE.base, color: NEUTRAL.body, marginTop: SPACE.sm },
-  label:         { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.label, marginBottom: SPACE.sm, marginTop: SPACE.xs },
+  container: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper2,
+  },
+  content: {
+    padding: SIGNAL.space.screen,
+    paddingTop: Platform.OS === 'ios' ? 68 : 44,
+    paddingBottom: SIGNAL.space[8] * 2,
+  },
+
+  // Header
+  header: {
+    marginBottom: SIGNAL.space[8],
+  },
+  eyebrow: {
+    ...SIGNAL.style.eyebrow,
+    marginBottom: SIGNAL.space[2],
+  },
+  title: {
+    fontFamily: SIGNAL.font.display,
+    fontSize: 29,
+    color: SIGNAL.color.indigo,
+    letterSpacing: SIGNAL.letter.titleTight,
+    lineHeight: 34,
+  },
+  subtitle: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: SIGNAL.size.body,
+    color: SIGNAL.color.inkSoft,
+    letterSpacing: SIGNAL.letter.bodyTight,
+    marginTop: SIGNAL.space[2],
+    lineHeight: 20,
+  },
+
+  // Cards
+  card: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    padding: SIGNAL.space.card,
+    marginBottom: SIGNAL.space[5],
+    ...SIGNAL.border.hairline,
+  },
+  sectionTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: SIGNAL.size.heading,
+    color: SIGNAL.color.indigo,
+    marginBottom: SIGNAL.space[4],
+  },
+
+  // Labels + inputs
+  label: {
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: SIGNAL.size.label,
+    color: SIGNAL.color.mute,
+    marginBottom: SIGNAL.space[2],
+    marginTop: SIGNAL.space[2],
+  },
   input: {
-    backgroundColor: NEUTRAL.card, borderRadius: RADIUS.md, padding: SPACE.lg - 2,
-    fontSize: FONT_SIZE.md, marginBottom: SPACE.lg - 2, borderWidth: 1, borderColor: NEUTRAL.input, color: BRAND_DARK,
+    backgroundColor: SIGNAL.color.paper2,
+    borderRadius: SIGNAL.radius.control,
+    paddingHorizontal: SIGNAL.space[4],
+    paddingVertical: SIGNAL.space[4],
+    fontFamily: SIGNAL.font.body,
+    fontSize: SIGNAL.size.bodyLg,
+    color: SIGNAL.color.ink,
+    marginBottom: SIGNAL.space[3],
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
   },
-  row:           { flexDirection: 'row', gap: SPACE.md },
-  flex:          { flex: 1 },
-  stateField:    { width: 80 },
-  colorsGrid:    { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.md, marginBottom: SPACE.lg },
+  inputFocused: {
+    borderColor: SIGNAL.color.indigo,
+    backgroundColor: SIGNAL.color.white,
+  },
+
+  row: {
+    flexDirection: 'row',
+    gap: SIGNAL.space[4],
+  },
+  flex: { flex: 1 },
+  stateField: { width: 90 },
+
+  helperText: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: SIGNAL.size.label,
+    color: SIGNAL.color.mute,
+    marginBottom: SIGNAL.space[3],
+    lineHeight: 16,
+  },
+
+  // Color picker
+  colorsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SIGNAL.space[3],
+    marginTop: SIGNAL.space[2],
+    marginBottom: SIGNAL.space[2],
+  },
   colorCard: {
-    width: '22%', backgroundColor: NEUTRAL.card, borderRadius: RADIUS.md,
-    padding: SPACE.md, alignItems: 'center', borderWidth: 2, borderColor: NEUTRAL.border,
+    width: '23%',
+    backgroundColor: SIGNAL.color.paper2,
+    borderRadius: SIGNAL.radius.control,
+    paddingVertical: SIGNAL.space[4],
+    paddingHorizontal: SIGNAL.space[2],
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
   },
-  colorCardActive: { borderColor: BRAND },
-  colorSwatches: { flexDirection: 'row', gap: SPACE.xs, marginBottom: SPACE.sm },
-  swatch:        { width: 20, height: 20, borderRadius: RADIUS.full },
-  customLabel:   { fontSize: FONT_SIZE.lg, marginBottom: SPACE.xs },
-  colorName:     { fontSize: 10, color: NEUTRAL.body, textAlign: 'center' },
-  customColors:  { marginBottom: SPACE.sm },
-  helperText:    { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginBottom: SPACE.sm },
+  colorCardActive: {
+    borderColor: SIGNAL.color.indigo,
+    borderWidth: 2,
+    backgroundColor: SIGNAL.color.white,
+  },
+  colorSwatches: {
+    flexDirection: 'row',
+    gap: SIGNAL.space[1],
+    marginBottom: SIGNAL.space[2],
+  },
+  swatch: {
+    width: 18,
+    height: 18,
+    borderRadius: SIGNAL.radius.chip,
+  },
+  customLabel: {
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: 20,
+    color: SIGNAL.color.mute,
+    marginBottom: SIGNAL.space[1],
+    lineHeight: 22,
+  },
+  colorName: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 10,
+    color: SIGNAL.color.mute,
+    textAlign: 'center',
+  },
+  colorNameActive: {
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.indigo,
+  },
+
+  customColors: {
+    marginTop: SIGNAL.space[3],
+  },
+
+  // Info box
   infoBox: {
-    backgroundColor: BRAND_LIGHT, borderRadius: RADIUS.md, padding: SPACE.lg - 2,
-    borderLeftWidth: 4, borderLeftColor: BRAND, marginBottom: SPACE.xl,
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    padding: SIGNAL.space.card,
+    marginBottom: SIGNAL.space[6],
+    borderLeftWidth: 3,
+    borderLeftColor: SIGNAL.color.indigo,
+    borderTopWidth: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderTopColor: SIGNAL.color.line,
+    borderRightColor: SIGNAL.color.line,
+    borderBottomColor: SIGNAL.color.line,
   },
-  infoTitle:     { fontWeight: FONT_WEIGHT.bold, color: BRAND, marginBottom: SPACE.xs },
-  infoText:      { fontSize: FONT_SIZE.sm, color: NEUTRAL.label, lineHeight: 18 },
+  infoTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: SIGNAL.size.body,
+    color: SIGNAL.color.indigo,
+    marginBottom: SIGNAL.space[1],
+  },
+  infoText: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: SIGNAL.size.label,
+    color: SIGNAL.color.inkSoft,
+    lineHeight: 18,
+  },
+
+  // Primary CTA
+  primaryButton: {
+    backgroundColor: SIGNAL.color.indigo,
+    borderRadius: SIGNAL.radius.button,
+    paddingVertical: SIGNAL.space[5],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryButtonDisabled: {
+    opacity: 0.6,
+  },
+  primaryButtonText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: SIGNAL.size.bodyLg,
+    color: SIGNAL.color.white,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
 });

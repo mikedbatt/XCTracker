@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   addDoc, collection, doc, getDocs, orderBy, query,
   serverTimestamp, where,
@@ -11,7 +12,7 @@ import {
 import { auth, db } from '../firebaseConfig';
 import {
   BRAND, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
+  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE, STATUS,
 } from '../constants/design';
 import DatePickerField from './DatePickerField';
 import MeetDetail from './MeetDetail';
@@ -144,45 +145,89 @@ export default function RaceManager({ schoolId, school, athletes, groups, onClos
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+          <Ionicons name="chevron-back" size={20} color={SIGNAL.color.inkSoft} />
           <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Races</Text>
-        <TouchableOpacity onPress={() => setShowAddForm(true)} style={styles.addHeaderBtn}>
-          <Ionicons name="add" size={22} color={BRAND} />
+        <TouchableOpacity onPress={() => setShowAddForm(true)} activeOpacity={0.85} style={styles.addHeaderBtn}>
+          <LinearGradient
+            colors={[SIGNAL.color.indigo, SIGNAL.color.violet]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.addHeaderBtnGradient}
+          >
+            <Ionicons name="add" size={16} color="#fff" />
+            <Text style={styles.addHeaderBtnText}>Add meet</Text>
+          </LinearGradient>
         </TouchableOpacity>
       </View>
 
       {loading ? (
-        <View style={styles.center}><ActivityIndicator size="large" color={primaryColor} /></View>
+        <View style={styles.center}><ActivityIndicator size="large" color={SIGNAL.color.indigo} /></View>
       ) : (
-        <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
           {/* Add meet form */}
           {showAddForm && (
             <View style={styles.formCard}>
               <Text style={styles.formTitle}>Add a Meet</Text>
               <Text style={styles.formLabel}>Meet name</Text>
-              <TextInput style={styles.input} value={meetName} onChangeText={setMeetName} placeholder="e.g. Highland Invitational" placeholderTextColor={NEUTRAL.muted} />
-              <DatePickerField label="Meet date" value={meetDate} onChange={setMeetDate} primaryColor={primaryColor} />
+              <TextInput
+                style={styles.input}
+                value={meetName}
+                onChangeText={setMeetName}
+                placeholder="e.g. Highland Invitational"
+                placeholderTextColor={SIGNAL.color.mute2}
+              />
+              <DatePickerField label="Meet date" value={meetDate} onChange={setMeetDate} primaryColor={SIGNAL.color.indigo} />
               <Text style={styles.formLabel}>Location</Text>
-              <TextInput style={styles.input} value={meetLocation} onChangeText={setMeetLocation} placeholder="e.g. Highland Park Course" placeholderTextColor={NEUTRAL.muted} />
+              <TextInput
+                style={styles.input}
+                value={meetLocation}
+                onChangeText={setMeetLocation}
+                placeholder="e.g. Highland Park Course"
+                placeholderTextColor={SIGNAL.color.mute2}
+              />
               <Text style={styles.formLabel}>Course type</Text>
               <View style={styles.courseRow}>
-                {['flat', 'rolling', 'hilly'].map(c => (
-                  <TouchableOpacity key={c} style={[styles.courseChip, meetCourse === c && { backgroundColor: primaryColor, borderColor: primaryColor }]} onPress={() => setMeetCourse(c)}>
-                    <Text style={[styles.courseChipText, meetCourse === c && { color: '#fff' }]}>{c}</Text>
-                  </TouchableOpacity>
-                ))}
+                {['flat', 'rolling', 'hilly'].map(c => {
+                  const active = meetCourse === c;
+                  return (
+                    <TouchableOpacity
+                      key={c}
+                      style={[styles.courseChip, active && styles.courseChipActive]}
+                      onPress={() => setMeetCourse(c)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.courseChipText, active && styles.courseChipTextActive]}>{c}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
               <Text style={styles.formLabel}>Notes (optional)</Text>
-              <TextInput style={[styles.input, { minHeight: 50, textAlignVertical: 'top' }]} value={meetNotes} onChangeText={setMeetNotes} placeholder="Course details, logistics..." placeholderTextColor={NEUTRAL.muted} multiline />
+              <TextInput
+                style={[styles.input, styles.inputMultiline]}
+                value={meetNotes}
+                onChangeText={setMeetNotes}
+                placeholder="Course details, logistics..."
+                placeholderTextColor={SIGNAL.color.mute2}
+                multiline
+              />
               <View style={styles.formBtns}>
-                <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowAddForm(false)}>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowAddForm(false)} activeOpacity={0.8}>
                   <Text style={styles.cancelBtnText}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.saveBtn, { backgroundColor: primaryColor }]} onPress={handleAddMeet} disabled={saving}>
-                  {saving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.saveBtnText}>Create Meet</Text>}
+                <TouchableOpacity activeOpacity={0.85} style={styles.saveBtn} onPress={handleAddMeet} disabled={saving}>
+                  <LinearGradient
+                    colors={[SIGNAL.color.indigo, SIGNAL.color.violet]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.saveBtnGradient}
+                  >
+                    {saving
+                      ? <ActivityIndicator color="#fff" size="small" />
+                      : <Text style={styles.saveBtnText}>Create Meet</Text>}
+                  </LinearGradient>
                 </TouchableOpacity>
               </View>
             </View>
@@ -191,17 +236,33 @@ export default function RaceManager({ schoolId, school, athletes, groups, onClos
           {/* Upcoming meets */}
           {upcoming.length > 0 && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Upcoming</Text>
+              <Text style={styles.eyebrow}>Upcoming</Text>
               {upcoming.map(meet => (
-                <TouchableOpacity key={meet.id} style={styles.meetCard} activeOpacity={0.7} onPress={() => setSelectedMeet(meet)}>
-                  <View style={[styles.meetDateBadge, { backgroundColor: primaryColor }]}>
-                    <Text style={styles.meetDateBadgeText}>{daysUntil(meet.date)}</Text>
+                <TouchableOpacity
+                  key={meet.id}
+                  style={styles.meetCard}
+                  activeOpacity={0.75}
+                  onPress={() => setSelectedMeet(meet)}
+                >
+                  <View style={styles.daysBadge}>
+                    <LinearGradient
+                      colors={[SIGNAL.color.indigo, SIGNAL.color.violet]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.daysBadgeInner}
+                    >
+                      <Text style={styles.daysBadgeNum}>{daysUntil(meet.date)}</Text>
+                      <Text style={styles.daysBadgeLabel}>OUT</Text>
+                    </LinearGradient>
                   </View>
                   <View style={styles.meetInfo}>
                     <Text style={styles.meetName}>{meet.name}</Text>
-                    <Text style={styles.meetMeta}>{formatMeetDate(meet.date)}{meet.location ? ` · ${meet.location}` : ''}</Text>
+                    <Text style={styles.meetMeta}>
+                      <Text style={styles.meetMetaAccent}>{formatMeetDate(meet.date)}</Text>
+                      {meet.location ? ` · ${meet.location}` : ''}
+                    </Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={18} color={NEUTRAL.muted} />
+                  <Ionicons name="chevron-forward" size={18} color={SIGNAL.color.mute2} />
                 </TouchableOpacity>
               ))}
             </View>
@@ -210,17 +271,24 @@ export default function RaceManager({ schoolId, school, athletes, groups, onClos
           {/* Past meets */}
           {past.length > 0 && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Past Meets</Text>
+              <Text style={styles.eyebrow}>Past meets</Text>
               {past.map(meet => (
-                <TouchableOpacity key={meet.id} style={styles.meetCard} activeOpacity={0.7} onPress={() => setSelectedMeet(meet)}>
-                  <View style={[styles.meetDateBadge, { backgroundColor: NEUTRAL.muted }]}>
-                    <Text style={styles.meetDateBadgeText}>{formatMeetDate(meet.date).split(',')[0]}</Text>
+                <TouchableOpacity
+                  key={meet.id}
+                  style={styles.meetCardPast}
+                  activeOpacity={0.75}
+                  onPress={() => setSelectedMeet(meet)}
+                >
+                  <View style={styles.pastDateBadge}>
+                    <Text style={styles.pastDateBadgeText}>{formatMeetDate(meet.date).split(',')[0]}</Text>
                   </View>
                   <View style={styles.meetInfo}>
                     <Text style={styles.meetName}>{meet.name}</Text>
-                    <Text style={styles.meetMeta}>{formatMeetDate(meet.date)}{meet.location ? ` · ${meet.location}` : ''}</Text>
+                    <Text style={styles.meetMeta}>
+                      {formatMeetDate(meet.date)}{meet.location ? ` · ${meet.location}` : ''}
+                    </Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={18} color={NEUTRAL.muted} />
+                  <Ionicons name="chevron-forward" size={18} color={SIGNAL.color.mute2} />
                 </TouchableOpacity>
               ))}
             </View>
@@ -228,11 +296,20 @@ export default function RaceManager({ schoolId, school, athletes, groups, onClos
 
           {meets.length === 0 && !showAddForm && (
             <View style={styles.emptyCard}>
-              <Text style={{ fontSize: 40, marginBottom: SPACE.md }}>🏁</Text>
+              <Text style={styles.emptyEmoji}>🏁</Text>
               <Text style={styles.emptyTitle}>No meets yet</Text>
-              <Text style={styles.emptyDesc}>Add your first meet to start tracking race results and pack analysis.</Text>
-              <TouchableOpacity style={[styles.saveBtn, { backgroundColor: primaryColor, marginTop: SPACE.md }]} onPress={() => setShowAddForm(true)}>
-                <Text style={styles.saveBtnText}>+ Add First Meet</Text>
+              <Text style={styles.emptyDesc}>
+                Add your first meet to start tracking race results and pack analysis.
+              </Text>
+              <TouchableOpacity activeOpacity={0.85} style={styles.emptyCta} onPress={() => setShowAddForm(true)}>
+                <LinearGradient
+                  colors={[SIGNAL.color.indigo, SIGNAL.color.violet]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.emptyCtaGradient}
+                >
+                  <Text style={styles.emptyCtaText}>+ Add First Meet</Text>
+                </LinearGradient>
               </TouchableOpacity>
             </View>
           )}
@@ -245,37 +322,330 @@ export default function RaceManager({ schoolId, school, athletes, groups, onClos
 }
 
 const styles = StyleSheet.create({
-  container:      { flex: 1, backgroundColor: NEUTRAL.bg },
-  center:         { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header:         { backgroundColor: '#fff', paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
-  backBtn:        { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6 },
-  backText:       { color: BRAND_DARK, fontSize: 15, fontWeight: '600' },
-  headerTitle:    { fontSize: 20, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  addHeaderBtn:   { padding: 6 },
-  scroll:         { flex: 1 },
-  section:        { padding: SPACE.lg },
-  sectionTitle:   { fontSize: 17, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.md },
-  meetCard:       { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: RADIUS.lg, padding: SPACE.lg, marginBottom: SPACE.sm, gap: SPACE.md, ...SHADOW.sm },
-  meetDateBadge:  { borderRadius: RADIUS.md, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm, minWidth: 60, alignItems: 'center' },
-  meetDateBadgeText: { color: '#fff', fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
-  meetInfo:       { flex: 1 },
-  meetName:       { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  meetMeta:       { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 2 },
-  // Form
-  formCard:       { margin: SPACE.lg, backgroundColor: '#fff', borderRadius: RADIUS.lg, padding: SPACE.lg, ...SHADOW.sm },
-  formTitle:      { fontSize: 18, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.lg },
-  formLabel:      { fontSize: FONT_SIZE.sm, fontWeight: '600', color: NEUTRAL.body, marginBottom: SPACE.sm, marginTop: SPACE.sm },
-  input:          { backgroundColor: NEUTRAL.bg, borderRadius: RADIUS.md, padding: SPACE.md, fontSize: FONT_SIZE.base, color: BRAND_DARK, borderWidth: 1, borderColor: NEUTRAL.border, marginBottom: SPACE.xs },
-  courseRow:       { flexDirection: 'row', gap: SPACE.sm, marginBottom: SPACE.sm },
-  courseChip:      { borderRadius: RADIUS.sm, borderWidth: 1.5, borderColor: NEUTRAL.border, paddingHorizontal: SPACE.lg, paddingVertical: SPACE.sm },
-  courseChipText:  { fontSize: FONT_SIZE.sm, fontWeight: '600', color: NEUTRAL.body, textTransform: 'capitalize' },
-  formBtns:       { flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.md },
-  cancelBtn:      { flex: 1, borderRadius: RADIUS.md, padding: 14, alignItems: 'center', backgroundColor: '#fee2e2' },
-  cancelBtnText:  { fontSize: 15, fontWeight: '600', color: '#dc2626' },
-  saveBtn:        { flex: 1, borderRadius: RADIUS.md, padding: 14, alignItems: 'center' },
-  saveBtnText:    { color: '#fff', fontSize: 15, fontWeight: FONT_WEIGHT.bold },
-  // Empty
-  emptyCard:      { margin: SPACE.lg, backgroundColor: '#fff', borderRadius: RADIUS.lg, padding: SPACE['2xl'], alignItems: 'center', ...SHADOW.sm },
-  emptyTitle:     { fontSize: 18, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.sm },
-  emptyDesc:      { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, textAlign: 'center', lineHeight: 20 },
+  container: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper2,
+  },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ── Header ───────────────────────────────────────────────────────────────
+  header: {
+    backgroundColor: SIGNAL.color.white,
+    paddingTop: Platform.OS === 'ios' ? 68 : 44,
+    paddingBottom: 14,
+    paddingHorizontal: SIGNAL.space.screen,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+    gap: 10,
+  },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: 6,
+    paddingRight: 4,
+  },
+  backText: {
+    color: SIGNAL.color.inkSoft,
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+  },
+  headerTitle: {
+    flex: 1,
+    fontSize: SIGNAL.size.title,
+    fontFamily: SIGNAL.font.bodyBold,
+    fontWeight: '700',
+    color: SIGNAL.color.indigo,
+    letterSpacing: SIGNAL.letter.titleTight,
+  },
+  addHeaderBtn: {
+    borderRadius: SIGNAL.radius.button,
+    overflow: 'hidden',
+  },
+  addHeaderBtnGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  addHeaderBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+  },
+
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: 40 },
+
+  // ── Sections ─────────────────────────────────────────────────────────────
+  section: {
+    paddingHorizontal: SIGNAL.space.screen,
+    paddingTop: SIGNAL.space[6],
+  },
+  eyebrow: {
+    ...SIGNAL.style.eyebrow,
+    marginBottom: SIGNAL.space[3],
+    paddingLeft: 2,
+  },
+  sectionTitle: {
+    fontSize: SIGNAL.size.heading,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+    color: SIGNAL.color.indigo,
+    marginBottom: SIGNAL.space[3],
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+
+  // ── Upcoming meet card ───────────────────────────────────────────────────
+  meetCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    padding: SIGNAL.space[5],
+    marginBottom: SIGNAL.space[2],
+    gap: SIGNAL.space[4],
+    ...SIGNAL.border.hairline,
+  },
+  daysBadge: {
+    minWidth: 58,
+    borderRadius: SIGNAL.radius.control,
+    overflow: 'hidden',
+  },
+  daysBadgeInner: {
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  daysBadgeNum: {
+    color: '#fff',
+    fontSize: 14,
+    fontFamily: SIGNAL.font.bodyBold,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  daysBadgeLabel: {
+    color: '#fff',
+    fontSize: 8.5,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+    letterSpacing: 1,
+    opacity: 0.9,
+    marginTop: 1,
+  },
+  meetInfo: { flex: 1, minWidth: 0 },
+  meetName: {
+    fontSize: 15,
+    fontFamily: SIGNAL.font.bodyBold,
+    fontWeight: '700',
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  meetMeta: {
+    fontSize: 12,
+    fontFamily: SIGNAL.font.body,
+    color: SIGNAL.color.mute,
+    marginTop: 3,
+  },
+  meetMetaAccent: {
+    fontFamily: SIGNAL.font.mono,
+    color: SIGNAL.color.pink,
+    fontWeight: '600',
+  },
+
+  // ── Past meet card ───────────────────────────────────────────────────────
+  meetCardPast: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    padding: SIGNAL.space[5],
+    marginBottom: SIGNAL.space[2],
+    gap: SIGNAL.space[4],
+    ...SIGNAL.border.hairline,
+  },
+  pastDateBadge: {
+    minWidth: 58,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderRadius: SIGNAL.radius.control,
+    backgroundColor: SIGNAL.color.paper2,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pastDateBadgeText: {
+    fontSize: 12,
+    fontFamily: SIGNAL.font.mono,
+    color: SIGNAL.color.inkSoft,
+    fontWeight: '600',
+  },
+
+  // ── Form card ────────────────────────────────────────────────────────────
+  formCard: {
+    marginHorizontal: SIGNAL.space.screen,
+    marginTop: SIGNAL.space[6],
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    padding: SIGNAL.space[6],
+    ...SIGNAL.border.hairline,
+  },
+  formTitle: {
+    fontSize: SIGNAL.size.heading,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+    color: SIGNAL.color.indigo,
+    marginBottom: SIGNAL.space[5],
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  formLabel: {
+    fontSize: SIGNAL.size.label,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+    color: SIGNAL.color.inkSoft,
+    marginTop: SIGNAL.space[3],
+    marginBottom: SIGNAL.space[2],
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  input: {
+    backgroundColor: SIGNAL.color.paper,
+    borderRadius: SIGNAL.radius.control,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.body,
+    color: SIGNAL.color.ink,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    marginBottom: SIGNAL.space[1],
+  },
+  inputMultiline: {
+    minHeight: 60,
+    textAlignVertical: 'top',
+    paddingTop: 11,
+  },
+
+  courseRow: {
+    flexDirection: 'row',
+    gap: SIGNAL.space[2],
+    marginBottom: SIGNAL.space[2],
+  },
+  courseChip: {
+    paddingHorizontal: SIGNAL.space[5],
+    paddingVertical: SIGNAL.space[2],
+    borderRadius: SIGNAL.radius.chip,
+    backgroundColor: SIGNAL.color.paper2,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+  },
+  courseChipActive: {
+    backgroundColor: SIGNAL.color.indigo,
+    borderColor: SIGNAL.color.indigo,
+  },
+  courseChipText: {
+    fontSize: 12,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+    color: SIGNAL.color.inkSoft,
+    textTransform: 'capitalize',
+  },
+  courseChipTextActive: {
+    color: '#fff',
+  },
+
+  formBtns: {
+    flexDirection: 'row',
+    gap: SIGNAL.space[3],
+    marginTop: SIGNAL.space[5],
+  },
+  cancelBtn: {
+    flex: 1,
+    borderRadius: SIGNAL.radius.button,
+    paddingVertical: 13,
+    alignItems: 'center',
+    backgroundColor: SIGNAL.color.paper2,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+  },
+  cancelBtnText: {
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+    color: SIGNAL.color.inkSoft,
+  },
+  saveBtn: {
+    flex: 1,
+    borderRadius: SIGNAL.radius.button,
+    overflow: 'hidden',
+  },
+  saveBtnGradient: {
+    paddingVertical: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveBtnText: {
+    color: '#fff',
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.bodyBold,
+    fontWeight: '700',
+  },
+
+  // ── Empty state ──────────────────────────────────────────────────────────
+  emptyCard: {
+    marginHorizontal: SIGNAL.space.screen,
+    marginTop: SIGNAL.space[6],
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    padding: SIGNAL.space[8] + 8,
+    alignItems: 'center',
+    ...SIGNAL.border.hairline,
+  },
+  emptyEmoji: {
+    fontSize: 40,
+    marginBottom: SIGNAL.space[4],
+  },
+  emptyTitle: {
+    fontSize: SIGNAL.size.heading,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+    color: SIGNAL.color.indigo,
+    marginBottom: SIGNAL.space[2],
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  emptyDesc: {
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.body,
+    color: SIGNAL.color.mute,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  emptyCta: {
+    marginTop: SIGNAL.space[5],
+    borderRadius: SIGNAL.radius.button,
+    overflow: 'hidden',
+  },
+  emptyCtaGradient: {
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyCtaText: {
+    color: '#fff',
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.bodyBold,
+    fontWeight: '700',
+  },
 });

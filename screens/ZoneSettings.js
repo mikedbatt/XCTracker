@@ -14,7 +14,7 @@ import {
     View,
 } from 'react-native';
 import { db } from '../firebaseConfig';
-import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS } from '../constants/design';
+import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE, STATUS } from '../constants/design';
 import {
     DEFAULT_ZONE_BOUNDARIES, ZONE_META,
 } from '../zoneConfig';
@@ -57,7 +57,7 @@ export default function ZoneSettings({ school, schoolId, onClose, onSaved }) {
   const [boundaries, setBoundaries] = useState({ ...DEFAULT_ZONE_BOUNDARIES });
   const [hrZonesDisabled, setHrZonesDisabled] = useState(true);
 
-  const primaryColor = '#213f96';
+  const primaryColor = SIGNAL.color.indigo;
 
   // Zone ranges at preview max HR (200 bpm typical high school)
   const previewMaxHR = 200;
@@ -90,7 +90,7 @@ export default function ZoneSettings({ school, schoolId, onClose, onSaved }) {
         hrZonesDisabled,
         updatedAt: new Date().toISOString(),
       });
-      Alert.alert('Saved! ✅', 'Zone boundaries updated for your entire team.');
+      Alert.alert('Saved', 'Zone boundaries updated for your entire team.');
       onSaved && onSaved(boundaries, hrZonesDisabled);
     } catch {
       Alert.alert('Error', 'Could not save. Please try again.');
@@ -122,10 +122,10 @@ export default function ZoneSettings({ school, schoolId, onClose, onSaved }) {
       <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-            <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+            <Ionicons name="chevron-back" size={22} color={SIGNAL.color.ink} />
             <Text style={styles.backText}>Back</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Team Zone Settings</Text>
+          <Text style={styles.headerTitle}>Training zones</Text>
           <View style={{ width: 60 }} />
         </View>
         <View style={styles.center}><ActivityIndicator size="large" color={primaryColor} /></View>
@@ -137,19 +137,26 @@ export default function ZoneSettings({ school, schoolId, onClose, onSaved }) {
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+          <Ionicons name="chevron-back" size={22} color={SIGNAL.color.ink} />
           <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Team Zone Settings</Text>
-        <TouchableOpacity onPress={handleReset} style={styles.resetBtn}>
-          <Text style={styles.resetText}>Reset</Text>
+        <Text style={styles.headerTitle}>Training zones</Text>
+        <TouchableOpacity
+          onPress={handleSave}
+          style={[styles.saveCta, saving && { opacity: 0.6 }]}
+          disabled={saving}
+        >
+          {saving
+            ? <ActivityIndicator color="#fff" size="small" />
+            : <Text style={styles.saveCtaText}>Save</Text>}
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
         {/* HR Zones toggle */}
-        <View style={styles.toggleCard}>
+        <View style={styles.card}>
+          <Text style={styles.eyebrow}>Heart rate</Text>
           <View style={styles.toggleRow}>
             <View style={styles.toggleInfo}>
               <Text style={styles.toggleLabel}>Enable heart rate zones</Text>
@@ -162,30 +169,36 @@ export default function ZoneSettings({ school, schoolId, onClose, onSaved }) {
             <Switch
               value={!hrZonesDisabled}
               onValueChange={(val) => setHrZonesDisabled(!val)}
-              trackColor={{ false: '#E5E7EB', true: BRAND }}
+              trackColor={{ false: SIGNAL.color.line, true: SIGNAL.color.indigo }}
               thumbColor="#fff"
+              ios_backgroundColor={SIGNAL.color.line}
             />
           </View>
         </View>
 
         {/* Team info */}
         {!hrZonesDisabled && (
-        <View style={styles.teamCard}>
-          <View style={[styles.teamDot, { backgroundColor: BRAND }]} />
-          <View>
-            <Text style={styles.teamName}>{school?.name}</Text>
-            <Text style={styles.teamSub}>
-              These zone boundaries apply to every athlete on your team. Zone breakdowns across the app — on athlete cards, dashboards, and run details — all use these settings.
-            </Text>
+        <View style={styles.card}>
+          <Text style={styles.eyebrow}>Team</Text>
+          <View style={styles.teamRow}>
+            <View style={[styles.teamDot, { backgroundColor: SIGNAL.color.indigo }]} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.teamName}>{school?.name}</Text>
+              <Text style={styles.teamSub}>
+                These zone boundaries apply to every athlete on your team. Zone breakdowns across the app — on athlete cards, dashboards, and run details — all use these settings.
+              </Text>
+            </View>
           </View>
         </View>
         )}
 
-        {/* Zone boundaries — hidden when HR zones disabled */}
-        {!hrZonesDisabled && <View style={styles.card}>
+        {/* HR zone boundaries */}
+        {!hrZonesDisabled && (
+        <View style={styles.card}>
+          <Text style={styles.eyebrow}>HR zones</Text>
           <Text style={styles.cardTitle}>Zone boundaries</Text>
           <Text style={styles.cardDesc}>
-            Each value is the lower boundary of that zone as a % of max HR. Standard values are 60/70/80/90%.
+            Each value is the lower boundary of that zone as a % of max HR. Standard values are 60 / 70 / 80 / 90.
           </Text>
           <BoundaryRow
             label="Zone 2 starts at"
@@ -215,11 +228,13 @@ export default function ZoneSettings({ school, schoolId, onClose, onSaved }) {
             onChange={v => setBoundary('z5', v)}
             color={ZONE_META[5].color}
           />
-        </View>}
+        </View>
+        )}
 
         {/* Live zone preview at 200 bpm max HR */}
-        {!hrZonesDisabled &&
+        {!hrZonesDisabled && (
         <View style={styles.card}>
+          <Text style={styles.eyebrow}>Preview</Text>
           <Text style={styles.cardTitle}>Zone ranges</Text>
           <Text style={styles.cardDesc}>
             Preview at 200 bpm max HR (typical high school athlete). Actual ranges scale to each athlete's max HR (220 − age).
@@ -238,29 +253,24 @@ export default function ZoneSettings({ school, schoolId, onClose, onSaved }) {
               </Text>
             </View>
           ))}
-        </View>}
+        </View>
+        )}
 
         {/* 80/20 reminder */}
-        {!hrZonesDisabled &&
-        <View style={styles.wisdomCard}>
-          <Text style={styles.wisdomTitle}>The 80/20 principle</Text>
-          <Text style={styles.wisdomText}>
+        {!hrZonesDisabled && (
+        <View style={styles.card}>
+          <Text style={styles.eyebrow}>Philosophy</Text>
+          <Text style={styles.cardTitle}>The 80 / 20 principle</Text>
+          <Text style={styles.cardDesc}>
             Elite endurance programs target roughly 80% of training time in Zone 1–2 and 20% in Zones 3–5. Athlete cards on your dashboard flag anyone spending less than 70% in the easy zones so you can intervene quickly.
           </Text>
-        </View>}
-
-        <View style={styles.saveRow}>
-          <TouchableOpacity
-            style={[styles.saveBtn, { backgroundColor: primaryColor }]}
-            onPress={handleSave}
-            disabled={saving}
-          >
-            {saving
-              ? <ActivityIndicator color="#fff" />
-              : <Text style={styles.saveBtnText}>Save for entire team</Text>
-            }
-          </TouchableOpacity>
         </View>
+        )}
+
+        {/* Reset link */}
+        <TouchableOpacity onPress={handleReset} style={styles.resetLinkWrap} activeOpacity={0.7}>
+          <Text style={styles.resetLinkText}>Reset to defaults</Text>
+        </TouchableOpacity>
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -269,42 +279,232 @@ export default function ZoneSettings({ school, schoolId, onClose, onSaved }) {
 }
 
 const styles = StyleSheet.create({
-  container:         { flex: 1, backgroundColor: '#F5F6FA' },
-  center:            { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header:            { backgroundColor: '#fff', paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
-  backBtn:           { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6 },
-  backText:          { color: '#111827', fontSize: 15, fontWeight: '600' },
-  headerTitle:       { fontSize: 20, fontWeight: '700', color: '#111827' },
-  resetBtn:          { paddingVertical: 6, paddingHorizontal: 10 },
-  resetText:         { color: '#6B7280', fontSize: 14 },
-  scroll:            { flex: 1 },
-  toggleCard:        { backgroundColor: '#fff', margin: 16, marginBottom: 8, borderRadius: 14, padding: 16 },
-  toggleRow:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  toggleInfo:        { flex: 1 },
-  toggleLabel:       { fontSize: 15, fontWeight: '600', color: '#111827', marginBottom: 3 },
-  toggleHint:        { fontSize: 12, color: '#9CA3AF', lineHeight: 17 },
-  teamCard:          { flexDirection: 'row', alignItems: 'flex-start', gap: 12, backgroundColor: '#fff', margin: 16, marginBottom: 8, borderRadius: 14, padding: 14 },
-  teamDot:           { width: 12, height: 12, borderRadius: 6, marginTop: 4 },
-  teamName:          { fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 4 },
-  teamSub:           { fontSize: 13, color: '#6B7280', lineHeight: 18, flex: 1 },
-  card:              { backgroundColor: '#fff', marginHorizontal: 16, marginBottom: 12, borderRadius: 14, padding: 16 },
-  cardTitle:         { fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 6 },
-  cardDesc:          { fontSize: 13, color: '#6B7280', lineHeight: 19, marginBottom: 14 },
-  boundaryRow:       { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
-  boundaryDot:       { width: 12, height: 12, borderRadius: 6 },
-  boundaryLabel:     { flex: 1, fontSize: 14, color: '#444' },
-  boundaryInput:     { backgroundColor: '#F5F6FA', borderRadius: 8, borderWidth: 1, borderColor: '#E5E7EB', paddingHorizontal: 10, paddingVertical: 8, fontSize: 16, fontWeight: '700', color: '#111827', width: 56, textAlign: 'center' },
-  boundaryPct:       { fontSize: 13, color: '#6B7280', width: 16 },
-  zoneRangeBar:      { flexDirection: 'row', height: 12, borderRadius: 6, overflow: 'hidden', marginBottom: 12 },
-  zoneRangeSegment:  { height: '100%' },
-  zoneRangeRow:      { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
-  zoneRangeDot:      { width: 10, height: 10, borderRadius: 5 },
-  zoneRangeName:     { flex: 1, fontSize: 13, color: '#6B7280' },
-  zoneRangeHR:       { fontSize: 13, fontWeight: '600', color: '#111827' },
-  wisdomCard:        { marginHorizontal: 16, marginBottom: 12, backgroundColor: '#1a237e', borderRadius: 14, padding: 16 },
-  wisdomTitle:       { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.6)', marginBottom: 8, letterSpacing: 1, textTransform: 'uppercase' },
-  wisdomText:        { fontSize: 13, color: '#fff', lineHeight: 20 },
-  saveRow:           { paddingHorizontal: 16, marginBottom: 8 },
-  saveBtn:           { borderRadius: 12, padding: 18, alignItems: 'center' },
-  saveBtnText:       { color: '#fff', fontSize: 17, fontWeight: 'bold' },
+  container: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper2,
+  },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  header: {
+    backgroundColor: SIGNAL.color.white,
+    paddingTop: Platform.OS === 'ios' ? 68 : 44,
+    paddingBottom: 14,
+    paddingHorizontal: SIGNAL.space.screen,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: 6,
+    minWidth: 70,
+  },
+  backText: {
+    color: SIGNAL.color.ink,
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.bodyMedium,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  headerTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: SIGNAL.size.heading,
+    color: SIGNAL.color.indigo,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  saveCta: {
+    backgroundColor: SIGNAL.color.indigo,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: SIGNAL.radius.button,
+    minWidth: 70,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveCtaText: {
+    color: SIGNAL.color.white,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: SIGNAL.size.body,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: SIGNAL.space.screen,
+    paddingTop: SIGNAL.space[6],
+  },
+
+  // Card base
+  card: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    padding: SIGNAL.space.card,
+    marginBottom: SIGNAL.space[4],
+    ...SIGNAL.border.hairline,
+  },
+  eyebrow: {
+    ...SIGNAL.style.eyebrow,
+    fontFamily: SIGNAL.font.bodyMedium,
+    marginBottom: SIGNAL.space[2],
+  },
+  cardTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: SIGNAL.size.heading,
+    color: SIGNAL.color.indigo,
+    letterSpacing: SIGNAL.letter.bodyTight,
+    marginBottom: SIGNAL.space[1],
+  },
+  cardDesc: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: SIGNAL.size.body,
+    color: SIGNAL.color.inkSoft,
+    lineHeight: 20,
+    marginBottom: SIGNAL.space[5],
+  },
+
+  // Toggle row
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SIGNAL.space[4],
+  },
+  toggleInfo: {
+    flex: 1,
+  },
+  toggleLabel: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: SIGNAL.size.bodyLg,
+    color: SIGNAL.color.ink,
+    marginBottom: SIGNAL.space[1],
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  toggleHint: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: SIGNAL.size.label,
+    color: SIGNAL.color.mute,
+    lineHeight: 17,
+  },
+
+  // Team row inside team card
+  teamRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SIGNAL.space[4],
+  },
+  teamDot: {
+    width: 10,
+    height: 10,
+    borderRadius: SIGNAL.radius.chip,
+    marginTop: 6,
+  },
+  teamName: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: SIGNAL.size.bodyLg,
+    color: SIGNAL.color.ink,
+    marginBottom: SIGNAL.space[1],
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  teamSub: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: SIGNAL.size.body,
+    color: SIGNAL.color.inkSoft,
+    lineHeight: 20,
+  },
+
+  // Boundary input row
+  boundaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SIGNAL.space[3],
+    paddingVertical: SIGNAL.space[3],
+    borderTopWidth: 1,
+    borderTopColor: SIGNAL.color.line,
+  },
+  boundaryDot: {
+    width: 10,
+    height: 10,
+    borderRadius: SIGNAL.radius.chip,
+  },
+  boundaryLabel: {
+    flex: 1,
+    fontFamily: SIGNAL.font.body,
+    fontSize: SIGNAL.size.body,
+    color: SIGNAL.color.inkSoft,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  boundaryInput: {
+    backgroundColor: SIGNAL.color.paper,
+    borderRadius: SIGNAL.radius.control,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontFamily: SIGNAL.font.mono,
+    fontSize: SIGNAL.size.bodyLg,
+    color: SIGNAL.color.ink,
+    width: 62,
+    textAlign: 'center',
+  },
+  boundaryPct: {
+    fontFamily: SIGNAL.font.mono,
+    fontSize: SIGNAL.size.body,
+    color: SIGNAL.color.mute,
+    width: 14,
+  },
+
+  // Zone range bar
+  zoneRangeBar: {
+    flexDirection: 'row',
+    height: 10,
+    borderRadius: SIGNAL.radius.chip,
+    overflow: 'hidden',
+    marginBottom: SIGNAL.space[5],
+  },
+  zoneRangeSegment: {
+    height: '100%',
+  },
+  zoneRangeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SIGNAL.space[3],
+    paddingVertical: SIGNAL.space[2],
+  },
+  zoneRangeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: SIGNAL.radius.chip,
+  },
+  zoneRangeName: {
+    flex: 1,
+    fontFamily: SIGNAL.font.body,
+    fontSize: SIGNAL.size.body,
+    color: SIGNAL.color.inkSoft,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  zoneRangeHR: {
+    fontFamily: SIGNAL.font.mono,
+    fontSize: SIGNAL.size.body,
+    color: SIGNAL.color.ink,
+  },
+
+  // Reset link (coral / destructive)
+  resetLinkWrap: {
+    alignItems: 'center',
+    paddingVertical: SIGNAL.space[5],
+    marginTop: SIGNAL.space[2],
+  },
+  resetLinkText: {
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: SIGNAL.size.body,
+    color: SIGNAL.color.coral,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
 });

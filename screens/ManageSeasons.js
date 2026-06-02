@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   collection, doc, getDocs, query, updateDoc, where,
 } from 'firebase/firestore';
@@ -8,10 +9,7 @@ import {
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { db } from '../firebaseConfig';
-import {
-  BRAND, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE,
-} from '../constants/design';
+import { SIGNAL } from '../constants/design';
 import DatePickerField from './DatePickerField';
 import {
   generateVolumeCurve,
@@ -316,9 +314,11 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
     if (!s.seasonStart || !s.championshipDate) return null;
     if (groups.length === 0) {
       return (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyTitle}>No groups yet</Text>
-          <Text style={styles.emptySubtitle}>Create groups in Manage Groups first.</Text>
+        <View style={styles.volumeSection}>
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>No groups yet</Text>
+            <Text style={styles.emptySubtitle}>Create groups in Manage Groups first.</Text>
+          </View>
         </View>
       );
     }
@@ -353,7 +353,7 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
     return (
       <View style={styles.volumeSection}>
         {/* Starting + Peak mileage per group */}
-        <Text style={styles.volumeLabel}>Mileage per group</Text>
+        <Text style={styles.eyebrow}>Mileage per group</Text>
         <Text style={styles.volumeHint}>Starting = where the group is now. Peak = championship week target.</Text>
         <View style={styles.groupMileageList}>
           {groups.map(g => {
@@ -362,7 +362,11 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
               <View key={g.id} style={styles.groupMileageRow}>
                 <View style={styles.groupMileageNameCol}>
                   <Text style={styles.groupMileageName} numberOfLines={1}>{g.name}</Text>
-                  {priorPeak && <Text style={styles.priorSeasonHint}>Prior peak: {priorPeak} mi/wk</Text>}
+                  {priorPeak ? (
+                    <Text style={styles.priorSeasonHint}>
+                      Prior peak: <Text style={styles.mono}>{priorPeak}</Text> mi/wk
+                    </Text>
+                  ) : null}
                 </View>
                 <View style={styles.groupMileageInputs}>
                   <TextInput
@@ -376,7 +380,7 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
                     }}
                     onBlur={() => handleStartingChange(seasonIdx, g.id, s.startingMileage?.[g.id])}
                     placeholder="Start"
-                    placeholderTextColor={NEUTRAL.muted}
+                    placeholderTextColor={SIGNAL.color.mute2}
                     keyboardType="number-pad"
                     maxLength={3}
                   />
@@ -392,7 +396,7 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
                     }}
                     onBlur={() => handlePeakChange(seasonIdx, g.id, s.peakMileage?.[g.id])}
                     placeholder="Peak"
-                    placeholderTextColor={NEUTRAL.muted}
+                    placeholderTextColor={SIGNAL.color.mute2}
                     keyboardType="number-pad"
                     maxLength={3}
                   />
@@ -405,31 +409,51 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
 
         {/* Generate button */}
         {groupsWithPeak.length > 0 && (
-          <TouchableOpacity style={styles.generateBtn} onPress={() => handleGenerateCurve(seasonIdx)}>
-            <Ionicons name="sparkles-outline" size={18} color={BRAND} />
+          <TouchableOpacity style={styles.generateBtn} onPress={() => handleGenerateCurve(seasonIdx)} activeOpacity={0.85}>
+            <Ionicons name="sparkles-outline" size={18} color={SIGNAL.color.indigo} />
             <Text style={styles.generateBtnText}>Generate volume plan from peak mileage</Text>
           </TouchableOpacity>
         )}
 
         {/* Weekly volume table */}
-        <Text style={[styles.volumeLabel, { marginTop: SPACE.md }]}>Weekly volume targets</Text>
+        <Text style={[styles.eyebrow, { marginTop: 14 }]}>Weekly volume targets</Text>
         {weeks.map((weekMon, wi) => {
           const weekISO = weekMon.toISOString().split('T')[0];
           const weekLabel = weekMon.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
           const isCurrent = weekISO === currentMondayISO;
           const isPast = weekMon < currentMonday && !isCurrent;
           return (
-            <View key={weekISO} style={[styles.volumeWeek, isCurrent && { backgroundColor: BRAND + '08', borderColor: BRAND, borderWidth: 1 }]}>
-              <Text style={[styles.volumeWeekLabel, isCurrent && { color: BRAND, fontWeight: '700' }]}>
-                Wk {wi + 1} · {weekLabel}{isCurrent ? '  ← this week' : ''}
-              </Text>
+            <View
+              key={weekISO}
+              style={[
+                styles.volumeWeek,
+                isCurrent && {
+                  backgroundColor: `${SIGNAL.color.indigo}0A`,
+                  borderColor: SIGNAL.color.indigo,
+                },
+              ]}
+            >
+              <View style={styles.volumeWeekHeader}>
+                <Text style={[styles.volumeWeekNum, isCurrent && { color: SIGNAL.color.indigo }]}>
+                  Wk <Text style={styles.mono}>{wi + 1}</Text>
+                </Text>
+                <Text style={[styles.volumeWeekDate, isCurrent && { color: SIGNAL.color.indigo }]}>
+                  {weekLabel}
+                </Text>
+                {isCurrent && (
+                  <View style={styles.nowChip}>
+                    <View style={styles.nowDot} />
+                    <Text style={styles.nowChipText}>THIS WEEK</Text>
+                  </View>
+                )}
+              </View>
               <View style={styles.volumeGroupRow}>
                 {groups.map(g => {
                   const planVal = g.seasonPlans?.[key]?.[weekISO];
                   const displayVal = planVal != null ? String(planVal) : '';
                   return (
                     <View key={g.id} style={styles.volumeCell}>
-                      <Text style={styles.volumeCellLabel}>{g.name}</Text>
+                      <Text style={styles.volumeCellLabel} numberOfLines={1}>{g.name}</Text>
                       <TextInput
                         style={[styles.volumeCellInput, isPast && { opacity: 0.5 }]}
                         value={displayVal}
@@ -446,7 +470,7 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
                         }}
                         onBlur={() => handleVolumeSave(g.id, key, weekISO, groups.find(gr => gr.id === g.id)?.seasonPlans?.[key]?.[weekISO])}
                         placeholder="--"
-                        placeholderTextColor="#ccc"
+                        placeholderTextColor={SIGNAL.color.mute2}
                         keyboardType="decimal-pad"
                         maxLength={5}
                       />
@@ -463,53 +487,76 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
 
   return (
     <View style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+        <TouchableOpacity onPress={onClose} style={styles.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Ionicons name="chevron-back" size={22} color={SIGNAL.color.inkSoft} />
           <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Manage Seasons</Text>
-        <View style={{ width: 60 }} />
+        <Text style={styles.headerTitle}>Season plans</Text>
+        {!showForm ? (
+          <TouchableOpacity onPress={openAdd} style={styles.headerAddBtn} activeOpacity={0.85}>
+            <Text style={styles.headerAddText}>+ Add</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 60 }} />
+        )}
       </View>
 
+      {/* Active phase badge */}
       {activeSeason && !activePhase.isPreSeason && (
-        <View style={[styles.activeBadge, { backgroundColor: `${activePhase.color}18` }]}>
+        <View style={[styles.activeBadge, { backgroundColor: `${activePhase.color}14`, borderColor: `${activePhase.color}33` }]}>
           <Text style={[styles.activeBadgeText, { color: activePhase.color }]}>
-            {activePhase.icon} {activeSeason.name} · {activePhase.name} · Week {activePhase.weekNum}
+            {activePhase.icon} {activeSeason.name} · {activePhase.name} · Week <Text style={styles.mono}>{activePhase.weekNum}</Text>
           </Text>
         </View>
       )}
 
-      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {showForm ? (
           <View style={styles.formCard}>
             <Text style={styles.formTitle}>{editingIdx !== null ? 'Edit season' : 'Add a season'}</Text>
 
-            <Text style={styles.formLabel}>Sport</Text>
+            <Text style={styles.eyebrow}>Sport</Text>
             <View style={styles.sportGrid}>
-              {Object.values(SPORTS).map(s => (
-                <TouchableOpacity
-                  key={s.key}
-                  style={[styles.sportBtn, sport === s.key && { backgroundColor: s.color, borderColor: s.color }]}
-                  onPress={() => setSport(s.key)}
-                >
-                  <Text style={styles.sportIcon}>{s.icon}</Text>
-                  <Text style={[styles.sportLabel, sport === s.key && { color: '#fff' }]}>{s.label}</Text>
-                  <Text style={[styles.sportMonths, sport === s.key && { color: 'rgba(255,255,255,0.8)' }]}>{s.months}</Text>
-                  <Text style={[styles.sportDesc, sport === s.key && { color: 'rgba(255,255,255,0.7)' }]}>{s.description}</Text>
-                </TouchableOpacity>
-              ))}
+              {Object.values(SPORTS).map(s => {
+                const selected = sport === s.key;
+                return (
+                  <TouchableOpacity
+                    key={s.key}
+                    style={[
+                      styles.sportBtn,
+                      selected && { backgroundColor: `${s.color}10`, borderColor: s.color, borderWidth: 2 },
+                    ]}
+                    onPress={() => setSport(s.key)}
+                    activeOpacity={0.85}
+                  >
+                    <View style={styles.sportRow}>
+                      <Text style={styles.sportIcon}>{s.icon}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.sportLabel, selected && { color: s.color }]}>{s.label}</Text>
+                        <Text style={styles.sportMonths}>{s.months}</Text>
+                      </View>
+                      {selected && (
+                        <View style={[styles.selectedDot, { backgroundColor: s.color }]} />
+                      )}
+                    </View>
+                    <Text style={styles.sportDesc}>{s.description}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
-            <Text style={styles.formLabel}>Season name (optional)</Text>
+            <Text style={styles.eyebrow}>Season name (optional)</Text>
             <TextInput
               style={styles.nameInput}
               value={name}
               onChangeText={setName}
               placeholder={`e.g. ${SPORTS[sport].label} 2026`}
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={SIGNAL.color.mute2}
             />
 
+            <View style={{ height: 12 }} />
             <DatePickerField
               label={sport === 'cross_country' ? 'Season start (June for summer base)' : 'Season start date'}
               value={seasonStart}
@@ -526,117 +573,152 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
             />
 
             {seasonStart && championshipDate && (
-              <View style={[styles.weeksBadge, { borderColor: SPORTS[sport].color }]}>
+              <View style={[styles.weeksBadge, { borderColor: `${SPORTS[sport].color}55`, backgroundColor: `${SPORTS[sport].color}0A` }]}>
                 <Text style={[styles.weeksText, { color: SPORTS[sport].color }]}>
-                  {Math.round((championshipDate - seasonStart) / (7 * 86400000))} weeks · {SPORTS[sport].events.slice(0, 3).join(', ')}
+                  <Text style={styles.mono}>{Math.round((championshipDate - seasonStart) / (7 * 86400000))}</Text>
+                  {' weeks · '}{SPORTS[sport].events.slice(0, 3).join(', ')}
                 </Text>
               </View>
             )}
 
             <View style={styles.formBtns}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowForm(false)}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowForm(false)} activeOpacity={0.85}>
                 <Text style={styles.cancelBtnText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.saveSeasonBtn, { backgroundColor: SPORTS[sport].color }]}
+                style={styles.saveSeasonBtn}
                 onPress={handleSaveSeason}
+                activeOpacity={0.9}
               >
-                <Text style={styles.saveSeasonBtnText}>Save</Text>
+                <LinearGradient
+                  colors={[SIGNAL.color.indigo, SIGNAL.color.violet]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.saveSeasonGradient}
+                >
+                  <Text style={styles.saveSeasonBtnText}>Save season</Text>
+                </LinearGradient>
               </TouchableOpacity>
             </View>
           </View>
         ) : (
           <>
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Your seasons</Text>
-                <TouchableOpacity style={[styles.addSeasonBtn, { backgroundColor: activePhase?.color || BRAND }]} onPress={openAdd}>
-                  <Text style={styles.addSeasonBtnText}>+ Add</Text>
+            <Text style={styles.eyebrowSection}>Your seasons</Text>
+
+            {seasons.length === 0 ? (
+              <View style={styles.emptyCard}>
+                <Text style={styles.emptyTitle}>No seasons set up yet</Text>
+                <Text style={styles.emptySubtitle}>
+                  Start with Cross Country — set June as your start date to include summer base building.
+                </Text>
+                <TouchableOpacity style={styles.emptyAddBtn} onPress={openAdd} activeOpacity={0.9}>
+                  <LinearGradient
+                    colors={[SIGNAL.color.indigo, SIGNAL.color.violet]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.emptyAddGradient}
+                  >
+                    <Text style={styles.emptyAddText}>+ Add first season</Text>
+                  </LinearGradient>
                 </TouchableOpacity>
               </View>
+            ) : (
+              <View style={{ gap: 10 }}>
+                {(showArchive ? archivedSeasons : visibleSeasons).map((cs) => {
+                  const idx = cs.idx;
+                  const s = seasons[idx];
+                  const sportDef = SPORTS[s.sport] || SPORTS.cross_country;
+                  const phase = getPhaseForSeason(s);
+                  const start = new Date(s.seasonStart);
+                  const champ = new Date(s.championshipDate);
+                  const isExpanded = expandedIdx === idx;
 
-              {seasons.length === 0 ? (
-                <View style={styles.emptyCard}>
-                  <Text style={styles.emptyTitle}>No seasons set up yet</Text>
-                  <Text style={styles.emptySubtitle}>Start with Cross Country — set June as your start date to include summer base building.</Text>
-                  <TouchableOpacity style={[styles.addSeasonBtn, { backgroundColor: BRAND, paddingHorizontal: 20 }]} onPress={openAdd}>
-                    <Text style={styles.addSeasonBtnText}>+ Add first season</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (showArchive ? archivedSeasons : visibleSeasons).map((cs) => {
-                const idx = cs.idx;
-                const s = seasons[idx];
-                const sportDef = SPORTS[s.sport] || SPORTS.cross_country;
-                const phase = getPhaseForSeason(s);
-                const start = new Date(s.seasonStart);
-                const champ = new Date(s.championshipDate);
-                const isExpanded = expandedIdx === idx;
-
-                return (
-                  <View key={idx}>
-                    <TouchableOpacity
-                      style={[styles.seasonCard, cs.isActive && { borderColor: sportDef.color, borderWidth: 2 }]}
-                      activeOpacity={0.7}
-                      onPress={() => setExpandedIdx(isExpanded ? null : idx)}
-                    >
-                      <View style={[styles.seasonStripe, { backgroundColor: sportDef.color }]} />
-                      <View style={styles.seasonBody}>
-                        <View style={styles.seasonTop}>
-                          <Text style={styles.seasonIcon}>{sportDef.icon}</Text>
-                          <View style={styles.seasonInfo}>
-                            <Text style={styles.seasonName}>{s.name}</Text>
-                            <Text style={styles.seasonDates}>
-                              {start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – {champ.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                            </Text>
+                  return (
+                    <View key={idx} style={styles.seasonGroup}>
+                      <TouchableOpacity
+                        style={[
+                          styles.seasonCard,
+                          cs.isActive && { borderColor: sportDef.color, borderWidth: 2 },
+                          isExpanded && { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
+                        ]}
+                        activeOpacity={0.85}
+                        onPress={() => setExpandedIdx(isExpanded ? null : idx)}
+                      >
+                        <View style={[styles.seasonStripe, { backgroundColor: sportDef.color }]} />
+                        <View style={styles.seasonBody}>
+                          <View style={styles.seasonTop}>
+                            <Text style={styles.seasonIcon}>{sportDef.icon}</Text>
+                            <View style={styles.seasonInfo}>
+                              <Text style={styles.seasonName}>{s.name}</Text>
+                              <Text style={styles.seasonDates}>
+                                <Text style={styles.mono}>
+                                  {start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                  {' – '}
+                                  {champ.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                </Text>
+                              </Text>
+                            </View>
+                            {cs.isActive && (
+                              <View style={[styles.activePill, { backgroundColor: `${sportDef.color}18` }]}>
+                                <Text style={[styles.activePillText, { color: sportDef.color }]}>ACTIVE</Text>
+                              </View>
+                            )}
+                            {cs === lastSeason && !cs.isActive && (
+                              <View style={[styles.activePill, { backgroundColor: `${SIGNAL.color.mute}18` }]}>
+                                <Text style={[styles.activePillText, { color: SIGNAL.color.mute }]}>LAST</Text>
+                              </View>
+                            )}
+                            <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={SIGNAL.color.mute} />
                           </View>
-                          {cs.isActive && (
-                            <View style={[styles.activePill, { backgroundColor: sportDef.color }]}>
-                              <Text style={styles.activePillText}>Active</Text>
+
+                          {cs.isActive && !phase.isPreSeason && (
+                            <View style={styles.metaRow}>
+                              <View style={[styles.phaseChip, { backgroundColor: `${phase.color}18` }]}>
+                                <View style={[styles.phaseDot, { backgroundColor: phase.color }]} />
+                                <Text style={[styles.phaseChipText, { color: phase.color }]}>
+                                  {phase.name} · Wk <Text style={styles.mono}>{phase.weekNum}</Text>
+                                </Text>
+                              </View>
+                              <Text style={styles.countdownText}>
+                                🏆 <Text style={styles.mono}>{phase.daysToChamp}d</Text> to champs
+                              </Text>
                             </View>
                           )}
-                          {cs === lastSeason && !cs.isActive && (
-                            <View style={[styles.activePill, { backgroundColor: NEUTRAL.muted }]}>
-                              <Text style={styles.activePillText}>Last</Text>
-                            </View>
-                          )}
-                          <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={NEUTRAL.muted} />
-                        </View>
-                        {cs.isActive && !phase.isPreSeason && (
-                          <Text style={[styles.phaseTag, { color: phase.color }]}>
-                            {phase.icon} {phase.name} · Wk {phase.weekNum} · {phase.daysToChamp}d to champs
-                          </Text>
-                        )}
-                        <View style={styles.seasonActions}>
-                          <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(idx)}>
-                            <Text style={styles.editBtnText}>Edit</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity style={styles.deleteSeasonBtn} onPress={() => handleDelete(idx)}>
-                            <Text style={styles.deleteSeasonBtnText}>Delete</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    </TouchableOpacity>
 
-                    {/* Expanded: peak mileage + volume curve */}
-                    {isExpanded && renderVolumePlan(idx)}
-                  </View>
-                );
-              })}
+                          <View style={styles.seasonActions}>
+                            <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(idx)} activeOpacity={0.85}>
+                              <Text style={styles.editBtnText}>Edit</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDelete(idx)} activeOpacity={0.85}>
+                              <Text style={styles.deleteBtnText}>Delete</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      </TouchableOpacity>
 
-              {/* Archive link */}
-              {!showArchive && archivedSeasons.length > 0 && (
-                <TouchableOpacity style={styles.archiveLink} onPress={() => setShowArchive(true)}>
-                  <Ionicons name="time-outline" size={16} color={BRAND} />
-                  <Text style={styles.archiveLinkText}>View {archivedSeasons.length} past season{archivedSeasons.length > 1 ? 's' : ''}</Text>
-                </TouchableOpacity>
-              )}
-              {showArchive && (
-                <TouchableOpacity style={styles.archiveLink} onPress={() => setShowArchive(false)}>
-                  <Ionicons name="arrow-back" size={16} color={BRAND} />
-                  <Text style={styles.archiveLinkText}>Back to current seasons</Text>
-                </TouchableOpacity>
-              )}
-            </View>
+                      {/* Expanded: peak mileage + volume curve */}
+                      {isExpanded && renderVolumePlan(idx)}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
+            {/* Archive link */}
+            {!showArchive && archivedSeasons.length > 0 && (
+              <TouchableOpacity style={styles.archiveLink} onPress={() => setShowArchive(true)} activeOpacity={0.7}>
+                <Ionicons name="time-outline" size={16} color={SIGNAL.color.indigo} />
+                <Text style={styles.archiveLinkText}>
+                  View {archivedSeasons.length} past season{archivedSeasons.length > 1 ? 's' : ''}
+                </Text>
+              </TouchableOpacity>
+            )}
+            {showArchive && (
+              <TouchableOpacity style={styles.archiveLink} onPress={() => setShowArchive(false)} activeOpacity={0.7}>
+                <Ionicons name="arrow-back" size={16} color={SIGNAL.color.indigo} />
+                <Text style={styles.archiveLinkText}>Back to current seasons</Text>
+              </TouchableOpacity>
+            )}
           </>
         )}
         <View style={{ height: 60 }} />
@@ -646,87 +728,522 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
 }
 
 const styles = StyleSheet.create({
-  container:         { flex: 1, backgroundColor: NEUTRAL.bg },
-  header:            { backgroundColor: '#fff', paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
-  backBtn:           { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6 },
-  backText:          { color: BRAND_DARK, fontSize: 15, fontWeight: '600' },
-  headerTitle:       { fontSize: 20, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  activeBadge:       { marginHorizontal: 16, marginTop: 10, borderRadius: 10, padding: 8, alignItems: 'center' },
-  activeBadgeText:   { fontSize: 13, fontWeight: '700' },
-  scroll:            { flex: 1 },
-  section:           { padding: SPACE.lg },
-  sectionHeader:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sectionTitle:      { fontSize: 18, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  container: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper2,
+  },
 
-  // Add season button
-  addSeasonBtn:      { borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
-  addSeasonBtnText:  { color: '#fff', fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold },
+  // ── Header ────────────────────────────────────────────────────────────────
+  header: {
+    backgroundColor: SIGNAL.color.white,
+    paddingTop: Platform.OS === 'ios' ? 68 : 44,
+    paddingBottom: 14,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: 6,
+    minWidth: 60,
+  },
+  backText: {
+    color: SIGNAL.color.inkSoft,
+    fontSize: 15,
+    fontFamily: SIGNAL.font.bodyMedium,
+  },
+  headerTitle: {
+    fontSize: SIGNAL.size.heading,
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.indigo,
+    letterSpacing: SIGNAL.letter.titleTight,
+  },
+  headerAddBtn: {
+    minWidth: 60,
+    alignItems: 'flex-end',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: SIGNAL.color.indigo,
+  },
+  headerAddText: {
+    color: SIGNAL.color.white,
+    fontSize: 12.5,
+    fontFamily: SIGNAL.font.bodySemi,
+  },
 
-  // Empty
-  emptyCard:         { backgroundColor: '#fff', borderRadius: RADIUS.lg, padding: 24, alignItems: 'center', gap: 12 },
-  emptyTitle:        { fontSize: 17, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  emptySubtitle:     { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, textAlign: 'center', lineHeight: 20 },
+  // ── Active phase badge ────────────────────────────────────────────────────
+  activeBadge: {
+    marginHorizontal: 14,
+    marginTop: 14,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  activeBadgeText: {
+    fontSize: 13,
+    fontFamily: SIGNAL.font.bodyBold,
+  },
 
-  // Season card
-  seasonCard:        { backgroundColor: '#fff', borderRadius: RADIUS.lg, marginBottom: 12, overflow: 'hidden', flexDirection: 'row', borderWidth: 1, borderColor: NEUTRAL.border },
-  seasonStripe:      { width: 6 },
-  seasonBody:        { flex: 1, padding: 14 },
-  seasonTop:         { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
-  seasonIcon:        { fontSize: 24 },
-  seasonInfo:        { flex: 1 },
-  seasonName:        { fontSize: 15, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  seasonDates:       { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 2 },
-  activePill:        { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
-  activePillText:    { color: '#fff', fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
-  phaseTag:          { fontSize: FONT_SIZE.xs, fontWeight: '600', marginBottom: 8 },
-  seasonActions:     { flexDirection: 'row', gap: 8, marginTop: 8 },
-  editBtn:           { borderRadius: 8, paddingHorizontal: 16, paddingVertical: 7, backgroundColor: NEUTRAL.bg },
-  editBtnText:       { fontSize: 13, fontWeight: '600', color: BRAND_DARK },
-  deleteSeasonBtn:   { borderRadius: 8, paddingHorizontal: 16, paddingVertical: 7, backgroundColor: '#fee2e2' },
-  deleteSeasonBtnText:{ fontSize: 13, fontWeight: '600', color: '#dc2626' },
+  // ── Scroll ────────────────────────────────────────────────────────────────
+  scroll: { flex: 1 },
+  scrollContent: { padding: 14, paddingTop: 18 },
 
-  // Form
-  formCard:          { margin: 16, backgroundColor: '#fff', borderRadius: RADIUS.lg, padding: 16 },
-  formTitle:         { fontSize: 18, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: 16 },
-  formLabel:         { fontSize: FONT_SIZE.sm, fontWeight: '600', color: NEUTRAL.body, marginBottom: 8, marginTop: 4 },
-  sportGrid:         { gap: 8, marginBottom: 16 },
-  sportBtn:          { borderRadius: RADIUS.lg, padding: 14, backgroundColor: NEUTRAL.bg, borderWidth: 1.5, borderColor: NEUTRAL.border },
-  sportIcon:         { fontSize: 22, marginBottom: 4 },
-  sportLabel:        { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  sportMonths:       { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 1 },
-  sportDesc:         { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 1 },
-  nameInput:         { backgroundColor: NEUTRAL.bg, borderRadius: RADIUS.md, padding: 14, fontSize: 15, marginBottom: 4, borderWidth: 1, borderColor: NEUTRAL.border, color: BRAND_DARK },
-  weeksBadge:        { borderRadius: RADIUS.md, borderWidth: 1.5, padding: 10, alignItems: 'center', marginVertical: 12 },
-  weeksText:         { fontSize: FONT_SIZE.sm, fontWeight: '600' },
-  formBtns:          { flexDirection: 'row', gap: 10, marginTop: 8 },
-  cancelBtn:         { flex: 1, borderRadius: RADIUS.md, padding: 14, alignItems: 'center', backgroundColor: '#fee2e2' },
-  cancelBtnText:     { fontSize: 15, fontWeight: '600', color: '#dc2626' },
-  saveSeasonBtn:     { flex: 1, borderRadius: RADIUS.md, padding: 14, alignItems: 'center' },
-  saveSeasonBtnText: { color: '#fff', fontSize: 15, fontWeight: FONT_WEIGHT.bold },
+  // ── Eyebrows ──────────────────────────────────────────────────────────────
+  eyebrow: {
+    ...SIGNAL.style.eyebrow,
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  eyebrowSection: {
+    ...SIGNAL.style.eyebrow,
+    marginBottom: 10,
+    paddingLeft: 4,
+  },
 
-  // Volume plan section (expanded under a season card)
-  volumeSection:     { backgroundColor: NEUTRAL.bg, paddingHorizontal: SPACE.lg, paddingBottom: SPACE.lg, marginBottom: 12, borderBottomLeftRadius: RADIUS.lg, borderBottomRightRadius: RADIUS.lg },
-  volumeLabel:       { fontSize: 15, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: 4, marginTop: SPACE.md },
-  volumeHint:        { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginBottom: SPACE.md },
-  archiveLink:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.xs, paddingVertical: SPACE.md },
-  archiveLinkText:   { fontSize: FONT_SIZE.sm, color: BRAND, fontWeight: FONT_WEIGHT.semibold },
-  groupMileageList:  { gap: SPACE.sm, marginBottom: SPACE.md },
-  groupMileageRow:   { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: RADIUS.md, padding: SPACE.md, ...SHADOW.sm },
-  groupMileageNameCol: { width: 90 },
-  groupMileageName:  { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  priorSeasonHint:   { fontSize: 10, color: NEUTRAL.body, marginTop: 2, fontStyle: 'italic' },
-  groupMileageInputs:{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: SPACE.sm },
-  mileageInput:      { width: 52, fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, textAlign: 'center', borderWidth: 1, borderColor: NEUTRAL.border, borderRadius: RADIUS.sm, paddingVertical: SPACE.xs, backgroundColor: NEUTRAL.bg },
-  mileageArrow:      { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted },
-  mileageUnit:       { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, width: 32 },
-  generateBtn:       { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: BRAND + '15', borderRadius: RADIUS.md, padding: 12, marginBottom: SPACE.sm },
-  generateBtnText:   { fontSize: FONT_SIZE.sm, fontWeight: '600', color: BRAND },
+  // ── Empty state ───────────────────────────────────────────────────────────
+  emptyCard: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    padding: 24,
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+  },
+  emptyTitle: {
+    fontSize: 17,
+    fontFamily: SIGNAL.font.bodyBold,
+    color: SIGNAL.color.ink,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    fontFamily: SIGNAL.font.body,
+    color: SIGNAL.color.mute,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  emptyAddBtn: {
+    borderRadius: SIGNAL.radius.button,
+    overflow: 'hidden',
+    marginTop: 4,
+  },
+  emptyAddGradient: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  emptyAddText: {
+    color: SIGNAL.color.white,
+    fontSize: 14,
+    fontFamily: SIGNAL.font.bodySemi,
+  },
 
-  // Volume week rows
-  volumeWeek:        { backgroundColor: '#fff', borderRadius: RADIUS.md, padding: 12, marginBottom: 8 },
-  volumeWeekLabel:   { fontSize: 13, fontWeight: '600', color: NEUTRAL.muted, marginBottom: 8 },
-  volumeGroupRow:    { flexDirection: 'row', gap: 10 },
-  volumeCell:        { flex: 1, alignItems: 'center' },
-  volumeCellLabel:   { fontSize: 11, color: NEUTRAL.muted, marginBottom: 4 },
-  volumeCellInput:   { borderWidth: 1, borderColor: NEUTRAL.border, borderRadius: 8, padding: 6, width: '100%', textAlign: 'center', fontSize: 15, fontWeight: '600', backgroundColor: '#f9f9f9', color: BRAND_DARK },
+  // ── Season cards ──────────────────────────────────────────────────────────
+  seasonGroup: {},
+  seasonCard: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+  },
+  seasonStripe: { width: 5 },
+  seasonBody: { flex: 1, padding: 14 },
+  seasonTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 6,
+  },
+  seasonIcon: { fontSize: 24 },
+  seasonInfo: { flex: 1 },
+  seasonName: {
+    fontSize: 14.5,
+    fontFamily: SIGNAL.font.bodyBold,
+    color: SIGNAL.color.ink,
+  },
+  seasonDates: {
+    fontSize: 11.5,
+    color: SIGNAL.color.mute,
+    marginTop: 2,
+  },
+  activePill: {
+    borderRadius: SIGNAL.radius.chip,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+  },
+  activePillText: {
+    fontSize: 10,
+    fontFamily: SIGNAL.font.bodyBold,
+    letterSpacing: 0.6,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 10,
+  },
+  phaseChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: SIGNAL.radius.chip,
+  },
+  phaseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  phaseChipText: {
+    fontSize: 11.5,
+    fontFamily: SIGNAL.font.bodySemi,
+  },
+  countdownText: {
+    fontSize: 12,
+    color: SIGNAL.color.mute,
+    fontFamily: SIGNAL.font.bodyMedium,
+  },
+  seasonActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  editBtn: {
+    borderRadius: SIGNAL.radius.control,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: SIGNAL.color.paper2,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+  },
+  editBtnText: {
+    fontSize: 13,
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.inkSoft,
+  },
+  deleteBtn: {
+    borderRadius: SIGNAL.radius.control,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: SIGNAL.color.white,
+    borderWidth: 1,
+    borderColor: `${SIGNAL.color.coral}55`,
+  },
+  deleteBtnText: {
+    fontSize: 13,
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.coral,
+  },
+
+  // ── Form card ─────────────────────────────────────────────────────────────
+  formCard: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+  },
+  formTitle: {
+    fontSize: SIGNAL.size.heading,
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.indigo,
+    marginBottom: 16,
+    letterSpacing: SIGNAL.letter.titleTight,
+  },
+
+  sportGrid: { gap: 8, marginBottom: 14 },
+  sportBtn: {
+    borderRadius: SIGNAL.radius.button,
+    padding: 12,
+    backgroundColor: SIGNAL.color.paper,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+  },
+  sportRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  sportIcon: { fontSize: 22 },
+  sportLabel: {
+    fontSize: 14,
+    fontFamily: SIGNAL.font.bodyBold,
+    color: SIGNAL.color.ink,
+  },
+  sportMonths: {
+    fontSize: 11.5,
+    color: SIGNAL.color.mute,
+    marginTop: 1,
+    fontFamily: SIGNAL.font.mono,
+  },
+  sportDesc: {
+    fontSize: 12,
+    color: SIGNAL.color.mute,
+    marginTop: 6,
+    fontFamily: SIGNAL.font.body,
+    lineHeight: 17,
+  },
+  selectedDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+
+  nameInput: {
+    backgroundColor: SIGNAL.color.paper,
+    borderRadius: SIGNAL.radius.control,
+    padding: 13,
+    fontSize: 15,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    color: SIGNAL.color.ink,
+    fontFamily: SIGNAL.font.body,
+  },
+
+  weeksBadge: {
+    borderRadius: SIGNAL.radius.control,
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    marginVertical: 12,
+  },
+  weeksText: {
+    fontSize: 13.5,
+    fontFamily: SIGNAL.font.bodySemi,
+  },
+
+  formBtns: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 10,
+  },
+  cancelBtn: {
+    flex: 1,
+    borderRadius: SIGNAL.radius.button,
+    paddingVertical: 13,
+    alignItems: 'center',
+    backgroundColor: SIGNAL.color.white,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+  },
+  cancelBtnText: {
+    fontSize: 15,
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.inkSoft,
+  },
+  saveSeasonBtn: {
+    flex: 1,
+    borderRadius: SIGNAL.radius.button,
+    overflow: 'hidden',
+  },
+  saveSeasonGradient: {
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+  saveSeasonBtnText: {
+    color: SIGNAL.color.white,
+    fontSize: 15,
+    fontFamily: SIGNAL.font.bodyBold,
+  },
+
+  // ── Volume plan (expanded under season card) ──────────────────────────────
+  volumeSection: {
+    backgroundColor: SIGNAL.color.paper,
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    paddingTop: 6,
+    borderBottomLeftRadius: SIGNAL.radius.card,
+    borderBottomRightRadius: SIGNAL.radius.card,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: SIGNAL.color.line,
+    marginTop: -1,
+  },
+  volumeHint: {
+    fontSize: 12,
+    color: SIGNAL.color.mute,
+    fontFamily: SIGNAL.font.body,
+    marginBottom: 12,
+    lineHeight: 17,
+  },
+
+  groupMileageList: { gap: 8, marginBottom: 12 },
+  groupMileageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.control,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+  },
+  groupMileageNameCol: { width: 100 },
+  groupMileageName: {
+    fontSize: 13,
+    fontFamily: SIGNAL.font.bodyBold,
+    color: SIGNAL.color.ink,
+  },
+  priorSeasonHint: {
+    fontSize: 10.5,
+    color: SIGNAL.color.mute,
+    marginTop: 2,
+    fontFamily: SIGNAL.font.body,
+  },
+  groupMileageInputs: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  mileageInput: {
+    width: 54,
+    fontSize: 15,
+    fontFamily: SIGNAL.font.mono,
+    color: SIGNAL.color.ink,
+    textAlign: 'center',
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    borderRadius: SIGNAL.radius.control,
+    paddingVertical: 6,
+    backgroundColor: SIGNAL.color.paper2,
+  },
+  mileageArrow: {
+    fontSize: 13,
+    color: SIGNAL.color.mute,
+    fontFamily: SIGNAL.font.bodyMedium,
+  },
+  mileageUnit: {
+    fontSize: 11,
+    color: SIGNAL.color.mute,
+    width: 34,
+    fontFamily: SIGNAL.font.bodyMedium,
+  },
+
+  generateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: `${SIGNAL.color.indigo}10`,
+    borderRadius: SIGNAL.radius.control,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: `${SIGNAL.color.indigo}33`,
+  },
+  generateBtnText: {
+    fontSize: 13,
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.indigo,
+  },
+
+  // ── Weekly volume rows ────────────────────────────────────────────────────
+  volumeWeek: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.control,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+  },
+  volumeWeekHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  volumeWeekNum: {
+    fontSize: 13,
+    color: SIGNAL.color.inkSoft,
+    fontFamily: SIGNAL.font.bodySemi,
+  },
+  volumeWeekDate: {
+    flex: 1,
+    fontSize: 12,
+    color: SIGNAL.color.mute,
+    fontFamily: SIGNAL.font.bodyMedium,
+  },
+  nowChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: SIGNAL.radius.chip,
+    backgroundColor: `${SIGNAL.color.indigo}18`,
+  },
+  nowDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: SIGNAL.color.indigo,
+  },
+  nowChipText: {
+    fontSize: 9.5,
+    fontFamily: SIGNAL.font.bodyBold,
+    color: SIGNAL.color.indigo,
+    letterSpacing: 0.6,
+  },
+  volumeGroupRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  volumeCell: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  volumeCellLabel: {
+    fontSize: 10.5,
+    color: SIGNAL.color.mute,
+    marginBottom: 4,
+    fontFamily: SIGNAL.font.bodyMedium,
+  },
+  volumeCellInput: {
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    borderRadius: SIGNAL.radius.control,
+    padding: 7,
+    width: '100%',
+    textAlign: 'center',
+    fontSize: 14,
+    fontFamily: SIGNAL.font.mono,
+    backgroundColor: SIGNAL.color.paper2,
+    color: SIGNAL.color.ink,
+  },
+
+  // ── Archive link ──────────────────────────────────────────────────────────
+  archiveLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 14,
+    marginTop: 4,
+  },
+  archiveLinkText: {
+    fontSize: 13,
+    color: SIGNAL.color.indigo,
+    fontFamily: SIGNAL.font.bodySemi,
+  },
+
+  // ── Mono helper ───────────────────────────────────────────────────────────
+  mono: {
+    fontFamily: SIGNAL.font.mono,
+  },
 });

@@ -21,7 +21,8 @@ import {
     View
 } from 'react-native';
 import { db } from '../firebaseConfig';
-import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS } from '../constants/design';
+import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE, STATUS } from '../constants/design';
+import { SIGNAL_TYPE_COLORS } from '../constants/training';
 
 // ── Built-in workout library organized by phase ───────────────────────────────
 export const BUILTIN_WORKOUTS = {
@@ -70,14 +71,12 @@ export const BUILTIN_WORKOUTS = {
 
 const PHASES = Object.keys(BUILTIN_WORKOUTS);
 
-const TYPE_COLORS = {
-  'Easy':        '#4caf50',
-  'Long Run':    '#2196f3',
-  'Tempo':       '#ff9800',
-  'Intervals':   '#f44336',
-  'Hills':       '#795548',
-  'Race Effort': '#9c27b0',
+// Local fallback colors for types not in SIGNAL_TYPE_COLORS (e.g. 'Race Effort')
+const SIGNAL_TYPE_FALLBACK = {
+  'Race Effort': SIGNAL.color.pink,
 };
+
+const typeColor = (type) => SIGNAL_TYPE_COLORS[type] || SIGNAL_TYPE_FALLBACK[type] || SIGNAL.color.indigo;
 
 export default function WorkoutLibrary({ school, schoolId, userData, onClose, onAddToCalendar }) {
   const [activeTab,       setActiveTab]       = useState('builtin');
@@ -87,7 +86,7 @@ export default function WorkoutLibrary({ school, schoolId, userData, onClose, on
   const [selectedWorkout, setSelectedWorkout] = useState(null);
   const [detailVisible,   setDetailVisible]   = useState(false);
 
-  const primaryColor = '#213f96';
+  const primaryColor = SIGNAL.color.indigo;
   const isCoach = userData?.role === 'admin_coach' || userData?.role === 'assistant_coach';
 
   useEffect(() => { loadSavedWorkouts(); }, []);
@@ -142,99 +141,125 @@ export default function WorkoutLibrary({ school, schoolId, userData, onClose, on
     return savedWorkouts.some(w => w.name === workoutName);
   };
 
-  const renderWorkoutCard = (workout, showSave = true, showDelete = false) => (
-    <TouchableOpacity
-      key={workout.name || workout.id}
-      style={styles.workoutCard}
-      onPress={() => openDetail(workout)}
-    >
-      <View style={styles.workoutCardTop}>
-        <View style={[styles.typeBadge, { backgroundColor: TYPE_COLORS[workout.type] || primaryColor }]}>
-          <Text style={styles.typeBadgeText}>{workout.type}</Text>
+  const renderWorkoutCard = (workout, showSave = true, showDelete = false) => {
+    const c = typeColor(workout.type);
+    return (
+      <TouchableOpacity
+        key={workout.name || workout.id}
+        style={[styles.workoutCard, { borderLeftWidth: 3, borderLeftColor: c }]}
+        activeOpacity={0.85}
+        onPress={() => openDetail(workout)}
+      >
+        <View style={styles.workoutCardTop}>
+          <Text style={styles.workoutName}>{workout.name}</Text>
+          <Text style={styles.workoutDuration}>{workout.duration}</Text>
         </View>
-        <Text style={styles.workoutDuration}>{workout.duration}</Text>
-      </View>
-      <Text style={styles.workoutName}>{workout.name}</Text>
-      <Text style={styles.workoutDesc} numberOfLines={2}>{workout.description}</Text>
 
-      {isCoach && (
-        <View style={styles.workoutActions}>
-          {showSave && !isAlreadySaved(workout.name) && (
-            <TouchableOpacity
-              style={[styles.saveBtn, { borderColor: primaryColor }]}
-              onPress={(e) => { e.stopPropagation?.(); handleSaveToLibrary(workout); }}
-            >
-              <Text style={[styles.saveBtnText, { color: primaryColor }]}>+ Save to library</Text>
-            </TouchableOpacity>
-          )}
-          {showSave && isAlreadySaved(workout.name) && (
-            <Text style={styles.savedLabel}>✓ In your library</Text>
-          )}
-          {showDelete && (
-            <TouchableOpacity
-              style={styles.deleteBtn}
-              onPress={(e) => { e.stopPropagation?.(); handleDeleteSaved(workout); }}
-            >
-              <Text style={styles.deleteBtnText}>Remove</Text>
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity
-            style={[styles.addCalBtn, { backgroundColor: primaryColor }]}
-            onPress={(e) => { e.stopPropagation?.(); onAddToCalendar && onAddToCalendar(workout); }}
-          >
-            <Text style={styles.addCalBtnText}>+ Add to calendar</Text>
-          </TouchableOpacity>
+        <View style={[styles.typeChip, { backgroundColor: `${c}1A` }]}>
+          <View style={[styles.typeDot, { backgroundColor: c }]} />
+          <Text style={[styles.typeChipText, { color: c }]}>{workout.type}</Text>
         </View>
-      )}
-    </TouchableOpacity>
-  );
+
+        <Text style={styles.workoutDesc} numberOfLines={3}>{workout.description}</Text>
+
+        {isCoach && (
+          <View style={styles.workoutActions}>
+            {showSave && !isAlreadySaved(workout.name) && (
+              <TouchableOpacity
+                style={styles.saveBtn}
+                onPress={(e) => { e.stopPropagation?.(); handleSaveToLibrary(workout); }}
+              >
+                <Text style={styles.saveBtnText}>+ Save to library</Text>
+              </TouchableOpacity>
+            )}
+            {showSave && isAlreadySaved(workout.name) && (
+              <View style={styles.savedPill}>
+                <Text style={styles.savedLabel}>✓ In your library</Text>
+              </View>
+            )}
+            {showDelete && (
+              <TouchableOpacity
+                style={styles.deleteBtn}
+                onPress={(e) => { e.stopPropagation?.(); handleDeleteSaved(workout); }}
+              >
+                <Text style={styles.deleteBtnText}>Remove</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={styles.addCalBtn}
+              onPress={(e) => { e.stopPropagation?.(); onAddToCalendar && onAddToCalendar(workout); }}
+            >
+              <Text style={styles.addCalBtnText}>+ Add to calendar</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+        <TouchableOpacity onPress={onClose} style={styles.backBtn} hitSlop={{ top: 10, left: 10, right: 10, bottom: 10 }}>
+          <Ionicons name="chevron-back" size={20} color={SIGNAL.color.inkSoft} />
           <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Workout Library</Text>
+        <Text style={styles.headerTitle}>Workout library</Text>
         <View style={{ width: 60 }} />
       </View>
 
       {/* Tabs */}
       <View style={styles.tabRow}>
-        {['builtin', 'saved'].map(tab => (
-          <TouchableOpacity
-            key={tab}
-            style={[styles.tab, activeTab === tab && { borderBottomColor: primaryColor, borderBottomWidth: 2 }]}
-            onPress={() => setActiveTab(tab)}
-          >
-            <Text style={[styles.tabText, activeTab === tab && { color: primaryColor, fontWeight: '700' }]}>
-              {tab === 'builtin' ? 'Classic workouts' : `Your library${savedWorkouts.length > 0 ? ` (${savedWorkouts.length})` : ''}`}
-            </Text>
-          </TouchableOpacity>
-        ))}
+        {['builtin', 'saved'].map(tab => {
+          const isActive = activeTab === tab;
+          return (
+            <TouchableOpacity
+              key={tab}
+              style={styles.tab}
+              activeOpacity={0.7}
+              onPress={() => setActiveTab(tab)}
+            >
+              <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
+                {tab === 'builtin' ? 'Classic' : `Your library${savedWorkouts.length > 0 ? ` (${savedWorkouts.length})` : ''}`}
+              </Text>
+              {isActive && <View style={styles.tabIndicator} />}
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       {activeTab === 'builtin' ? (
         <>
           {/* Phase filter */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.phaseScroll} contentContainerStyle={styles.phaseScrollContent}>
-            {PHASES.map(phase => (
-              <TouchableOpacity
-                key={phase}
-                style={[styles.phaseChip, selectedPhase === phase && { backgroundColor: primaryColor, borderColor: primaryColor }]}
-                onPress={() => setSelectedPhase(phase)}
-              >
-                <Text style={[styles.phaseChipText, selectedPhase === phase && { color: '#fff' }]}>{phase}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          <View style={styles.phaseWrap}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.phaseScrollContent}
+            >
+              {PHASES.map(phase => {
+                const on = selectedPhase === phase;
+                return (
+                  <TouchableOpacity
+                    key={phase}
+                    style={[styles.phaseChip, on && styles.phaseChipActive]}
+                    activeOpacity={0.85}
+                    onPress={() => setSelectedPhase(phase)}
+                  >
+                    <Text style={[styles.phaseChipText, on && styles.phaseChipTextActive]}>{phase}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
 
           <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
             <View style={styles.section}>
-              <Text style={styles.sectionSubtitle}>
-                {BUILTIN_WORKOUTS[selectedPhase]?.length} workouts for {selectedPhase} phase
+              <Text style={styles.eyebrow}>
+                {BUILTIN_WORKOUTS[selectedPhase]?.length} WORKOUTS FOR {selectedPhase.toUpperCase()} PHASE
               </Text>
+              <View style={{ height: 10 }} />
               {(BUILTIN_WORKOUTS[selectedPhase] || []).map(w => renderWorkoutCard(w, true, false))}
             </View>
             <View style={{ height: 40 }} />
@@ -253,6 +278,10 @@ export default function WorkoutLibrary({ school, schoolId, userData, onClose, on
             </View>
           ) : (
             <View style={styles.section}>
+              <Text style={styles.eyebrow}>
+                {savedWorkouts.length} SAVED WORKOUT{savedWorkouts.length === 1 ? '' : 'S'}
+              </Text>
+              <View style={{ height: 10 }} />
               {savedWorkouts.map(w => renderWorkoutCard(w, false, isCoach))}
             </View>
           )}
@@ -263,38 +292,42 @@ export default function WorkoutLibrary({ school, schoolId, userData, onClose, on
       {/* Workout detail modal */}
       <Modal visible={detailVisible} animationType="slide" presentationStyle="pageSheet">
         <View style={styles.detailModal}>
-          <View style={[styles.detailHeader, { backgroundColor: TYPE_COLORS[selectedWorkout?.type] || primaryColor }]}>
-            <TouchableOpacity onPress={() => setDetailVisible(false)}>
-              <Text style={styles.detailClose}>✕</Text>
+          <View style={styles.detailHeader}>
+            <TouchableOpacity onPress={() => setDetailVisible(false)} hitSlop={{ top: 10, left: 10, right: 10, bottom: 10 }}>
+              <Ionicons name="close" size={22} color={SIGNAL.color.inkSoft} />
             </TouchableOpacity>
-            <Text style={styles.detailTitle}>{selectedWorkout?.name}</Text>
-            <View style={{ width: 32 }} />
+            <Text style={styles.detailTitle} numberOfLines={1}>{selectedWorkout?.name}</Text>
+            <View style={{ width: 22 }} />
           </View>
           <ScrollView style={styles.detailScroll}>
             <View style={styles.detailBody}>
               <View style={styles.detailMetaRow}>
-                <View style={[styles.typeBadge, { backgroundColor: TYPE_COLORS[selectedWorkout?.type] || primaryColor }]}>
-                  <Text style={styles.typeBadgeText}>{selectedWorkout?.type}</Text>
-                </View>
+                {selectedWorkout && (
+                  <View style={[styles.typeChip, { backgroundColor: `${typeColor(selectedWorkout?.type)}1A` }]}>
+                    <View style={[styles.typeDot, { backgroundColor: typeColor(selectedWorkout?.type) }]} />
+                    <Text style={[styles.typeChipText, { color: typeColor(selectedWorkout?.type) }]}>{selectedWorkout?.type}</Text>
+                  </View>
+                )}
                 <Text style={styles.detailDuration}>{selectedWorkout?.duration}</Text>
                 {selectedWorkout?.phase && (
                   <Text style={styles.detailPhase}>{selectedWorkout.phase}</Text>
                 )}
               </View>
+
               <Text style={styles.detailDesc}>{selectedWorkout?.description}</Text>
 
               {isCoach && (
                 <View style={styles.detailActions}>
                   {selectedWorkout && !isAlreadySaved(selectedWorkout.name) && (
                     <TouchableOpacity
-                      style={[styles.detailSaveBtn, { borderColor: primaryColor }]}
+                      style={styles.detailSaveBtn}
                       onPress={() => { handleSaveToLibrary(selectedWorkout); setDetailVisible(false); }}
                     >
-                      <Text style={[styles.detailSaveBtnText, { color: primaryColor }]}>+ Save to library</Text>
+                      <Text style={styles.detailSaveBtnText}>+ Save to library</Text>
                     </TouchableOpacity>
                   )}
                   <TouchableOpacity
-                    style={[styles.detailCalBtn, { backgroundColor: primaryColor }]}
+                    style={styles.detailCalBtn}
                     onPress={() => { setDetailVisible(false); onAddToCalendar && onAddToCalendar(selectedWorkout); }}
                   >
                     <Text style={styles.detailCalBtnText}>Add to calendar</Text>
@@ -310,52 +343,346 @@ export default function WorkoutLibrary({ school, schoolId, userData, onClose, on
 }
 
 const styles = StyleSheet.create({
-  container:        { flex: 1, backgroundColor: '#F5F6FA' },
-  header:           { backgroundColor: '#fff', paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
-  backBtn:          { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6 },
-  backText:         { color: '#111827', fontSize: 15, fontWeight: '600' },
-  headerTitle:      { fontSize: 20, fontWeight: '700', color: '#111827' },
-  tabRow:           { flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
-  tab:              { flex: 1, paddingVertical: 14, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  tabText:          { fontSize: 14, color: '#6B7280' },
-  phaseScroll:      { backgroundColor: '#fff', maxHeight: 54 },
-  phaseScrollContent:{ paddingHorizontal: 16, paddingVertical: 10, gap: 8, flexDirection: 'row' },
-  phaseChip:        { borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1.5, borderColor: '#E5E7EB', backgroundColor: '#F5F6FA' },
-  phaseChipText:    { fontSize: 13, fontWeight: '600', color: '#6B7280' },
-  scroll:           { flex: 1 },
-  section:          { padding: 16 },
-  sectionSubtitle:  { fontSize: 13, color: '#9CA3AF', marginBottom: 12 },
-  workoutCard:      { backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 12 },
-  workoutCardTop:   { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  typeBadge:        { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-  typeBadgeText:    { color: '#fff', fontSize: 11, fontWeight: '700' },
-  workoutDuration:  { fontSize: 12, color: '#9CA3AF' },
-  workoutName:      { fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 4 },
-  workoutDesc:      { fontSize: 13, color: '#6B7280', lineHeight: 18, marginBottom: 10 },
-  workoutActions:   { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
-  saveBtn:          { borderRadius: 8, borderWidth: 1.5, paddingHorizontal: 12, paddingVertical: 7 },
-  saveBtnText:      { fontSize: 13, fontWeight: '600' },
-  savedLabel:       { fontSize: 13, color: '#4caf50', fontWeight: '600', alignSelf: 'center' },
-  deleteBtn:        { borderRadius: 8, borderWidth: 1.5, borderColor: '#dc2626', paddingHorizontal: 12, paddingVertical: 7 },
-  deleteBtnText:    { fontSize: 13, fontWeight: '600', color: '#dc2626' },
-  addCalBtn:        { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
-  addCalBtnText:    { color: '#fff', fontSize: 13, fontWeight: '700' },
-  emptyCard:        { margin: 16, backgroundColor: '#fff', borderRadius: 14, padding: 32, alignItems: 'center' },
-  emptyTitle:       { fontSize: 17, fontWeight: '700', color: '#111827', marginBottom: 8 },
-  emptySubtitle:    { fontSize: 14, color: '#6B7280', textAlign: 'center', lineHeight: 20 },
-  detailModal:      { flex: 1, backgroundColor: '#F5F6FA' },
-  detailHeader:     { paddingTop: 60, paddingBottom: 20, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  detailClose:      { color: '#fff', fontSize: 20, fontWeight: '600', width: 32 },
-  detailTitle:      { fontSize: 18, fontWeight: 'bold', color: '#fff', flex: 1, textAlign: 'center' },
-  detailScroll:     { flex: 1 },
-  detailBody:       { padding: 24 },
-  detailMetaRow:    { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' },
-  detailDuration:   { fontSize: 14, color: '#6B7280' },
-  detailPhase:      { fontSize: 13, color: '#9CA3AF' },
-  detailDesc:       { fontSize: 16, color: '#111827', lineHeight: 26, marginBottom: 24 },
-  detailActions:    { gap: 12 },
-  detailSaveBtn:    { borderRadius: 12, borderWidth: 1.5, padding: 14, alignItems: 'center' },
-  detailSaveBtnText:{ fontSize: 15, fontWeight: '600' },
-  detailCalBtn:     { borderRadius: 12, padding: 16, alignItems: 'center' },
-  detailCalBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  container: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper2,
+  },
+
+  // ── Header ─────────────────────────────────────────────
+  header: {
+    backgroundColor: SIGNAL.color.white,
+    paddingTop: Platform.OS === 'ios' ? 68 : 44,
+    paddingBottom: 12,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: 6,
+    width: 60,
+  },
+  backText: {
+    color: SIGNAL.color.inkSoft,
+    fontSize: 14,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+  },
+  headerTitle: {
+    fontSize: 18,
+    color: SIGNAL.color.indigo,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+    letterSpacing: -0.2,
+  },
+
+  // ── Tabs ───────────────────────────────────────────────
+  tabRow: {
+    flexDirection: 'row',
+    backgroundColor: SIGNAL.color.white,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  tabText: {
+    fontSize: 13,
+    color: SIGNAL.color.mute,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+    letterSpacing: -0.1,
+  },
+  tabTextActive: {
+    color: SIGNAL.color.indigo,
+  },
+  tabIndicator: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 0,
+    height: 2,
+    backgroundColor: SIGNAL.color.indigo,
+    borderTopLeftRadius: 2,
+    borderTopRightRadius: 2,
+  },
+
+  // ── Phase chips ────────────────────────────────────────
+  phaseWrap: {
+    backgroundColor: SIGNAL.color.white,
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  phaseScrollContent: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 7,
+    flexDirection: 'row',
+  },
+  phaseChip: {
+    borderRadius: 999,
+    paddingHorizontal: 13,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    backgroundColor: SIGNAL.color.white,
+  },
+  phaseChipActive: {
+    backgroundColor: SIGNAL.color.indigo,
+    borderColor: SIGNAL.color.indigo,
+  },
+  phaseChipText: {
+    fontSize: 12,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+    color: SIGNAL.color.inkSoft,
+  },
+  phaseChipTextActive: {
+    color: SIGNAL.color.white,
+  },
+
+  // ── Scroll / section ───────────────────────────────────
+  scroll: { flex: 1 },
+  section: { padding: 14, paddingTop: 14 },
+  eyebrow: {
+    ...SIGNAL.style.eyebrow,
+    paddingLeft: 2,
+  },
+
+  // ── Workout card ───────────────────────────────────────
+  workoutCard: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    padding: 16,
+    marginBottom: 10,
+  },
+  workoutCardTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    gap: 8,
+  },
+  workoutName: {
+    flex: 1,
+    fontSize: 15,
+    color: SIGNAL.color.ink,
+    fontFamily: SIGNAL.font.bodyBold,
+    fontWeight: '700',
+    letterSpacing: -0.15,
+  },
+  workoutDuration: {
+    fontSize: 11,
+    color: SIGNAL.color.mute,
+    fontFamily: SIGNAL.font.mono,
+  },
+
+  // ── Type chip (dot + label) ────────────────────────────
+  typeChip: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 999,
+    marginBottom: 10,
+  },
+  typeDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 999,
+  },
+  typeChipText: {
+    fontSize: 11,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+  },
+
+  workoutDesc: {
+    fontSize: 13,
+    color: SIGNAL.color.inkSoft,
+    lineHeight: 19,
+    fontFamily: SIGNAL.font.body,
+    marginBottom: 12,
+  },
+
+  // ── Workout card actions ───────────────────────────────
+  workoutActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: SIGNAL.color.line,
+  },
+  saveBtn: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.indigo,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: 'transparent',
+  },
+  saveBtnText: {
+    fontSize: 12.5,
+    color: SIGNAL.color.indigo,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+  },
+  savedPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: `${SIGNAL.color.emerald}1A`,
+    alignSelf: 'center',
+  },
+  savedLabel: {
+    fontSize: 12.5,
+    color: SIGNAL.color.emerald,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+  },
+  deleteBtn: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.coral,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  deleteBtnText: {
+    fontSize: 12.5,
+    color: SIGNAL.color.coral,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+  },
+  addCalBtn: {
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: SIGNAL.color.indigo,
+    marginLeft: 'auto',
+  },
+  addCalBtnText: {
+    color: SIGNAL.color.white,
+    fontSize: 12.5,
+    fontFamily: SIGNAL.font.bodyBold,
+    fontWeight: '700',
+  },
+
+  // ── Empty state ────────────────────────────────────────
+  emptyCard: {
+    margin: 14,
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    padding: 32,
+    alignItems: 'center',
+  },
+  emptyTitle: {
+    fontSize: 16,
+    color: SIGNAL.color.ink,
+    fontFamily: SIGNAL.font.bodyBold,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    fontSize: 13.5,
+    color: SIGNAL.color.mute,
+    fontFamily: SIGNAL.font.body,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+
+  // ── Detail modal ───────────────────────────────────────
+  detailModal: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper2,
+  },
+  detailHeader: {
+    paddingTop: Platform.OS === 'ios' ? 18 : 18,
+    paddingBottom: 14,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: SIGNAL.color.white,
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  detailTitle: {
+    flex: 1,
+    fontSize: 18,
+    color: SIGNAL.color.indigo,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+    textAlign: 'center',
+    paddingHorizontal: 8,
+    letterSpacing: -0.2,
+  },
+  detailScroll: { flex: 1 },
+  detailBody: { padding: 22 },
+  detailMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 18,
+    flexWrap: 'wrap',
+  },
+  detailDuration: {
+    fontSize: 13,
+    color: SIGNAL.color.mute,
+    fontFamily: SIGNAL.font.mono,
+  },
+  detailPhase: {
+    fontSize: 12,
+    color: SIGNAL.color.mute2,
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontWeight: '500',
+  },
+  detailDesc: {
+    fontSize: 15,
+    color: SIGNAL.color.inkSoft,
+    lineHeight: 24,
+    fontFamily: SIGNAL.font.body,
+    marginBottom: 24,
+  },
+  detailActions: { gap: 10 },
+  detailSaveBtn: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.indigo,
+    paddingVertical: 14,
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  detailSaveBtnText: {
+    fontSize: 14.5,
+    color: SIGNAL.color.indigo,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+  },
+  detailCalBtn: {
+    borderRadius: 12,
+    paddingVertical: 15,
+    alignItems: 'center',
+    backgroundColor: SIGNAL.color.indigo,
+  },
+  detailCalBtnText: {
+    color: SIGNAL.color.white,
+    fontSize: 15,
+    fontFamily: SIGNAL.font.bodyBold,
+    fontWeight: '700',
+  },
 });

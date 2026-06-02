@@ -11,8 +11,7 @@ import {
     View,
 } from 'react-native';
 import {
-  BRAND, BRAND_DARK,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
+  SIGNAL,
 } from '../constants/design';
 
 // ── Existing wellness options ────────────────────────────────────────────────
@@ -76,24 +75,21 @@ const SEVERITY_OPTIONS = [
 function OptionRow({ options, selected, onSelect }) {
   return (
     <View style={styles.optionRow}>
-      {options.map(opt => (
-        <TouchableOpacity
-          key={opt.value}
-          style={[
-            styles.optionBtn,
-            selected === opt.value && { backgroundColor: BRAND, borderColor: BRAND },
-          ]}
-          onPress={() => onSelect(opt.value)}
-        >
-          <Text style={styles.optionEmoji}>{opt.emoji}</Text>
-          <Text style={[
-            styles.optionLabel,
-            selected === opt.value && { color: '#fff', fontWeight: FONT_WEIGHT.bold },
-          ]}>
-            {opt.label}
-          </Text>
-        </TouchableOpacity>
-      ))}
+      {options.map(opt => {
+        const active = selected === opt.value;
+        return (
+          <TouchableOpacity
+            key={opt.value}
+            style={[styles.optionBtn, active && styles.optionBtnActive]}
+            onPress={() => onSelect(opt.value)}
+          >
+            <Text style={styles.optionEmoji}>{opt.emoji}</Text>
+            <Text style={[styles.optionLabel, active && styles.optionLabelActive]}>
+              {opt.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
@@ -212,12 +208,12 @@ export default function WellnessCheckIn({ visible, onComplete, onSkip, onClose, 
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
       <View style={styles.container}>
         <View style={styles.header}>
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={styles.title}>Quick check-in</Text>
             <Text style={styles.subtitle}>How are you feeling before this run?</Text>
           </View>
-          <TouchableOpacity onPress={handleClose} style={styles.closeBtn}>
-            <Ionicons name="close" size={24} color={NEUTRAL.body} />
+          <TouchableOpacity onPress={handleClose} style={styles.closeBtn} hitSlop={10}>
+            <Ionicons name="close" size={22} color={SIGNAL.color.mute2} />
           </TouchableOpacity>
         </View>
 
@@ -247,7 +243,7 @@ export default function WellnessCheckIn({ visible, onComplete, onSkip, onClose, 
                 <TouchableOpacity
                   style={[
                     styles.gatewayBtn,
-                    hasIssue === false && { backgroundColor: STATUS.success, borderColor: STATUS.success },
+                    hasIssue === false && { backgroundColor: SIGNAL.color.emerald, borderColor: SIGNAL.color.emerald },
                   ]}
                   onPress={() => {
                     setHasIssue(false);
@@ -258,21 +254,21 @@ export default function WellnessCheckIn({ visible, onComplete, onSkip, onClose, 
                   <Text style={styles.gatewayEmoji}>👍</Text>
                   <Text style={[
                     styles.gatewayLabel,
-                    hasIssue === false && { color: '#fff', fontWeight: FONT_WEIGHT.bold },
+                    hasIssue === false && styles.gatewayLabelActive,
                   ]}>I'm good</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   style={[
                     styles.gatewayBtn,
-                    hasIssue === true && { backgroundColor: STATUS.warning, borderColor: STATUS.warning },
+                    hasIssue === true && { backgroundColor: SIGNAL.color.amber, borderColor: SIGNAL.color.amber },
                   ]}
                   onPress={() => { setHasIssue(true); scrollToEnd(); }}
                 >
                   <Text style={styles.gatewayEmoji}>🤕</Text>
                   <Text style={[
                     styles.gatewayLabel,
-                    hasIssue === true && { color: '#fff', fontWeight: FONT_WEIGHT.bold },
+                    hasIssue === true && styles.gatewayLabelActive,
                   ]}>Something's up</Text>
                 </TouchableOpacity>
               </View>
@@ -284,7 +280,7 @@ export default function WellnessCheckIn({ visible, onComplete, onSkip, onClose, 
             <>
               <View style={styles.issueSection}>
                 <View style={styles.issueSectionHeader}>
-                  <Ionicons name="body-outline" size={18} color={STATUS.warning} />
+                  <Ionicons name="body-outline" size={16} color={SIGNAL.color.amber} />
                   <Text style={styles.issueSectionTitle}>Injury — where does it hurt?</Text>
                 </View>
                 <ChipRow items={INJURY_LOCATIONS} selected={injuryLocations} onToggle={toggleInjuryLocation} />
@@ -297,15 +293,20 @@ export default function WellnessCheckIn({ visible, onComplete, onSkip, onClose, 
                         <View key={loc} style={styles.perLocationRow}>
                           <Text style={styles.perLocationLabel}>{locLabel}</Text>
                           <View style={styles.perLocationSeverity}>
-                            {SEVERITY_OPTIONS.map(opt => (
-                              <TouchableOpacity
-                                key={opt.value}
-                                style={[styles.sevChip, injurySeverityMap[loc] === opt.value && { backgroundColor: BRAND, borderColor: BRAND }]}
-                                onPress={() => setLocationSeverity(loc, opt.value)}
-                              >
-                                <Text style={[styles.sevChipText, injurySeverityMap[loc] === opt.value && { color: '#fff' }]}>{opt.emoji} {opt.label}</Text>
-                              </TouchableOpacity>
-                            ))}
+                            {SEVERITY_OPTIONS.map(opt => {
+                              const active = injurySeverityMap[loc] === opt.value;
+                              return (
+                                <TouchableOpacity
+                                  key={opt.value}
+                                  style={[styles.sevChip, active && styles.sevChipActive]}
+                                  onPress={() => setLocationSeverity(loc, opt.value)}
+                                >
+                                  <Text style={[styles.sevChipText, active && styles.sevChipTextActive]}>
+                                    {opt.emoji} {opt.label}
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            })}
                           </View>
                         </View>
                       );
@@ -314,7 +315,7 @@ export default function WellnessCheckIn({ visible, onComplete, onSkip, onClose, 
                     <TextInput
                       style={styles.noteInput}
                       placeholder="Brief note, e.g. 'left shin splint'"
-                      placeholderTextColor={NEUTRAL.muted}
+                      placeholderTextColor={SIGNAL.color.mute2}
                       value={injuryNote}
                       onChangeText={t => setInjuryNote(t.slice(0, 100))}
                       maxLength={100}
@@ -326,7 +327,7 @@ export default function WellnessCheckIn({ visible, onComplete, onSkip, onClose, 
               {/* ── Illness section ── */}
               <View style={styles.issueSection}>
                 <View style={styles.issueSectionHeader}>
-                  <Ionicons name="thermometer-outline" size={18} color={STATUS.warning} />
+                  <Ionicons name="thermometer-outline" size={16} color={SIGNAL.color.amber} />
                   <Text style={styles.issueSectionTitle}>Illness — feeling sick?</Text>
                 </View>
 
@@ -340,7 +341,7 @@ export default function WellnessCheckIn({ visible, onComplete, onSkip, onClose, 
                   }}
                 >
                   <Text style={styles.sickToggleEmoji}>🤒</Text>
-                  <Text style={[styles.sickToggleText, illnessFlagged && { color: '#fff', fontWeight: FONT_WEIGHT.bold }]}>
+                  <Text style={[styles.sickToggleText, illnessFlagged && styles.sickToggleTextActive]}>
                     {illnessFlagged ? 'Yes, feeling sick' : 'Tap if feeling sick'}
                   </Text>
                 </TouchableOpacity>
@@ -365,11 +366,13 @@ export default function WellnessCheckIn({ visible, onComplete, onSkip, onClose, 
 
         <View style={styles.footer}>
           <TouchableOpacity
-            style={[styles.doneBtn, { backgroundColor: canContinue ? BRAND : NEUTRAL.input }]}
+            style={[styles.doneBtn, !canContinue && styles.doneBtnDisabled]}
             onPress={handleDone}
             disabled={!canContinue}
           >
-            <Text style={styles.doneBtnText}>{doneLabel || 'Submit'}</Text>
+            <Text style={[styles.doneBtnText, !canContinue && styles.doneBtnTextDisabled]}>
+              {doneLabel || 'Submit'}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.skipBtn} onPress={onSkip}>
             <Text style={styles.skipBtnText}>Skip check-in</Text>
@@ -383,102 +386,303 @@ export default function WellnessCheckIn({ visible, onComplete, onSkip, onClose, 
 // ── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container:    { flex: 1, backgroundColor: NEUTRAL.bg },
+  container: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper2,
+  },
+
+  // ── Header ──
   header: {
-    paddingTop: Platform.OS === 'ios' ? SPACE['5xl'] : SPACE['3xl'], paddingBottom: SPACE.xl, paddingHorizontal: SPACE['2xl'],
-    backgroundColor: NEUTRAL.card, borderBottomWidth: 1, borderBottomColor: NEUTRAL.border,
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
+    paddingTop: Platform.OS === 'ios' ? 68 : 44,
+    paddingBottom: 18,
+    paddingHorizontal: 22,
+    backgroundColor: SIGNAL.color.white,
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
   },
-  title:        { fontSize: 26, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  subtitle:     { fontSize: FONT_SIZE.base, color: NEUTRAL.body, marginTop: SPACE.sm },
-  closeBtn:     { padding: SPACE.sm, marginTop: SPACE.xs },
+  title: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 22,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.titleTight,
+  },
+  subtitle: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 13,
+    color: SIGNAL.color.mute,
+    marginTop: 4,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  closeBtn: {
+    padding: 4,
+    marginTop: 2,
+  },
 
-  // Body — now a ScrollView
-  scrollBody:    { flex: 1 },
-  scrollContent: { padding: SPACE['2xl'], paddingBottom: SPACE.xl },
+  // ── Scroll body ──
+  scrollBody: { flex: 1 },
+  scrollContent: { padding: 18, paddingBottom: 24 },
 
+  // ── Section labels ──
   sectionLabel: {
-    fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK,
-    marginBottom: SPACE.md, marginTop: SPACE.xl,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 18,
+    color: SIGNAL.color.indigo,
+    marginTop: 18,
+    marginBottom: 10,
+    letterSpacing: SIGNAL.letter.bodyTight,
   },
-  optionRow:    { flexDirection: 'row', gap: SPACE.sm },
+
+  // ── Option row (emoji 5-scale) ──
+  optionRow: {
+    flexDirection: 'row',
+    gap: 7,
+  },
   optionBtn: {
-    flex: 1, alignItems: 'center', paddingVertical: SPACE.md,
-    borderRadius: RADIUS.lg, backgroundColor: NEUTRAL.card,
-    borderWidth: 1.5, borderColor: NEUTRAL.border,
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 11,
+    paddingHorizontal: 2,
+    borderRadius: 12,
+    backgroundColor: SIGNAL.color.white,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
   },
-  optionEmoji:  { fontSize: 20, marginBottom: SPACE.xs },
-  optionLabel:  { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, fontWeight: FONT_WEIGHT.medium },
+  optionBtnActive: {
+    backgroundColor: SIGNAL.color.indigo,
+    borderColor: SIGNAL.color.indigo,
+  },
+  optionEmoji: {
+    fontSize: 19,
+    marginBottom: 4,
+  },
+  optionLabel: {
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: 11,
+    color: SIGNAL.color.mute,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  optionLabelActive: {
+    color: SIGNAL.color.white,
+    fontFamily: SIGNAL.font.bodyBold,
+  },
 
-  // ── Gateway question ──
+  // ── Divider ──
   divider: {
-    height: 1, backgroundColor: NEUTRAL.border, marginTop: SPACE['2xl'], marginBottom: SPACE.sm,
+    height: 1,
+    backgroundColor: SIGNAL.color.line,
+    marginTop: 22,
+    marginBottom: 4,
   },
-  gatewayRow: { flexDirection: 'row', gap: SPACE.md },
-  gatewayBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    paddingVertical: SPACE.lg, borderRadius: RADIUS.lg,
-    backgroundColor: NEUTRAL.card, borderWidth: 1.5, borderColor: NEUTRAL.border, gap: SPACE.sm,
-  },
-  gatewayEmoji: { fontSize: 22 },
-  gatewayLabel: { fontSize: FONT_SIZE.base, color: NEUTRAL.body, fontWeight: FONT_WEIGHT.medium },
 
-  // ── Issue sections (injury / illness) ──
+  // ── Gateway buttons ──
+  gatewayRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  gatewayBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 15,
+    borderRadius: 14,
+    backgroundColor: SIGNAL.color.white,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    gap: 8,
+  },
+  gatewayEmoji: { fontSize: 20 },
+  gatewayLabel: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 14,
+    color: SIGNAL.color.inkSoft,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  gatewayLabelActive: {
+    color: SIGNAL.color.white,
+    fontFamily: SIGNAL.font.bodyBold,
+  },
+
+  // ── Issue sections (injury / illness cards) ──
   issueSection: {
-    marginTop: SPACE.xl, backgroundColor: NEUTRAL.card,
-    borderRadius: RADIUS.lg, padding: SPACE.lg,
-    borderWidth: 1, borderColor: STATUS.warning + '40',
+    marginTop: 18,
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.amber + '55',
   },
   issueSectionHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginBottom: SPACE.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
   },
   issueSectionTitle: {
-    fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK,
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 14,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
   },
   subLabel: {
-    fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.label,
-    marginTop: SPACE.lg, marginBottom: SPACE.sm,
+    ...SIGNAL.style.eyebrow,
+    marginTop: 14,
+    marginBottom: 8,
   },
 
   // ── Chips (body parts / symptoms) ──
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.sm },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7,
+  },
   chip: {
-    paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm,
-    borderRadius: RADIUS.full, backgroundColor: NEUTRAL.bg,
-    borderWidth: 1.5, borderColor: NEUTRAL.border,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: SIGNAL.color.paper,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
   },
   chipActive: {
-    backgroundColor: STATUS.warning, borderColor: STATUS.warning,
+    backgroundColor: SIGNAL.color.amber,
+    borderColor: SIGNAL.color.amber,
   },
-  chipText: { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, fontWeight: FONT_WEIGHT.medium },
-  chipTextActive: { color: '#fff', fontWeight: FONT_WEIGHT.bold },
+  chipText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 12.5,
+    color: SIGNAL.color.inkSoft,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  chipTextActive: {
+    color: SIGNAL.color.white,
+    fontFamily: SIGNAL.font.bodyBold,
+  },
 
   // ── Sick toggle ──
   sickToggle: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm,
-    paddingVertical: SPACE.md, borderRadius: RADIUS.lg,
-    backgroundColor: NEUTRAL.bg, borderWidth: 1.5, borderColor: NEUTRAL.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: SIGNAL.color.paper,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
   },
-  sickToggleActive: { backgroundColor: STATUS.warning, borderColor: STATUS.warning },
-  sickToggleEmoji: { fontSize: 20 },
-  sickToggleText: { fontSize: FONT_SIZE.base, color: NEUTRAL.body, fontWeight: FONT_WEIGHT.medium },
+  sickToggleActive: {
+    backgroundColor: SIGNAL.color.amber,
+    borderColor: SIGNAL.color.amber,
+  },
+  sickToggleEmoji: { fontSize: 18 },
+  sickToggleText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 14,
+    color: SIGNAL.color.inkSoft,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  sickToggleTextActive: {
+    color: SIGNAL.color.white,
+    fontFamily: SIGNAL.font.bodyBold,
+  },
+
+  // ── Per-location severity ──
+  perLocationRow: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: SIGNAL.color.line,
+  },
+  perLocationLabel: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 12.5,
+    color: SIGNAL.color.ink,
+    marginBottom: 6,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  perLocationSeverity: {
+    flexDirection: 'row',
+    gap: 7,
+    flexWrap: 'wrap',
+  },
+  sevChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    backgroundColor: SIGNAL.color.paper,
+  },
+  sevChipActive: {
+    backgroundColor: SIGNAL.color.indigo,
+    borderColor: SIGNAL.color.indigo,
+  },
+  sevChipText: {
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: 11.5,
+    color: SIGNAL.color.inkSoft,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  sevChipTextActive: {
+    color: SIGNAL.color.white,
+    fontFamily: SIGNAL.font.bodyBold,
+  },
 
   // ── Note input ──
-  perLocationRow: { marginTop: SPACE.md, paddingVertical: SPACE.sm, borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
-  perLocationLabel: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: BRAND_DARK, marginBottom: SPACE.xs },
-  perLocationSeverity: { flexDirection: 'row', gap: SPACE.xs },
-  sevChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACE.sm, paddingVertical: 4, borderRadius: RADIUS.full, borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.bg },
-  sevChipText: { fontSize: FONT_SIZE.xs, color: NEUTRAL.body },
   noteInput: {
-    marginTop: SPACE.md, padding: SPACE.md, borderRadius: RADIUS.md,
-    backgroundColor: NEUTRAL.bg, borderWidth: 1, borderColor: NEUTRAL.border,
-    fontSize: FONT_SIZE.sm, color: BRAND_DARK,
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: SIGNAL.color.paper,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    fontFamily: SIGNAL.font.body,
+    fontSize: 13,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
   },
 
   // ── Footer ──
-  footer:       { padding: SPACE['2xl'], paddingBottom: SPACE['4xl'], gap: SPACE.md },
-  doneBtn:      { borderRadius: RADIUS.lg, padding: SPACE.lg + 2, alignItems: 'center' },
-  doneBtnText:  { color: '#fff', fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.bold },
-  skipBtn:      { alignItems: 'center', padding: SPACE.md },
-  skipBtnText:  { color: NEUTRAL.muted, fontSize: FONT_SIZE.base },
+  footer: {
+    padding: 18,
+    paddingBottom: 28,
+    backgroundColor: SIGNAL.color.white,
+    borderTopWidth: 1,
+    borderTopColor: SIGNAL.color.line,
+  },
+  doneBtn: {
+    borderRadius: 13,
+    paddingVertical: 15,
+    alignItems: 'center',
+    backgroundColor: SIGNAL.color.indigo,
+  },
+  doneBtnDisabled: {
+    backgroundColor: SIGNAL.color.line,
+  },
+  doneBtnText: {
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 16,
+    color: SIGNAL.color.white,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  doneBtnTextDisabled: {
+    color: SIGNAL.color.mute2,
+  },
+  skipBtn: {
+    alignItems: 'center',
+    paddingTop: 12,
+    paddingBottom: 2,
+  },
+  skipBtnText: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 13.5,
+    color: SIGNAL.color.mute,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
 });

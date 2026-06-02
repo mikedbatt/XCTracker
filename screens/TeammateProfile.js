@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { collection, doc, getDoc, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
@@ -10,7 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { BRAND, BRAND_DARK } from '../constants/design';
+import { BRAND, BRAND_DARK, SIGNAL } from '../constants/design';
 import { auth, db } from '../firebaseConfig';
 import {
   DEFAULT_ZONE_BOUNDARIES,
@@ -75,6 +76,16 @@ export default function TeammateProfile({ athlete, school, onBack }) {
     } catch (e) { console.error('TeammateProfile load:', e); }
     setLoading(false);
   };
+
+  // ── Week stats (Mon-anchored) ──
+  const now = new Date();
+  const weekStart = new Date(now);
+  const dayOfWeek = now.getDay();
+  weekStart.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+  weekStart.setHours(0, 0, 0, 0);
+  const weekRuns = runs.filter(r => { const d = r.date?.toDate?.(); return d && d >= weekStart; });
+  const weekMiles = Math.round(weekRuns.reduce((s, r) => s + (r.miles || 0), 0) * 10) / 10;
+  const totalAllMiles = Math.round(runs.reduce((s, r) => s + (r.miles || 0), 0) * 10) / 10;
 
   // ── Zone breakdown for this month (uses team-configured boundaries) ──
   const getZoneBreakdown = () => {
@@ -182,154 +193,158 @@ export default function TeammateProfile({ athlete, school, onBack }) {
   const paceBreakdown = getPaceBreakdown();
   const usePace = !!paceBreakdown;
 
+  const subtitle = [
+    athlete.gender === 'boys' ? 'Boys team' : athlete.gender === 'girls' ? 'Girls team' : null,
+    school?.name,
+  ].filter(Boolean).join(' · ');
+
   if (loading) {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={onBack} style={styles.backBtn}>
-            <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+          <TouchableOpacity onPress={onBack} style={styles.backBtn} activeOpacity={0.7}>
+            <Ionicons name="chevron-back" size={20} color={SIGNAL.color.inkSoft} />
             <Text style={styles.backText}>Back</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Profile</Text>
-          <View style={{ width: 60 }} />
+          <Text style={styles.headerDisplay}>Profile</Text>
         </View>
-        <View style={styles.center}><ActivityIndicator size="large" color={BRAND} /></View>
+        <View style={styles.center}><ActivityIndicator size="large" color={SIGNAL.color.indigo} /></View>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={onBack} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+        <TouchableOpacity onPress={onBack} style={styles.backBtn} activeOpacity={0.7}>
+          <Ionicons name="chevron-back" size={20} color={SIGNAL.color.inkSoft} />
           <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{athlete.firstName}'s Profile</Text>
-        <View style={{ width: 60 }} />
-      </View>
 
-      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-
-        {/* Summary card */}
-        <View style={[styles.summaryCard, { borderTopColor: primaryColor }]}>
-          <View style={[styles.avatar, { backgroundColor: primaryColor }]}>
+        <View style={styles.athleteRow}>
+          <View style={[styles.avatar, { backgroundColor: athlete.avatarColor || SIGNAL.color.indigo }]}>
             <Text style={styles.avatarText}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
           </View>
-          <Text style={styles.athleteName}>{athlete.firstName} {athlete.lastName}</Text>
-          <Text style={styles.athleteSub}>
-            {athlete.gender === 'boys' ? 'Boys team' : athlete.gender === 'girls' ? 'Girls team' : ''}
-            {athlete.gender && '  ·  '}{school?.name}
-          </Text>
-          <View style={styles.statRow}>
-            <View style={styles.statBox}>
-              <Text style={[styles.statNum, { color: BRAND }]}>{totalMiles}</Text>
-              <Text style={styles.statLabel}>miles this month</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statBox}>
-              <Text style={[styles.statNum, { color: BRAND }]}>{runs.length}</Text>
-              <Text style={styles.statLabel}>runs logged</Text>
-            </View>
+          <View style={styles.athleteMeta}>
+            <Text style={styles.headerDisplay}>{athlete.firstName} {athlete.lastName}</Text>
+            {subtitle ? <Text style={styles.headerSub}>{subtitle}</Text> : null}
           </View>
         </View>
 
-        {/* Pace zone breakdown (primary when teammate has VDOT) */}
+        <View style={styles.headerStats}>
+          <View style={styles.headerStat}>
+            <Text style={styles.headerStatNum}>{weekMiles}</Text>
+            <Text style={styles.headerStatLabel}>This week</Text>
+          </View>
+          <View style={styles.headerStatDivider} />
+          <View style={styles.headerStat}>
+            <Text style={styles.headerStatNum}>{totalMiles}</Text>
+            <Text style={styles.headerStatLabel}>This month</Text>
+          </View>
+          <View style={styles.headerStatDivider} />
+          <View style={styles.headerStat}>
+            <Text style={styles.headerStatNum}>{runs.length}</Text>
+            <Text style={styles.headerStatLabel}>Runs</Text>
+          </View>
+        </View>
+      </View>
+
+      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+
+        {/* Pace zones (primary when VDOT set) */}
         {usePace && (
-          <View style={styles.section}>
-            <View style={styles.zoneTitleRow}>
-              <Text style={styles.sectionTitle}>Pace zones — this month</Text>
+          <View style={styles.card}>
+            <View style={styles.cardTitleRow}>
+              <Text style={styles.sectionTitle}>Pace zones</Text>
+              <Text style={styles.eyebrow}>This month</Text>
             </View>
-            <View style={styles.zoneCard}>
-              <View style={styles.zoneStackedBar}>
-                {paceBreakdown.map(z => (
-                  <View key={z.key} style={[styles.zoneStackedSegment, { flex: z.minutes || 1, backgroundColor: z.color }]} />
-                ))}
-              </View>
+            <View style={styles.zoneStackedBar}>
               {paceBreakdown.map(z => (
-                <View key={z.key} style={styles.zoneRow}>
-                  <View style={[styles.zoneDot, { backgroundColor: z.color }]} />
-                  <Text style={styles.zoneName}>{z.short} {z.name}</Text>
-                  <View style={styles.zoneBarBg}>
-                    <View style={[styles.zoneBarFill, { width: `${z.pct}%`, backgroundColor: z.color }]} />
-                  </View>
-                  <Text style={styles.zoneCount}>{formatMinutes(z.minutes)}</Text>
-                </View>
+                <View key={z.key} style={[styles.zoneStackedSegment, { flex: z.minutes || 1, backgroundColor: z.color }]} />
               ))}
             </View>
+            {paceBreakdown.map(z => (
+              <View key={z.key} style={styles.zoneRow}>
+                <View style={[styles.zoneDot, { backgroundColor: z.color }]} />
+                <Text style={styles.zoneName}>{z.short} {z.name}</Text>
+                <View style={styles.zoneBarBg}>
+                  <View style={[styles.zoneBarFill, { width: `${z.pct}%`, backgroundColor: z.color }]} />
+                </View>
+                <Text style={styles.zoneCount}>{formatMinutes(z.minutes)}</Text>
+              </View>
+            ))}
           </View>
         )}
 
-        {/* HR zone breakdown (fallback when no VDOT/pace data) */}
+        {/* HR zones (fallback) */}
         {!usePace && zoneBreakdown && zoneBreakdown.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.zoneTitleRow}>
-              <Text style={styles.sectionTitle}>Training zones — this month</Text>
+          <View style={styles.card}>
+            <View style={styles.cardTitleRow}>
+              <Text style={styles.sectionTitle}>Training zones</Text>
               {hasStreamData
-                ? <View style={styles.preciseBadge}><Text style={styles.preciseBadgeText}>Precise ✓</Text></View>
-                : <Text style={styles.estimatedText}>estimated from avg HR</Text>
+                ? <View style={styles.preciseBadge}><Text style={styles.preciseBadgeText}>PRECISE</Text></View>
+                : <Text style={styles.eyebrow}>Estimated</Text>
               }
             </View>
-            <View style={styles.zoneCard}>
-              <View style={styles.zoneStackedBar}>
-                {zoneBreakdown.map(z => (
-                  <View key={z.zone} style={[styles.zoneStackedSegment, { flex: z.minutes, backgroundColor: ZONE_META[z.zone].color }]} />
-                ))}
-              </View>
+            <View style={styles.zoneStackedBar}>
               {zoneBreakdown.map(z => (
-                <View key={z.zone} style={styles.zoneRow}>
-                  <View style={[styles.zoneDot, { backgroundColor: ZONE_META[z.zone].color }]} />
-                  <Text style={styles.zoneName}>Z{z.zone} {ZONE_META[z.zone].name}</Text>
-                  <View style={styles.zoneBarBg}>
-                    <View style={[styles.zoneBarFill, { width: `${z.pct}%`, backgroundColor: ZONE_META[z.zone].color }]} />
-                  </View>
-                  <Text style={styles.zoneCount}>{formatMinutes(z.minutes)}</Text>
-                </View>
+                <View key={z.zone} style={[styles.zoneStackedSegment, { flex: z.minutes, backgroundColor: ZONE_META[z.zone].color }]} />
               ))}
-              <Text style={styles.zoneTotalHint}>{formatMinutes(totalZoneMins)} total with HR data</Text>
             </View>
+            {zoneBreakdown.map(z => (
+              <View key={z.zone} style={styles.zoneRow}>
+                <View style={[styles.zoneDot, { backgroundColor: ZONE_META[z.zone].color }]} />
+                <Text style={styles.zoneName}>Z{z.zone} {ZONE_META[z.zone].name}</Text>
+                <View style={styles.zoneBarBg}>
+                  <View style={[styles.zoneBarFill, { width: `${z.pct}%`, backgroundColor: ZONE_META[z.zone].color }]} />
+                </View>
+                <Text style={styles.zoneCount}>{formatMinutes(z.minutes)}</Text>
+              </View>
+            ))}
+            <Text style={styles.zoneTotalHint}>{formatMinutes(totalZoneMins)} total with HR data</Text>
           </View>
         )}
 
         {/* Recent runs */}
-        <View style={styles.section}>
+        <View style={styles.card}>
           <Text style={styles.sectionTitle}>Recent runs</Text>
           {runs.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>No runs logged yet.</Text>
-            </View>
-          ) : runs.map(run => {
+            <Text style={styles.emptyText}>No runs logged yet.</Text>
+          ) : runs.map((run, idx) => {
             const runDate = run.date?.toDate?.()?.toLocaleDateString('en-US', {
               weekday: 'short', month: 'short', day: 'numeric'
             });
+            const effortColor = run.effort != null
+              ? (SIGNAL.effort[run.effort] || SIGNAL.color.mute)
+              : SIGNAL.color.mute;
+            const isLast = idx === runs.length - 1;
             return (
               <TouchableOpacity
                 key={run.id}
-                style={styles.runCard}
+                style={[styles.runRow, isLast && styles.runRowLast]}
                 activeOpacity={0.7}
                 onPress={() => { setSelectedRun(run); setRunDetailVisible(true); }}
               >
-                <View style={styles.runTop}>
-                  <View style={styles.runLeft}>
-                    <Text style={styles.runMiles}>{run.miles} mi</Text>
-                    <Text style={styles.runDate}>{runDate}</Text>
-                  </View>
-                  <View style={styles.runMiddle}>
-                    {run.duration && <Text style={styles.runDetail}>{run.duration}</Text>}
-                  </View>
-                  {run.effort != null && (
-                    <View style={styles.runRight}>
-                      <Text style={styles.effortLabelSmall}>Effort</Text>
-                      <Text style={styles.effortValue}>{run.effort}/10</Text>
-                    </View>
-                  )}
+                <View style={styles.runMilesCol}>
+                  <Text style={styles.runMiles}>{run.miles} mi</Text>
+                  <Text style={styles.runDate}>{runDate}</Text>
                 </View>
+                <View style={styles.runMidCol}>
+                  {run.duration && <Text style={styles.runDuration}>{run.duration}</Text>}
+                </View>
+                {run.effort != null && (
+                  <View style={styles.runRight}>
+                    <Text style={styles.effortLabel}>Effort</Text>
+                    <Text style={[styles.effortValue, { color: effortColor }]}>{run.effort}/10</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             );
           })}
         </View>
 
-        <View style={{ height: 40 }} />
+        <View style={{ height: 32 }} />
       </ScrollView>
 
       <RunDetailModal
@@ -347,49 +362,232 @@ export default function TeammateProfile({ athlete, school, onBack }) {
 }
 
 const styles = StyleSheet.create({
-  container:          { flex: 1, backgroundColor: '#F5F6FA' },
-  center:             { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header:             { backgroundColor: '#fff', paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
-  backBtn:            { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6 },
-  backText:           { color: '#111827', fontSize: 15, fontWeight: '600' },
-  headerTitle:        { fontSize: 20, fontWeight: '700', color: '#111827' },
-  scroll:             { flex: 1 },
-  summaryCard:        { backgroundColor: '#fff', margin: 16, borderRadius: 14, padding: 24, alignItems: 'center', borderTopWidth: 4 },
-  avatar:             { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
-  avatarText:         { color: '#fff', fontSize: 26, fontWeight: 'bold' },
-  athleteName:        { fontSize: 22, fontWeight: '700', color: '#111827', marginBottom: 4 },
-  athleteSub:         { fontSize: 14, color: '#9CA3AF', marginBottom: 16 },
-  statRow:            { flexDirection: 'row', alignItems: 'center', gap: 24 },
-  statBox:            { alignItems: 'center' },
-  statNum:            { fontSize: 28, fontWeight: 'bold' },
-  statLabel:          { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
-  statDivider:        { width: 1, height: 36, backgroundColor: '#E5E7EB' },
-  section:            { paddingHorizontal: 16, marginBottom: 8 },
-  zoneTitleRow:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  sectionTitle:       { fontSize: 17, fontWeight: '700', color: '#111827', marginBottom: 10 },
-  preciseBadge:       { backgroundColor: '#e8edf8', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-  preciseBadgeText:   { fontSize: 11, color: '#213f96', fontWeight: '700' },
-  estimatedText:      { fontSize: 11, color: '#bbb' },
-  zoneCard:           { backgroundColor: '#fff', borderRadius: 14, padding: 14, gap: 8 },
-  zoneStackedBar:     { flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginBottom: 4 },
+  container: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper2,
+  },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  scroll: { flex: 1 },
+  scrollContent: {
+    padding: SIGNAL.space.screen,
+    paddingBottom: 48,
+    gap: SIGNAL.space[4],
+  },
+
+  // ── Header ────────────────────────────────────────────────────────────────
+  header: {
+    backgroundColor: SIGNAL.color.white,
+    paddingTop: Platform.OS === 'ios' ? 68 : 44,
+    paddingBottom: SIGNAL.space[6],
+    paddingHorizontal: SIGNAL.space.screen,
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: 4,
+    marginBottom: SIGNAL.space[5],
+    alignSelf: 'flex-start',
+  },
+  backText: {
+    color: SIGNAL.color.inkSoft,
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.bodySemi,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  athleteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SIGNAL.space[4],
+    marginBottom: SIGNAL.space[6],
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: SIGNAL.radius.chip,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    color: SIGNAL.color.white,
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 16,
+  },
+  athleteMeta: { flex: 1, minWidth: 0 },
+  headerDisplay: {
+    fontSize: 29,
+    fontFamily: SIGNAL.font.display,
+    color: SIGNAL.color.indigo,
+    letterSpacing: SIGNAL.letter.titleTight,
+  },
+  headerSub: {
+    fontSize: SIGNAL.size.label,
+    color: SIGNAL.color.mute,
+    marginTop: 2,
+  },
+  headerStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: SIGNAL.color.paper,
+    borderRadius: SIGNAL.radius.button,
+    paddingVertical: SIGNAL.space[4],
+  },
+  headerStat: { flex: 1, alignItems: 'center' },
+  headerStatNum: {
+    fontSize: 18,
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.numTight,
+  },
+  headerStatLabel: {
+    fontSize: 10,
+    color: SIGNAL.color.mute,
+    marginTop: 3,
+    textAlign: 'center',
+  },
+  headerStatDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: SIGNAL.color.line,
+  },
+
+  // ── Cards ─────────────────────────────────────────────────────────────────
+  card: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    padding: SIGNAL.space[6],
+    gap: SIGNAL.space[3],
+  },
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SIGNAL.space[2],
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.indigo,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  eyebrow: {
+    ...SIGNAL.style.eyebrow,
+  },
+  preciseBadge: {
+    backgroundColor: SIGNAL.color.indigo + SIGNAL.tint.chip,
+    borderRadius: SIGNAL.radius.chip,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  preciseBadgeText: {
+    fontSize: 10,
+    color: SIGNAL.color.indigo,
+    fontFamily: SIGNAL.font.bodyBold,
+    letterSpacing: 0.6,
+  },
+
+  // ── Zone breakdowns ──────────────────────────────────────────────────────
+  zoneStackedBar: {
+    flexDirection: 'row',
+    height: 10,
+    borderRadius: SIGNAL.radius.chip,
+    overflow: 'hidden',
+    marginBottom: SIGNAL.space[2],
+    gap: 2,
+  },
   zoneStackedSegment: { height: '100%' },
-  zoneTotalHint:      { fontSize: 11, color: '#bbb', textAlign: 'right', marginTop: 2 },
-  zoneRow:            { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  zoneDot:            { width: 10, height: 10, borderRadius: 5 },
-  zoneName:           { fontSize: 13, color: '#555', width: 120 },
-  zoneBarBg:          { flex: 1, height: 8, backgroundColor: '#f0f0f0', borderRadius: 4, overflow: 'hidden' },
-  zoneBarFill:        { height: '100%', borderRadius: 4 },
-  zoneCount:          { fontSize: 12, color: '#6B7280', fontWeight: '600', width: 52, textAlign: 'right' },
-  emptyCard:          { backgroundColor: '#fff', borderRadius: 14, padding: 24, alignItems: 'center' },
-  emptyText:          { fontSize: 15, color: '#9CA3AF' },
-  runCard:            { backgroundColor: '#fff', borderRadius: 14, marginBottom: 10, padding: 14 },
-  runTop:             { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-  runLeft:            { width: 80 },
-  runMiles:           { fontSize: 17, fontWeight: '700', color: '#111827' },
-  runDate:            { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
-  runMiddle:          { flex: 1, gap: 4 },
-  runDetail:          { fontSize: 14, color: '#555' },
-  runRight:           { alignItems: 'flex-end' },
-  effortLabelSmall:   { fontSize: 11, color: '#9CA3AF' },
-  effortValue:        { fontSize: 14, fontWeight: '700', color: '#111827' },
+  zoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SIGNAL.space[3],
+    paddingVertical: 3,
+  },
+  zoneDot: { width: 8, height: 8, borderRadius: 4 },
+  zoneName: {
+    fontSize: SIGNAL.size.label,
+    color: SIGNAL.color.inkSoft,
+    width: 120,
+  },
+  zoneBarBg: {
+    flex: 1,
+    height: 6,
+    backgroundColor: SIGNAL.color.paper,
+    borderRadius: SIGNAL.radius.chip,
+    overflow: 'hidden',
+  },
+  zoneBarFill: {
+    height: '100%',
+    borderRadius: SIGNAL.radius.chip,
+  },
+  zoneCount: {
+    fontSize: SIGNAL.size.label,
+    fontFamily: SIGNAL.font.mono,
+    color: SIGNAL.color.ink,
+    width: 52,
+    textAlign: 'right',
+    letterSpacing: SIGNAL.letter.numTight,
+  },
+  zoneTotalHint: {
+    fontSize: 10,
+    color: SIGNAL.color.mute2,
+    textAlign: 'right',
+    marginTop: 4,
+  },
+
+  // ── Runs list ────────────────────────────────────────────────────────────
+  runRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SIGNAL.space[4],
+    paddingVertical: SIGNAL.space[4],
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  runRowLast: {
+    borderBottomWidth: 0,
+  },
+  runMilesCol: { minWidth: 72 },
+  runMiles: {
+    fontSize: SIGNAL.size.bodyLg,
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.numTight,
+  },
+  runDate: {
+    fontSize: 10,
+    color: SIGNAL.color.mute,
+    marginTop: 2,
+  },
+  runMidCol: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SIGNAL.space[2],
+  },
+  runDuration: {
+    fontSize: SIGNAL.size.label,
+    color: SIGNAL.color.inkSoft,
+    fontFamily: SIGNAL.font.mono,
+  },
+  runRight: { alignItems: 'flex-end' },
+  effortLabel: {
+    fontSize: 10,
+    color: SIGNAL.color.mute,
+  },
+  effortValue: {
+    fontSize: SIGNAL.size.label,
+    fontFamily: SIGNAL.font.bodySemi,
+    marginTop: 2,
+  },
+
+  emptyText: {
+    fontSize: SIGNAL.size.body,
+    color: SIGNAL.color.mute,
+    textAlign: 'center',
+    paddingVertical: SIGNAL.space[5],
+  },
 });

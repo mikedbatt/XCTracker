@@ -10,22 +10,22 @@ import {
 import { auth, db } from '../firebaseConfig';
 import {
   BRAND, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
+  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE, STATUS,
 } from '../constants/design';
-import TeamFeed from './TeamFeedSignal';
+import TeamFeed from './TeamFeed';
 
 const CHANNEL_META = {
-  whole_team: { name: 'Whole Team', icon: 'people', color: BRAND },
-  boys:       { name: 'Boys', icon: 'walk', color: '#1976d2' },
-  girls:      { name: 'Girls', icon: 'walk', color: '#e91e63' },
-  parents:    { name: 'Parents', icon: 'people-circle', color: '#7b1fa2' },
-  coaches:    { name: 'Coaches', icon: 'shield', color: '#f57c00' },
+  whole_team: { name: 'Whole Team', icon: 'people', color: SIGNAL.color.indigo },
+  boys:       { name: 'Boys', icon: 'walk', color: SIGNAL.color.cyan },
+  girls:      { name: 'Girls', icon: 'walk', color: SIGNAL.color.pink },
+  parents:    { name: 'Parents', icon: 'people-circle', color: SIGNAL.color.violet },
+  coaches:    { name: 'Coaches', icon: 'shield', color: SIGNAL.color.amber },
 };
 
 function getChannelMeta(channelKey) {
   if (CHANNEL_META[channelKey]) return CHANNEL_META[channelKey];
   // Training group channels: "group_GROUPID"
-  return { name: channelKey, icon: 'fitness', color: BRAND };
+  return { name: channelKey, icon: 'fitness', color: SIGNAL.color.indigo };
 }
 
 export default function ChannelList({ userData, school, groups, athletes, onClose, onUnreadChange, embedded = false }) {
@@ -35,7 +35,7 @@ export default function ChannelList({ userData, school, groups, athletes, onClos
 
   const isCoach = userData.role === 'admin_coach' || userData.role === 'assistant_coach';
   const isParent = userData.role === 'parent';
-  const primaryColor = school?.primaryColor || BRAND;
+  const primaryColor = school?.primaryColor || SIGNAL.color.indigo;
 
   useEffect(() => {
     buildChannels();
@@ -188,59 +188,63 @@ export default function ChannelList({ userData, school, groups, athletes, onClos
     <View style={styles.container}>
       {!embedded && (
         <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-            <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+          <TouchableOpacity onPress={onClose} style={styles.backBtn} activeOpacity={0.7}>
+            <Ionicons name="chevron-back" size={22} color={SIGNAL.color.ink} />
             <Text style={styles.backText}>Back</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Messages</Text>
+          <Text style={styles.headerTitle}>Feed</Text>
           <View style={{ width: 60 }} />
         </View>
       )}
       {embedded && (
         <View style={styles.embeddedHeader}>
-          <Text style={styles.headerTitle}>Messages</Text>
+          <Text style={styles.eyebrow}>Channels</Text>
+          <Text style={styles.headerTitle}>Feed</Text>
         </View>
       )}
 
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator size="large" color={primaryColor} />
+          <ActivityIndicator size="large" color={SIGNAL.color.indigo} />
         </View>
       ) : (
-        <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-          {channels.map(ch => (
-            <TouchableOpacity
-              key={ch.key}
-              style={styles.channelCard}
-              activeOpacity={0.7}
-              onPress={() => setSelectedChannel(ch)}
-            >
-              <View style={[styles.channelIcon, { backgroundColor: ch.color + '18' }]}>
-                <Ionicons name={ch.icon} size={22} color={ch.color} />
-              </View>
-              <View style={styles.channelInfo}>
-                <View style={styles.channelTopRow}>
-                  <Text style={styles.channelName}>{ch.name}</Text>
-                  {ch.lastPostTime && (
-                    <Text style={styles.channelTime}>{formatTime(ch.lastPostTime)}</Text>
-                  )}
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.listCard}>
+            {channels.map((ch, idx) => (
+              <TouchableOpacity
+                key={ch.key}
+                style={[styles.channelRow, idx < channels.length - 1 && styles.channelRowDivider]}
+                activeOpacity={0.6}
+                onPress={() => setSelectedChannel(ch)}
+              >
+                <View style={[styles.channelIcon, { backgroundColor: ch.color + SIGNAL.tint.chip }]}>
+                  <Ionicons name={ch.icon} size={20} color={ch.color} />
                 </View>
-                {ch.lastPost ? (
-                  <Text style={[styles.channelPreview, ch.unread > 0 && styles.channelPreviewUnread]} numberOfLines={1}>
-                    {ch.lastPost.authorName?.split(' ')[0]}: {ch.lastPost.text}
-                  </Text>
-                ) : (
-                  <Text style={styles.channelPreview}>No messages yet</Text>
-                )}
-              </View>
-              {ch.unread > 0 && (
-                <View style={styles.unreadBadge}>
-                  <Text style={styles.unreadText}>{ch.unread > 99 ? '99+' : ch.unread}</Text>
+                <View style={styles.channelInfo}>
+                  <View style={styles.channelTopRow}>
+                    <Text style={styles.channelName} numberOfLines={1}>{ch.name}</Text>
+                    {ch.lastPostTime && (
+                      <Text style={[styles.channelTime, ch.unread > 0 && styles.channelTimeUnread]}>{formatTime(ch.lastPostTime)}</Text>
+                    )}
+                  </View>
+                  <View style={styles.channelBottomRow}>
+                    {ch.lastPost ? (
+                      <Text style={[styles.channelPreview, ch.unread > 0 && styles.channelPreviewUnread]} numberOfLines={1}>
+                        {ch.lastPost.authorName?.split(' ')[0]}: {ch.lastPost.text}
+                      </Text>
+                    ) : (
+                      <Text style={styles.channelPreviewEmpty} numberOfLines={1}>No messages yet</Text>
+                    )}
+                    {ch.unread > 0 && (
+                      <View style={styles.unreadBadge}>
+                        <Text style={styles.unreadText}>{ch.unread > 99 ? '99+' : ch.unread}</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
-              )}
-              <Ionicons name="chevron-forward" size={16} color={NEUTRAL.muted} />
-            </TouchableOpacity>
-          ))}
+              </TouchableOpacity>
+            ))}
+          </View>
           <View style={{ height: 40 }} />
         </ScrollView>
       )}
@@ -249,22 +253,157 @@ export default function ChannelList({ userData, school, groups, athletes, onClos
 }
 
 const styles = StyleSheet.create({
-  container:      { flex: 1, backgroundColor: NEUTRAL.bg },
-  center:         { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header:         { backgroundColor: NEUTRAL.card, paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 14, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
-  embeddedHeader: { paddingVertical: SPACE.md, paddingHorizontal: 20 },
-  backBtn:        { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6 },
-  backText:       { color: BRAND_DARK, fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.semibold },
-  headerTitle:    { fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  scroll:         { flex: 1 },
-  channelCard:    { flexDirection: 'row', alignItems: 'center', backgroundColor: NEUTRAL.card, marginHorizontal: SPACE.lg, marginTop: SPACE.sm, borderRadius: RADIUS.lg, padding: SPACE.lg, gap: SPACE.md, ...SHADOW.sm },
-  channelIcon:    { width: 44, height: 44, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center' },
-  channelInfo:    { flex: 1 },
-  channelTopRow:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 },
-  channelName:    { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  channelTime:    { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted },
-  channelPreview: { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted, lineHeight: 18 },
-  channelPreviewUnread: { color: BRAND_DARK, fontWeight: FONT_WEIGHT.semibold },
-  unreadBadge:    { backgroundColor: STATUS.error, borderRadius: 10, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
-  unreadText:     { color: '#fff', fontSize: 11, fontWeight: FONT_WEIGHT.bold },
+  container: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper2,
+  },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  header: {
+    backgroundColor: SIGNAL.color.white,
+    paddingTop: Platform.OS === 'ios' ? 68 : 44,
+    paddingBottom: SIGNAL.space[5],
+    paddingHorizontal: SIGNAL.space.screen,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  embeddedHeader: {
+    paddingTop: SIGNAL.space[6],
+    paddingBottom: SIGNAL.space[4],
+    paddingHorizontal: SIGNAL.space.screen,
+  },
+  eyebrow: {
+    ...SIGNAL.style.eyebrow,
+    marginBottom: SIGNAL.space[2],
+  },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: SIGNAL.space[2],
+    minWidth: 60,
+  },
+  backText: {
+    color: SIGNAL.color.ink,
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontWeight: '500',
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  headerTitle: {
+    fontSize: SIGNAL.size.title,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.titleTight,
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingTop: SIGNAL.space[4],
+    paddingHorizontal: SIGNAL.space.screen,
+  },
+  listCard: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    overflow: 'hidden',
+  },
+  channelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SIGNAL.space[5],
+    paddingHorizontal: SIGNAL.space.card,
+    gap: SIGNAL.space[4],
+  },
+  channelRowDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  channelIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: SIGNAL.radius.chip,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  channelInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  channelTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
+    gap: SIGNAL.space[2],
+  },
+  channelBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SIGNAL.space[2],
+  },
+  channelName: {
+    fontSize: SIGNAL.size.bodyLg,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+    flexShrink: 1,
+  },
+  channelTime: {
+    fontSize: SIGNAL.size.label,
+    fontFamily: SIGNAL.font.body,
+    color: SIGNAL.color.mute,
+  },
+  channelTimeUnread: {
+    color: SIGNAL.color.indigo,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+  },
+  channelPreview: {
+    flex: 1,
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.body,
+    color: SIGNAL.color.mute,
+    letterSpacing: SIGNAL.letter.bodyTight,
+    lineHeight: 18,
+  },
+  channelPreviewUnread: {
+    color: SIGNAL.color.inkSoft,
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontWeight: '500',
+  },
+  channelPreviewEmpty: {
+    flex: 1,
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.body,
+    color: SIGNAL.color.mute2,
+    letterSpacing: SIGNAL.letter.bodyTight,
+    lineHeight: 18,
+  },
+  unreadBadge: {
+    backgroundColor: SIGNAL.color.indigo,
+    borderRadius: SIGNAL.radius.chip,
+    minWidth: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  unreadText: {
+    color: SIGNAL.color.white,
+    fontSize: SIGNAL.size.eyebrow,
+    fontFamily: SIGNAL.font.bodyBold,
+    fontWeight: '700',
+  },
 });

@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import {
   BRAND, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
+  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE, STATUS,
 } from '../constants/design';
 import { db } from '../firebaseConfig';
 import { calcPackAnalysis, formatTime, formatPace, calcPace } from '../utils/raceUtils';
@@ -54,16 +54,33 @@ export default function RaceResults({ race, meet, schoolId, school, athletes, on
   const pack = calcPackAnalysis(results);
   const sorted = pack?.sorted || [];
 
+  const dateStr = meetDate.toLocaleDateString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric',
+  });
+
+  const getAthleteAvatarColor = (athleteId) => {
+    const a = athletes?.find(x => x.id === athleteId);
+    return a?.avatarColor || SIGNAL.color.indigo;
+  };
+
+  const getInitials = (name) => {
+    if (!name) return '?';
+    const parts = name.trim().split(/\s+/);
+    return (parts[0]?.[0] || '') + (parts[1]?.[0] || '');
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+          <Ionicons name="chevron-back" size={20} color={SIGNAL.color.inkSoft} />
           <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>{race.label}</Text>
-          <Text style={styles.headerSub}>{race.distanceLabel} · {meet.name}</Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>{race.label}</Text>
+          <Text style={styles.headerEyebrow} numberOfLines={1}>
+            {dateStr} · {race.distanceLabel} · {meet.name}
+          </Text>
         </View>
         <TouchableOpacity onPress={() => setShowEntry(true)} style={styles.editBtn}>
           <Text style={styles.editBtnText}>{results.length > 0 ? 'Edit' : 'Enter'}</Text>
@@ -71,59 +88,71 @@ export default function RaceResults({ race, meet, schoolId, school, athletes, on
       </View>
 
       {loading ? (
-        <View style={styles.center}><ActivityIndicator size="large" color={primaryColor} /></View>
+        <View style={styles.center}><ActivityIndicator size="large" color={SIGNAL.color.indigo} /></View>
       ) : results.length === 0 ? (
         <View style={styles.emptyCard}>
-          <Text style={{ fontSize: 40, marginBottom: SPACE.md }}>🏁</Text>
+          <Text style={styles.emptyEmoji}>🏁</Text>
           <Text style={styles.emptyTitle}>No results yet</Text>
           <Text style={styles.emptyDesc}>Enter finish times and places for this race.</Text>
-          <TouchableOpacity style={[styles.enterBtn, { backgroundColor: primaryColor }]} onPress={() => setShowEntry(true)}>
+          <TouchableOpacity style={styles.enterBtn} onPress={() => setShowEntry(true)}>
             <Text style={styles.enterBtnText}>Enter Results</Text>
           </TouchableOpacity>
         </View>
       ) : (
         <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
 
-          {/* Pack analysis card */}
+          {/* Pack stats card */}
           {pack && pack.scorerCount >= 5 && (
-            <View style={styles.packCard}>
-              <Text style={styles.packTitle}>Pack Analysis</Text>
-              <View style={styles.packGrid}>
-                <View style={styles.packStat}>
-                  <Text style={styles.packStatValue}>{formatTime(pack.spread15)}</Text>
-                  <Text style={styles.packStatLabel}>1-5 Spread</Text>
-                </View>
-                <View style={styles.packStat}>
-                  <Text style={styles.packStatValue}>{formatTime(pack.teamAvg)}</Text>
-                  <Text style={styles.packStatLabel}>Team Avg</Text>
-                </View>
-                {pack.teamScore && (
+            <View style={styles.cardWrap}>
+              <View style={styles.card}>
+                <Text style={styles.sectionTitle}>Pack Analysis</Text>
+                <View style={styles.packGrid}>
                   <View style={styles.packStat}>
-                    <Text style={styles.packStatValue}>{pack.teamScore}</Text>
-                    <Text style={styles.packStatLabel}>Team Score</Text>
+                    <Text style={styles.packStatValue}>{formatTime(pack.spread15)}</Text>
+                    <Text style={styles.packStatLabel}>1–5 Spread</Text>
+                  </View>
+                  <View style={styles.packStat}>
+                    <Text style={styles.packStatValue}>{formatTime(pack.teamAvg)}</Text>
+                    <Text style={styles.packStatLabel}>Team Avg</Text>
+                  </View>
+                  {pack.teamScore && (
+                    <View style={styles.packStat}>
+                      <Text style={styles.packStatValue}>{pack.teamScore}</Text>
+                      <Text style={styles.packStatLabel}>Score</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* Displacement card */}
+          {pack && (pack.runner6 || pack.runner7) && (
+            <View style={styles.cardWrap}>
+              <View style={styles.card}>
+                <Text style={styles.sectionTitle}>Displacement</Text>
+                {pack.runner6 && (
+                  <View style={styles.displacementRow}>
+                    <Text style={styles.displacementLabel}>#6 {pack.runner6.name}</Text>
+                    <Text style={styles.displacementGap}>+{formatTime(pack.gap6to5)} from #5</Text>
+                  </View>
+                )}
+                {pack.runner7 && (
+                  <View style={[styles.displacementRow, pack.runner6 && styles.displacementRowDivider]}>
+                    <Text style={styles.displacementLabel}>#7 {pack.runner7.name}</Text>
+                    <Text style={styles.displacementGap}>+{formatTime(pack.gap7to5)} from #5</Text>
                   </View>
                 )}
               </View>
-              {pack.runner6 && (
-                <View style={styles.displacementRow}>
-                  <Text style={styles.displacementLabel}>#6 {pack.runner6.name}</Text>
-                  <Text style={styles.displacementGap}>+{formatTime(pack.gap6to5)} from #5</Text>
-                </View>
-              )}
-              {pack.runner7 && (
-                <View style={styles.displacementRow}>
-                  <Text style={styles.displacementLabel}>#7 {pack.runner7.name}</Text>
-                  <Text style={styles.displacementGap}>+{formatTime(pack.gap7to5)} from #5</Text>
-                </View>
-              )}
             </View>
           )}
 
           {/* Results table */}
           <View style={styles.tableHeader}>
             <Text style={[styles.colTeam, styles.colHeaderText]}>#</Text>
-            <Text style={[styles.colPlace, styles.colHeaderText]}>Pl</Text>
+            <Text style={[styles.colAvatar, styles.colHeaderText]}> </Text>
             <Text style={[styles.colName, styles.colHeaderText]}>Athlete</Text>
+            <Text style={[styles.colPlace, styles.colHeaderText]}>Pl</Text>
             <Text style={[styles.colTime, styles.colHeaderText]}>Time</Text>
             <Text style={[styles.colPace, styles.colHeaderText]}>Pace</Text>
             <Text style={[styles.colGap, styles.colHeaderText]}>Gap</Text>
@@ -134,32 +163,65 @@ export default function RaceResults({ race, meet, schoolId, school, athletes, on
             const isDisplacement = i === 5 || i === 6;
             const gap = i > 0 ? r.finishTime - sorted[0].finishTime : 0;
             const pace = calcPace(r.finishTime, race.distanceLabel);
+            const avatarColor = getAthleteAvatarColor(r.athleteId);
 
             return (
-              <View key={r.athleteId} style={[styles.resultRow, isScorer && styles.resultRowScorer, isDisplacement && styles.resultRowDisplacement]}>
-                <Text style={[styles.colTeam, styles.resultTeamPlace, isScorer && { color: primaryColor }]}>{r.teamPlace}</Text>
-                <Text style={[styles.colPlace, styles.resultText]}>{r.place || '—'}</Text>
-                <Text style={[styles.colName, styles.resultName, isScorer && { fontWeight: FONT_WEIGHT.bold }]} numberOfLines={1}>{r.athleteName}</Text>
-                <Text style={[styles.colTime, styles.resultTime, isScorer && { color: primaryColor }]}>{r.finishTimeDisplay || formatTime(r.finishTime)}</Text>
-                <Text style={[styles.colPace, styles.resultText]}>{pace ? formatPace(pace) : '—'}</Text>
-                <Text style={[styles.colGap, styles.resultGap]}>{gap > 0 ? `+${formatTime(gap)}` : '—'}</Text>
+              <View
+                key={r.athleteId}
+                style={[
+                  styles.resultRow,
+                  isScorer && styles.resultRowScorer,
+                  isDisplacement && styles.resultRowDisplacement,
+                ]}
+              >
+                <Text style={[styles.colTeam, styles.resultTeamPlace, { color: isScorer ? SIGNAL.color.indigo : SIGNAL.color.mute }]}>{r.teamPlace}</Text>
+                <View style={styles.colAvatar}>
+                  <View style={[styles.avatar, { backgroundColor: avatarColor }]}>
+                    <Text style={styles.avatarText}>{getInitials(r.athleteName)}</Text>
+                  </View>
+                </View>
+                <Text style={[styles.colName, styles.resultName, isScorer && styles.resultNameScorer]} numberOfLines={1}>{r.athleteName}</Text>
+                <Text style={[styles.colPlace, styles.resultMutedMono]}>{r.place || '—'}</Text>
+                <Text style={[styles.colTime, styles.resultTime, isScorer && { color: SIGNAL.color.indigo }]}>{r.finishTimeDisplay || formatTime(r.finishTime)}</Text>
+                <Text style={[styles.colPace, styles.resultMutedMono]}>{pace ? formatPace(pace) : '—'}</Text>
+                <Text style={[styles.colGap, styles.resultMutedMono]}>{gap > 0 ? `+${formatTime(gap)}` : '—'}</Text>
               </View>
             );
           })}
 
           {/* Non-finishers */}
-          {results.filter(r => r.status !== 'finished').map(r => (
-            <View key={r.athleteId} style={[styles.resultRow, { opacity: 0.5 }]}>
-              <Text style={[styles.colTeam, styles.resultText]}>—</Text>
-              <Text style={[styles.colPlace, styles.resultText]}>—</Text>
-              <Text style={[styles.colName, styles.resultName]}>{r.athleteName}</Text>
-              <Text style={[styles.colTime, styles.resultText, { color: STATUS.error }]}>{r.status?.toUpperCase()}</Text>
-              <Text style={[styles.colPace, styles.resultText]}>—</Text>
-              <Text style={[styles.colGap, styles.resultText]}>—</Text>
-            </View>
-          ))}
+          {results.filter(r => r.status !== 'finished').map(r => {
+            const avatarColor = getAthleteAvatarColor(r.athleteId);
+            return (
+              <View key={r.athleteId} style={[styles.resultRow, { opacity: 0.55 }]}>
+                <Text style={[styles.colTeam, styles.resultMutedMono]}>—</Text>
+                <View style={styles.colAvatar}>
+                  <View style={[styles.avatar, { backgroundColor: avatarColor }]}>
+                    <Text style={styles.avatarText}>{getInitials(r.athleteName)}</Text>
+                  </View>
+                </View>
+                <Text style={[styles.colName, styles.resultName]} numberOfLines={1}>{r.athleteName}</Text>
+                <Text style={[styles.colPlace, styles.resultMutedMono]}>—</Text>
+                <Text style={[styles.colTime, styles.resultTime, { color: SIGNAL.color.coral }]}>{r.status?.toUpperCase()}</Text>
+                <Text style={[styles.colPace, styles.resultMutedMono]}>—</Text>
+                <Text style={[styles.colGap, styles.resultMutedMono]}>—</Text>
+              </View>
+            );
+          })}
 
-          <View style={{ height: 60 }} />
+          {/* Legend */}
+          <View style={styles.legend}>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: SIGNAL.color.indigo + '30' }]} />
+              <Text style={styles.legendText}>Scorers (1–5)</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: SIGNAL.color.amber + '30' }]} />
+              <Text style={styles.legendText}>Displacers (6–7)</Text>
+            </View>
+          </View>
+
+          <View style={{ height: 80 }} />
         </ScrollView>
       )}
     </View>
@@ -167,48 +229,291 @@ export default function RaceResults({ race, meet, schoolId, school, athletes, on
 }
 
 const styles = StyleSheet.create({
-  container:      { flex: 1, backgroundColor: NEUTRAL.bg },
-  center:         { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header:         { backgroundColor: '#fff', paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 14, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
-  backBtn:        { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6 },
-  backText:       { color: BRAND_DARK, fontSize: 15, fontWeight: '600' },
-  headerCenter:   { alignItems: 'center', flex: 1 },
-  headerTitle:    { fontSize: 17, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  headerSub:      { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 1 },
-  editBtn:        { paddingVertical: 6, paddingHorizontal: 10 },
-  editBtnText:    { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND },
-  scroll:         { flex: 1 },
-  // Pack analysis
-  packCard:       { margin: SPACE.lg, backgroundColor: '#fff', borderRadius: RADIUS.lg, padding: SPACE.lg, ...SHADOW.sm },
-  packTitle:      { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.md },
-  packGrid:       { flexDirection: 'row', gap: SPACE.md, marginBottom: SPACE.md },
-  packStat:       { flex: 1, alignItems: 'center', backgroundColor: NEUTRAL.bg, borderRadius: RADIUS.md, padding: SPACE.md },
-  packStatValue:  { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  packStatLabel:  { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 2 },
-  displacementRow:{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: SPACE.xs, borderTopWidth: 1, borderTopColor: NEUTRAL.border },
-  displacementLabel: { fontSize: FONT_SIZE.sm, color: NEUTRAL.body },
-  displacementGap:{ fontSize: FONT_SIZE.sm, fontWeight: '600', color: STATUS.warning },
-  // Table
-  tableHeader:    { flexDirection: 'row', paddingHorizontal: SPACE.lg, paddingVertical: SPACE.sm, borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
-  colHeaderText:  { fontSize: 11, fontWeight: FONT_WEIGHT.bold, color: NEUTRAL.muted, textTransform: 'uppercase' },
-  colTeam:        { width: 28, textAlign: 'center' },
-  colPlace:       { width: 30, textAlign: 'center' },
-  colName:        { flex: 1 },
-  colTime:        { width: 55, textAlign: 'right' },
-  colPace:        { width: 62, textAlign: 'right' },
-  colGap:         { width: 50, textAlign: 'right' },
-  resultRow:      { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACE.lg, paddingVertical: SPACE.md, borderBottomWidth: 0.5, borderBottomColor: NEUTRAL.border },
-  resultRowScorer:{ backgroundColor: '#f0f4ff' },
-  resultRowDisplacement: { backgroundColor: '#fffbeb' },
-  resultTeamPlace:{ fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold },
-  resultName:     { fontSize: FONT_SIZE.sm, color: BRAND_DARK },
-  resultTime:     { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  resultText:     { fontSize: FONT_SIZE.sm, color: NEUTRAL.body },
-  resultGap:      { fontSize: 11, color: NEUTRAL.muted },
-  // Empty
-  emptyCard:      { margin: SPACE.lg, backgroundColor: '#fff', borderRadius: RADIUS.lg, padding: SPACE['2xl'], alignItems: 'center', ...SHADOW.sm },
-  emptyTitle:     { fontSize: 18, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.sm },
-  emptyDesc:      { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, textAlign: 'center', lineHeight: 20, marginBottom: SPACE.lg },
-  enterBtn:       { borderRadius: RADIUS.md, paddingVertical: SPACE.md, paddingHorizontal: SPACE['2xl'] },
-  enterBtnText:   { color: '#fff', fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
+  container: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper2,
+  },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ── Header ────────────────────────────────────────────────────────────────
+  header: {
+    backgroundColor: SIGNAL.color.white,
+    paddingTop: Platform.OS === 'ios' ? 68 : 44,
+    paddingBottom: 14,
+    paddingHorizontal: SIGNAL.space.screen,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: 6,
+    minWidth: 60,
+  },
+  backText: {
+    color: SIGNAL.color.inkSoft,
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+  },
+  headerCenter: {
+    alignItems: 'center',
+    flex: 1,
+    paddingHorizontal: 6,
+  },
+  headerTitle: {
+    fontSize: SIGNAL.size.heading,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '700',
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  headerEyebrow: {
+    fontSize: SIGNAL.size.eyebrow,
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontWeight: '500',
+    color: SIGNAL.color.mute,
+    letterSpacing: SIGNAL.letter.eyebrow,
+    textTransform: 'uppercase',
+    marginTop: 3,
+  },
+  editBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    minWidth: 60,
+    alignItems: 'flex-end',
+  },
+  editBtnText: {
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+    color: SIGNAL.color.indigo,
+  },
+
+  scroll: { flex: 1 },
+
+  // ── Cards ─────────────────────────────────────────────────────────────────
+  cardWrap: {
+    paddingHorizontal: SIGNAL.space.screen,
+    paddingTop: SIGNAL.space[5],
+  },
+  card: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    padding: SIGNAL.space[6],
+    ...SIGNAL.border.hairline,
+  },
+  sectionTitle: {
+    fontSize: SIGNAL.size.heading,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+    color: SIGNAL.color.indigo,
+    marginBottom: SIGNAL.space[4],
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+
+  // ── Pack stats ────────────────────────────────────────────────────────────
+  packGrid: {
+    flexDirection: 'row',
+    gap: SIGNAL.space[2],
+  },
+  packStat: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: SIGNAL.color.paper2,
+    borderRadius: SIGNAL.radius.control,
+    paddingVertical: SIGNAL.space[4],
+    paddingHorizontal: SIGNAL.space[2],
+  },
+  packStatValue: {
+    fontSize: 20,
+    fontFamily: SIGNAL.font.mono,
+    fontWeight: '600',
+    color: SIGNAL.color.indigo,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  packStatLabel: {
+    fontSize: SIGNAL.size.eyebrow,
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontWeight: '500',
+    color: SIGNAL.color.mute,
+    marginTop: 4,
+  },
+
+  // ── Displacement ──────────────────────────────────────────────────────────
+  displacementRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: SIGNAL.space[3],
+  },
+  displacementRowDivider: {
+    borderTopWidth: 1,
+    borderTopColor: SIGNAL.color.line,
+  },
+  displacementLabel: {
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.body,
+    color: SIGNAL.color.inkSoft,
+  },
+  displacementGap: {
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.mono,
+    fontWeight: '600',
+    color: SIGNAL.color.amber,
+  },
+
+  // ── Results table ─────────────────────────────────────────────────────────
+  tableHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SIGNAL.space.screen,
+    paddingTop: SIGNAL.space[6],
+    paddingBottom: SIGNAL.space[2],
+  },
+  colHeaderText: {
+    fontSize: 10,
+    fontFamily: SIGNAL.font.bodyBold,
+    fontWeight: '700',
+    color: SIGNAL.color.mute2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  colTeam:   { width: 24, textAlign: 'center' },
+  colAvatar: { width: 34, alignItems: 'center', justifyContent: 'center' },
+  colName:   { flex: 1, paddingLeft: 6 },
+  colPlace:  { width: 30, textAlign: 'center' },
+  colTime:   { width: 54, textAlign: 'right' },
+  colPace:   { width: 46, textAlign: 'right' },
+  colGap:    { width: 50, textAlign: 'right' },
+
+  resultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SIGNAL.space.screen,
+    paddingVertical: SIGNAL.space[3],
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+    backgroundColor: SIGNAL.color.white,
+  },
+  resultRowScorer: {
+    backgroundColor: SIGNAL.color.indigo + '0A',
+  },
+  resultRowDisplacement: {
+    backgroundColor: SIGNAL.color.amber + '10',
+  },
+  resultTeamPlace: {
+    fontSize: 13,
+    fontFamily: SIGNAL.font.mono,
+    fontWeight: '600',
+  },
+  avatar: {
+    width: 28,
+    height: 28,
+    borderRadius: SIGNAL.radius.chip,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    fontSize: 10.5,
+    fontFamily: SIGNAL.font.bodyBold,
+    fontWeight: '700',
+    color: SIGNAL.color.white,
+    letterSpacing: 0.2,
+  },
+  resultName: {
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontWeight: '500',
+    color: SIGNAL.color.ink,
+  },
+  resultNameScorer: {
+    fontFamily: SIGNAL.font.bodyBold,
+    fontWeight: '700',
+  },
+  resultTime: {
+    fontSize: 13,
+    fontFamily: SIGNAL.font.mono,
+    fontWeight: '600',
+    color: SIGNAL.color.ink,
+    textAlign: 'right',
+  },
+  resultMutedMono: {
+    fontSize: 11.5,
+    fontFamily: SIGNAL.font.mono,
+    color: SIGNAL.color.mute,
+  },
+
+  // ── Legend ────────────────────────────────────────────────────────────────
+  legend: {
+    flexDirection: 'row',
+    gap: SIGNAL.space[5],
+    paddingHorizontal: SIGNAL.space.screen,
+    paddingTop: SIGNAL.space[4],
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  legendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 3,
+  },
+  legendText: {
+    fontSize: SIGNAL.size.eyebrow,
+    fontFamily: SIGNAL.font.body,
+    color: SIGNAL.color.mute,
+  },
+
+  // ── Empty state ───────────────────────────────────────────────────────────
+  emptyCard: {
+    marginHorizontal: SIGNAL.space.screen,
+    marginTop: SIGNAL.space[6],
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    padding: 28,
+    alignItems: 'center',
+    ...SIGNAL.border.hairline,
+  },
+  emptyEmoji: {
+    fontSize: 40,
+    marginBottom: SIGNAL.space[4],
+  },
+  emptyTitle: {
+    fontSize: SIGNAL.size.heading,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+    color: SIGNAL.color.ink,
+    marginBottom: SIGNAL.space[2],
+  },
+  emptyDesc: {
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.body,
+    color: SIGNAL.color.mute,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: SIGNAL.space[6],
+  },
+  enterBtn: {
+    backgroundColor: SIGNAL.color.ink,
+    borderRadius: SIGNAL.radius.button,
+    paddingVertical: SIGNAL.space[4],
+    paddingHorizontal: 28,
+  },
+  enterBtnText: {
+    color: SIGNAL.color.white,
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+  },
 });

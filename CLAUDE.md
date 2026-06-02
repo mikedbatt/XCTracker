@@ -17,6 +17,19 @@ main user roles:
 Note: repo folder is still named `XCTracker/` from pre-rebrand; product name
 is TeamBase everywhere in UI/assets.
 
+## Design System: Signal
+The app ships in the **Signal** visual design — white-first surfaces, hairline
+borders, indigo primary actions, status-colored gradients (emerald/amber/coral
+for on-track/warn/alert), Inter Tight for body / SemiBold for section headings,
+Instrument Serif for personal-display moments (greetings only — never section
+headings). Color is "signal, not decoration" — every hue maps to meaning.
+
+All tokens live in `constants/design.js` under the `SIGNAL` export block. Use
+`SIGNAL.color.*` / `SIGNAL.font.*` / `SIGNAL.space.*` / `SIGNAL.radius.*` /
+`SIGNAL.style.eyebrow` etc. for all new visual code. Gradients use
+`expo-linear-gradient` (installed). See `design_handoff_teambase_signal/`
+for the original spec + implementation deltas log.
+
 ## Tech Stack
 - **Framework:** React Native with Expo (SDK 54) + Expo Router v6
 - **Backend:** Firebase (Firestore, Firebase Auth, Firebase Cloud Functions,

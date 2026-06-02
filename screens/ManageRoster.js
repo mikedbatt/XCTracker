@@ -8,9 +8,7 @@ import {
   ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { db } from '../firebaseConfig';
-import {
-  BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
-} from '../constants/design';
+import { SIGNAL } from '../constants/design';
 
 // Coach-facing roster management. Lists every athlete currently associated
 // with the school (approved + pending) and lets the head coach remove anyone
@@ -142,30 +140,41 @@ export default function ManageRoster({ schoolId, groups = [], onClose, onPending
     return groups.find(g => g.id === groupId)?.name || 'No group';
   };
 
+  const getInitials = (a) => {
+    const f = (a.firstName || '').trim();
+    const l = (a.lastName || '').trim();
+    if (f && l) return `${f[0]}${l[0]}`.toUpperCase();
+    if (f) return f.slice(0, 2).toUpperCase();
+    if (l) return l.slice(0, 2).toUpperCase();
+    return '??';
+  };
+
   if (loading) {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-            <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+            <Ionicons name="chevron-back" size={22} color={SIGNAL.color.inkSoft} />
             <Text style={styles.backText}>Back</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Roster</Text>
           <View style={{ width: 60 }} />
         </View>
-        <ActivityIndicator style={{ marginTop: 40 }} color={BRAND} />
+        <ActivityIndicator style={{ marginTop: 40 }} color={SIGNAL.color.indigo} />
       </View>
     );
   }
 
   const pendingCount = athletes.filter(a => a.status === 'pending').length;
   const activeCount  = athletes.length - pendingCount;
+  const pendingAthletes = athletes.filter(a => a.status === 'pending');
+  const activeAthletes  = athletes.filter(a => a.status !== 'pending');
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
+          <Ionicons name="chevron-back" size={22} color={SIGNAL.color.inkSoft} />
           <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Roster</Text>
@@ -173,8 +182,8 @@ export default function ManageRoster({ schoolId, groups = [], onClose, onPending
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <Text style={styles.summary}>
-          {activeCount} active · {pendingCount} pending
+        <Text style={styles.eyebrow}>
+          {activeCount} active · <Text style={styles.eyebrowAmber}>{pendingCount} pending</Text>
         </Text>
         <Text style={styles.hint}>
           Remove athletes who have transferred or shouldn't be on this team. Their account and runs stay intact — they can join a different school.
@@ -184,57 +193,101 @@ export default function ManageRoster({ schoolId, groups = [], onClose, onPending
           <View style={styles.emptyCard}>
             <Text style={styles.emptyText}>No athletes on this team yet.</Text>
           </View>
-        ) : athletes.map(a => {
-          const isPending = a.status === 'pending';
-          const isBusy = removing === a.id;
-          return (
-            <View key={a.id} style={styles.row}>
-              <View style={styles.rowMain}>
-                <View style={styles.nameLine}>
-                  <Text style={styles.name}>{a.firstName} {a.lastName}</Text>
-                  {isPending && (
-                    <View style={styles.pendingBadge}>
-                      <Text style={styles.pendingBadgeText}>Pending</Text>
-                    </View>
-                  )}
+        ) : (
+          <>
+            {pendingAthletes.length > 0 && (
+              <>
+                <Text style={styles.sectionTitle}>Pending requests</Text>
+                <View style={styles.listGroup}>
+                  {pendingAthletes.map(a => {
+                    const isBusy = removing === a.id;
+                    const avatarBg = a.avatarColor || SIGNAL.color.indigo;
+                    return (
+                      <View key={a.id} style={[styles.row, styles.rowPending]}>
+                        <View style={[styles.avatar, { backgroundColor: avatarBg }]}>
+                          <Text style={styles.avatarText}>{getInitials(a)}</Text>
+                        </View>
+                        <View style={styles.rowMain}>
+                          <View style={styles.nameLine}>
+                            <Text style={styles.name}>{a.firstName} {a.lastName}</Text>
+                            <View style={styles.pendingBadge}>
+                              <Text style={styles.pendingBadgeText}>Pending</Text>
+                            </View>
+                          </View>
+                          <Text style={styles.sub} numberOfLines={1}>
+                            {a.email || groupName(a.groupId)}
+                          </Text>
+                        </View>
+                        <View style={styles.actionGroup}>
+                          <TouchableOpacity
+                            style={styles.approveBtn}
+                            onPress={() => handleApprove(a)}
+                            disabled={isBusy}
+                          >
+                            {isBusy
+                              ? <ActivityIndicator size="small" color="#fff" />
+                              : <Text style={styles.approveBtnText}>Approve</Text>
+                            }
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.denyBtn}
+                            onPress={() => handleDeny(a)}
+                            disabled={isBusy}
+                          >
+                            <Text style={styles.denyBtnText}>Deny</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    );
+                  })}
                 </View>
-                <Text style={styles.sub}>{groupName(a.groupId)}{a.email ? `  ·  ${a.email}` : ''}</Text>
-              </View>
-              {isPending ? (
-                <View style={styles.actionGroup}>
-                  <TouchableOpacity
-                    style={styles.approveBtn}
-                    onPress={() => handleApprove(a)}
-                    disabled={isBusy}
-                  >
-                    {isBusy
-                      ? <ActivityIndicator size="small" color="#fff" />
-                      : <Text style={styles.approveBtnText}>Approve</Text>
-                    }
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.denyBtn}
-                    onPress={() => handleDeny(a)}
-                    disabled={isBusy}
-                  >
-                    <Text style={styles.denyBtnText}>Deny</Text>
-                  </TouchableOpacity>
+              </>
+            )}
+
+            {activeAthletes.length > 0 && (
+              <>
+                <Text style={[styles.sectionTitle, pendingAthletes.length > 0 && { marginTop: SIGNAL.space[8] }]}>Active roster</Text>
+                <View style={styles.listGroup}>
+                  {activeAthletes.map(a => {
+                    const isBusy = removing === a.id;
+                    const avatarBg = a.avatarColor || SIGNAL.color.indigo;
+                    const chipLabel = [a.gender, a.grade ? `Gr ${a.grade}` : null].filter(Boolean).join(' · ');
+                    return (
+                      <View key={a.id} style={styles.row}>
+                        <View style={[styles.avatar, { backgroundColor: avatarBg }]}>
+                          <Text style={styles.avatarText}>{getInitials(a)}</Text>
+                        </View>
+                        <View style={styles.rowMain}>
+                          <View style={styles.nameLine}>
+                            <Text style={styles.name}>{a.firstName} {a.lastName}</Text>
+                            {chipLabel ? (
+                              <View style={styles.metaChip}>
+                                <Text style={styles.metaChipText}>{chipLabel}</Text>
+                              </View>
+                            ) : null}
+                          </View>
+                          <Text style={styles.sub} numberOfLines={1}>
+                            {groupName(a.groupId)}{a.email ? `  ·  ${a.email}` : ''}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.removeBtn}
+                          onPress={() => handleRemove(a)}
+                          disabled={isBusy}
+                        >
+                          {isBusy
+                            ? <ActivityIndicator size="small" color={SIGNAL.color.coral} />
+                            : <Text style={styles.removeBtnText}>Remove</Text>
+                          }
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
                 </View>
-              ) : (
-                <TouchableOpacity
-                  style={styles.removeBtn}
-                  onPress={() => handleRemove(a)}
-                  disabled={isBusy}
-                >
-                  {isBusy
-                    ? <ActivityIndicator size="small" color={STATUS.error} />
-                    : <Text style={styles.removeBtnText}>Remove</Text>
-                  }
-                </TouchableOpacity>
-              )}
-            </View>
-          );
-        })}
+              </>
+            )}
+          </>
+        )}
 
         <View style={{ height: 60 }} />
       </ScrollView>
@@ -243,29 +296,218 @@ export default function ManageRoster({ schoolId, groups = [], onClose, onPending
 }
 
 const styles = StyleSheet.create({
-  container:      { flex: 1, backgroundColor: NEUTRAL.bg },
-  header:         { backgroundColor: NEUTRAL.card, paddingTop: Platform.OS === 'ios' ? 56 : 32, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
-  backBtn:        { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6 },
-  backText:       { color: BRAND_DARK, fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.semibold },
-  headerTitle:    { fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
+  container:      {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper2,
+  },
+  header:         {
+    backgroundColor: SIGNAL.color.white,
+    paddingTop: Platform.OS === 'ios' ? 68 : 44,
+    paddingBottom: SIGNAL.space[4],
+    paddingHorizontal: SIGNAL.space[6],
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  backBtn:        {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    width: 60,
+  },
+  backText:       {
+    color: SIGNAL.color.inkSoft,
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+  },
+  headerTitle:    {
+    fontSize: SIGNAL.size.title,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.titleTight,
+  },
   scroll:         { flex: 1 },
-  scrollContent:  { padding: SPACE.lg },
-  summary:        { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, fontWeight: FONT_WEIGHT.semibold, marginBottom: SPACE.xs },
-  hint:           { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginBottom: SPACE.lg, lineHeight: 16 },
-  emptyCard:      { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE['2xl'], alignItems: 'center', ...SHADOW.sm },
-  emptyText:      { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted },
-  row:            { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, marginBottom: SPACE.sm, flexDirection: 'row', alignItems: 'center', gap: SPACE.md, ...SHADOW.sm },
-  rowMain:        { flex: 1 },
-  nameLine:       { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
-  name:           { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  sub:            { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 2 },
-  pendingBadge:   { backgroundColor: '#fff7ed', borderColor: '#fb923c', borderWidth: 1, borderRadius: RADIUS.sm, paddingHorizontal: 6, paddingVertical: 2 },
-  pendingBadgeText:{ fontSize: 10, color: '#c2410c', fontWeight: FONT_WEIGHT.bold },
-  removeBtn:      { paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm, borderRadius: RADIUS.md, borderWidth: 1, borderColor: STATUS.error, minWidth: 84, alignItems: 'center' },
-  removeBtnText:  { fontSize: FONT_SIZE.sm, color: STATUS.error, fontWeight: FONT_WEIGHT.bold },
-  actionGroup:    { flexDirection: 'row', gap: SPACE.xs },
-  approveBtn:     { paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm, borderRadius: RADIUS.md, backgroundColor: STATUS.success, minWidth: 76, alignItems: 'center' },
-  approveBtnText: { fontSize: FONT_SIZE.sm, color: '#fff', fontWeight: FONT_WEIGHT.bold },
-  denyBtn:        { paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm, borderRadius: RADIUS.md, borderWidth: 1, borderColor: NEUTRAL.border, alignItems: 'center' },
-  denyBtnText:    { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, fontWeight: FONT_WEIGHT.bold },
+  scrollContent:  {
+    paddingHorizontal: SIGNAL.space.screen,
+    paddingTop: SIGNAL.space[6],
+  },
+  eyebrow:        {
+    ...SIGNAL.style.eyebrow,
+    marginBottom: SIGNAL.space[1],
+    paddingLeft: 2,
+  },
+  eyebrowAmber:   {
+    color: SIGNAL.color.amber,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+  },
+  hint:           {
+    fontSize: SIGNAL.size.label,
+    color: SIGNAL.color.mute,
+    fontFamily: SIGNAL.font.body,
+    marginBottom: SIGNAL.space[7],
+    paddingLeft: 2,
+    lineHeight: 17,
+  },
+  sectionTitle:   {
+    fontSize: SIGNAL.size.heading,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+    color: SIGNAL.color.indigo,
+    letterSpacing: SIGNAL.letter.bodyTight,
+    marginBottom: SIGNAL.space[3],
+    paddingLeft: 2,
+  },
+  listGroup:      {
+    flexDirection: 'column',
+    gap: SIGNAL.space[2],
+  },
+  emptyCard:      {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    padding: SIGNAL.space[8],
+    alignItems: 'center',
+    ...SIGNAL.border.hairline,
+  },
+  emptyText:      {
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.body,
+    color: SIGNAL.color.mute,
+  },
+  row:            {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    paddingVertical: SIGNAL.space[4],
+    paddingHorizontal: SIGNAL.space[5],
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SIGNAL.space[3],
+    ...SIGNAL.border.hairline,
+  },
+  rowPending:     {
+    borderColor: SIGNAL.color.amber + '44',
+    backgroundColor: SIGNAL.color.amber + '0A',
+  },
+  avatar:         {
+    width: 38,
+    height: 38,
+    borderRadius: SIGNAL.radius.chip,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  avatarText:     {
+    color: '#fff',
+    fontSize: 12,
+    fontFamily: SIGNAL.font.bodyBold,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  rowMain:        {
+    flex: 1,
+    minWidth: 0,
+  },
+  nameLine:       {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SIGNAL.space[2],
+    flexWrap: 'wrap',
+  },
+  name:           {
+    fontSize: SIGNAL.size.body,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  sub:            {
+    fontSize: SIGNAL.size.label - 1,
+    fontFamily: SIGNAL.font.body,
+    color: SIGNAL.color.mute,
+    marginTop: 2,
+  },
+  pendingBadge:   {
+    backgroundColor: '#fff7ed',
+    borderColor: '#fb923c',
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  pendingBadgeText:{
+    fontSize: 9.5,
+    color: '#c2410c',
+    fontFamily: SIGNAL.font.bodyBold,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  metaChip:       {
+    backgroundColor: SIGNAL.color.indigo + SIGNAL.tint.chip,
+    borderRadius: SIGNAL.radius.chip,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  metaChipText:   {
+    fontSize: 10.5,
+    color: SIGNAL.color.indigo,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  removeBtn:      {
+    paddingHorizontal: SIGNAL.space[4],
+    paddingVertical: SIGNAL.space[2],
+    borderRadius: SIGNAL.radius.control,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.coral + '55',
+    backgroundColor: SIGNAL.color.white,
+    minWidth: 84,
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  removeBtnText:  {
+    fontSize: SIGNAL.size.label,
+    color: SIGNAL.color.coral,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+  },
+  actionGroup:    {
+    flexDirection: 'row',
+    gap: SIGNAL.space[1] + 2,
+    flexShrink: 0,
+  },
+  approveBtn:     {
+    paddingHorizontal: SIGNAL.space[3],
+    paddingVertical: SIGNAL.space[2],
+    borderRadius: SIGNAL.radius.control,
+    backgroundColor: SIGNAL.color.indigo,
+    minWidth: 76,
+    alignItems: 'center',
+  },
+  approveBtnText: {
+    fontSize: SIGNAL.size.label,
+    color: '#fff',
+    fontFamily: SIGNAL.font.bodyBold,
+    fontWeight: '700',
+  },
+  denyBtn:        {
+    paddingHorizontal: SIGNAL.space[3],
+    paddingVertical: SIGNAL.space[2],
+    borderRadius: SIGNAL.radius.control,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.coral + '55',
+    backgroundColor: SIGNAL.color.white,
+    alignItems: 'center',
+  },
+  denyBtnText:    {
+    fontSize: SIGNAL.size.label,
+    color: SIGNAL.color.coral,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+  },
 });

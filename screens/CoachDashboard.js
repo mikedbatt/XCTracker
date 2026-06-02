@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
+import { LinearGradient } from 'expo-linear-gradient';
 import { signOut } from 'firebase/auth';
 import {
   arrayRemove,
@@ -30,14 +31,14 @@ import {
 import { auth, db } from '../firebaseConfig';
 import {
   BRAND, BRAND_ACCENT, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS, STRAVA_ORANGE,
+  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE, STATUS, STRAVA_ORANGE,
 } from '../constants/design';
 import AthleteDetailScreen from '../screens/AthleteDetailScreen';
 import AttendanceScreen from '../screens/AttendanceScreen';
 import CoachAnalytics from '../screens/CoachAnalytics';
 import CoachProfile from '../screens/CoachProfile';
 import CalendarScreen from '../screens/CalendarScreen';
-import { TYPE_COLORS } from '../constants/training';
+import { TYPE_COLORS, SIGNAL_TYPE_COLORS } from '../constants/training';
 import ManageGroups from '../screens/ManageGroups';
 import ManageRoster from '../screens/ManageRoster';
 import ManageSeasons from '../screens/ManageSeasons';
@@ -837,9 +838,9 @@ export default function CoachDashboard({ userData }) {
     setSendingTip(false);
   };
 
-  if (loading) return <View style={styles.loading}><ActivityIndicator size="large" color={BRAND} /></View>;
+  if (loading) return <View style={styles.loading}><ActivityIndicator size="large" color={SIGNAL.color.indigo} /></View>;
 
-  const primaryColor  = school?.primaryColor || BRAND;
+  const primaryColor  = SIGNAL.color.indigo;
   const isAdmin       = userData.role === 'admin_coach';
   const hasTrainingAccess = isAdmin || userData.trainingAccess === true;
   const today         = new Date().toISOString().split('T')[0];
@@ -866,54 +867,114 @@ export default function CoachDashboard({ userData }) {
     filteredAthletes.reduce((s, a) => s + (athleteMiles[a.id] || 0), 0) * 10
   ) / 10;
 
-  const renderAthleteCard = (athlete, index) => {
-    const weekMiles   = athleteWeeklyMiles[athlete.id] || 0;
-    const avg3        = athlete3WeekAvg[athlete.id] || 0;
-    const mileageHigh = avg3 > 0 && weekMiles > avg3 * 1.20;
-    const paceEasy    = athletePaceEasyPct[athlete.id];
-    const hasPaceData = paceEasy !== undefined && paceEasy !== null;
-    const noVdot      = !athlete.trainingPaces;
-    const easyLow     = hasPaceData && paceEasy < 70;
-    const pace        = athleteWeekPace[athlete.id];
-    const paceDotColor = pace?.status === 'on_track' ? STATUS.success
-      : pace?.status === 'caution' ? STATUS.warning
-      : pace?.status === 'behind' || pace?.status === 'ahead' ? STATUS.error
-      : null;
-    const line1 = `Wk: ${weekMiles} mi${avg3 > 0 ? ` (avg ${avg3})` : ''}${mileageHigh ? '  ↑' : ''}`;
-    const line2 = hasPaceData
-      ? `Easy: ${paceEasy}%${easyLow ? '  ⚠' : ''}`
-      : noVdot ? 'No paces set' : null;
+  // ── Today's date string for eyebrow label ──
+  const todayLabel = (() => {
+    const d = new Date();
+    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  })();
 
+  // ── Format last-run summary line for an athlete card ──
+  const formatLastRun = (athleteId) => {
+    const d = athleteLastRunDate[athleteId];
+    if (!d) return 'No runs yet';
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const runDay = new Date(d); runDay.setHours(0, 0, 0, 0);
+    const diff = Math.round((today - runDay) / 86400000);
+    if (diff === 0) return 'Last run · today';
+    if (diff === 1) return 'Last run · yesterday';
+    return `Last run · ${diff}d ago`;
+  };
+
+  const renderAthleteCard = (athlete, index) => {
+    const miles = athleteMiles[athlete.id];
+    const isTop = index < 3;
     return (
       <TouchableOpacity
         key={athlete.id}
         style={styles.athleteCard}
         onPress={() => setSelectedAthlete(athlete)}
+        activeOpacity={0.85}
       >
-        <View style={styles.athleteCardTop}>
-          <Text style={styles.rankNum}>#{index + 1}</Text>
-          <View style={[styles.avatar, { backgroundColor: athlete.avatarColor || BRAND }]}>
-            <Text style={styles.avatarText}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
-            {paceDotColor && <View style={[styles.paceDot, { backgroundColor: paceDotColor }]} />}
-          </View>
-          <View style={styles.athleteInfo}>
-            <View style={styles.athleteNameRow}>
-              <Text style={styles.athleteName}>{athlete.firstName} {athlete.lastName}</Text>
-            </View>
-            <Text style={styles.athleteSub}>{line1}</Text>
-            {line2 && <Text style={[styles.athleteSub, noVdot && !hasPaceData && { color: NEUTRAL.muted, fontStyle: 'italic' }]}>{line2}</Text>}
-          </View>
-          <View style={styles.milesBox}>
-            <Text style={[styles.milesNum, { color: BRAND }]}>
-              {athleteMiles[athlete.id] ?? '—'}
-            </Text>
-            <Text style={styles.milesLabel}>miles</Text>
-          </View>
-          <Text style={styles.chevron}>›</Text>
+        <Text style={[styles.athleteRank, isTop && { color: SIGNAL.color.indigo }]}>{index + 1}</Text>
+        <View style={[styles.athleteAvatar, { backgroundColor: athlete.avatarColor || SIGNAL.color.indigo }]}>
+          <Text style={styles.athleteAvatarText}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
         </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={styles.athleteNameRow}>
+            <Text style={styles.athleteName} numberOfLines={1}>
+              {athlete.firstName} {athlete.lastName}
+            </Text>
+            {athlete.gradYear && (
+              <Text style={styles.athleteYear}>{athlete.gradYear}</Text>
+            )}
+          </View>
+          <Text style={styles.athleteSub} numberOfLines={1}>{formatLastRun(athlete.id)}</Text>
+        </View>
+        <View style={styles.athleteMilesBox}>
+          <Text style={styles.athleteMilesNum}>{miles != null ? miles.toFixed(1) : '—'}</Text>
+          <Text style={styles.athleteMilesLabel}>MILES</Text>
+        </View>
+        <Text style={styles.chevron}>›</Text>
       </TouchableOpacity>
     );
   };
+
+  // ── Triage card status logic ────────────────────────────────────────────────
+  // Mileage Volume status — % on-target of those with targets
+  const volumeTotal = complianceData.onTarget.length + complianceData.underTarget.length + complianceData.overTarget.length;
+  const volumeOnPct = volumeTotal > 0 ? Math.round((complianceData.onTarget.length / volumeTotal) * 100) : null;
+  const volumeStatus = volumeOnPct == null ? 'nodata'
+    : volumeOnPct >= 90 ? 'ok'
+    : volumeOnPct >= 70 ? 'warn'
+    : 'alert';
+  const volumeGradient = volumeStatus === 'ok'
+    ? [SIGNAL.color.emerald, SIGNAL.color.cyan]
+    : volumeStatus === 'warn'
+      ? [SIGNAL.color.amber, SIGNAL.color.coral]
+      : [SIGNAL.color.coral, SIGNAL.color.effort10];
+
+  // Easy-Hard status — % running easy
+  const easyTotal = paceComplianceData.runningEasy.length + paceComplianceData.tooHard.length;
+  const easyOnPct = easyTotal > 0 ? Math.round((paceComplianceData.runningEasy.length / easyTotal) * 100) : null;
+  const easyStatus = easyOnPct == null ? 'nodata'
+    : easyOnPct >= 78 ? 'ok'
+    : easyOnPct >= 60 ? 'warn'
+    : 'alert';
+  const easyGradient = easyStatus === 'ok'
+    ? [SIGNAL.color.emerald, SIGNAL.color.cyan]
+    : easyStatus === 'warn'
+      ? [SIGNAL.color.amber, SIGNAL.color.coral]
+      : [SIGNAL.color.coral, SIGNAL.color.effort10];
+
+  // Injury / illness alert
+  const injuredAthletes = athletes.filter(a => overtTrainingAlerts[a.id]?.todayInjury || overtTrainingAlerts[a.id]?.todayIllness);
+  const injuryStatus = injuredAthletes.length > 0 ? 'alert' : 'ok';
+  const injuryGradient = injuryStatus === 'alert'
+    ? [SIGNAL.color.coral, SIGNAL.color.effort10]
+    : [SIGNAL.color.emerald, SIGNAL.color.cyan];
+
+  // ACWR buckets
+  const acwrBuckets = { spike: [], elevated: [], sweet: [], under: [], insufficient: 0 };
+  filteredAthletes.forEach(a => {
+    const data = athleteACWR[a.id];
+    if (!data) { acwrBuckets.insufficient++; return; }
+    if (data.status === ACWR_STATUS.SPIKE)         acwrBuckets.spike.push({ ...a, acwr: data });
+    else if (data.status === ACWR_STATUS.ELEVATED) acwrBuckets.elevated.push({ ...a, acwr: data });
+    else if (data.status === ACWR_STATUS.SWEET_SPOT) acwrBuckets.sweet.push({ ...a, acwr: data });
+    else if (data.status === ACWR_STATUS.UNDERTRAINING) acwrBuckets.under.push({ ...a, acwr: data });
+    else acwrBuckets.insufficient++;
+  });
+  const acwrHasSignal = acwrBuckets.spike.length || acwrBuckets.elevated.length
+    || acwrBuckets.sweet.length || acwrBuckets.under.length;
+  const acwrStatus = acwrBuckets.spike.length > 0 ? 'alert'
+    : acwrBuckets.elevated.length > 0 ? 'warn'
+    : (acwrBuckets.sweet.length > 0 || acwrBuckets.under.length > 0) ? 'ok'
+    : 'nodata';
+  const acwrGradient = acwrStatus === 'ok'
+    ? [SIGNAL.color.emerald, SIGNAL.color.cyan]
+    : acwrStatus === 'warn'
+      ? [SIGNAL.color.amber, SIGNAL.color.coral]
+      : [SIGNAL.color.coral, SIGNAL.color.effort10];
 
   return (
     <View style={styles.container}>
@@ -921,12 +982,20 @@ export default function CoachDashboard({ userData }) {
       {/* ── Header ── */}
       <View style={styles.header}>
         <View style={styles.headerRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.greeting}>Coach {userData.lastName}</Text>
-            <Text style={styles.schoolName}>{school?.name || 'TeamBase'}</Text>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.greeting} numberOfLines={1}>
+              Coach {userData.lastName}
+            </Text>
+            <Text style={styles.headerEyebrow} numberOfLines={1}>
+              {school?.name || 'TeamBase'}{school?.sport ? ` · ${school.sport}` : ''}
+            </Text>
           </View>
           <View style={styles.headerRight}>
-            <Text style={styles.headerRightText}>{athletes.length} athletes  ·  Code: {school?.joinCode || '--'}</Text>
+            <Text style={styles.headerAthleteCount}>{athletes.length}</Text>
+            <Text style={styles.headerAthleteLabel}>athletes</Text>
+            <Text style={styles.headerJoinCode}>
+              Code <Text style={styles.headerJoinCodeStrong}>{school?.joinCode || '----'}</Text>
+            </Text>
           </View>
         </View>
       </View>
@@ -934,43 +1003,70 @@ export default function CoachDashboard({ userData }) {
       <ScrollView
         style={styles.scroll}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 90 }}
+        contentContainerStyle={{ paddingBottom: 110 }}
       >
 
-        {/* ── Today's Plan (top of dashboard) ── */}
-        <View style={{ paddingHorizontal: SPACE.lg, paddingTop: SPACE.md }}>
-          <View style={styles.todaySection}>
-            <Text style={styles.todayLabel}>TODAY</Text>
-            {todayItems.length > 0 ? todayItems.map(item => (
-              <TouchableOpacity key={item.id} style={[styles.todayCard, { borderLeftColor: TYPE_COLORS[item.type] || primaryColor }]} onPress={() => setTodayWorkoutDetail(item)}>
-                <View style={styles.todayCardRow}>
-                  <View style={[styles.typeBadge, { backgroundColor: TYPE_COLORS[item.type] || primaryColor, marginBottom: 0 }]}>
-                    <Text style={styles.typeBadgeText}>{item.type}</Text>
+        {/* ── Today's plan ── */}
+        <View style={styles.todayWrap}>
+          <Text style={[styles.eyebrow, { marginBottom: 8, paddingLeft: 4 }]}>
+            Today · {todayLabel}
+          </Text>
+          <View style={styles.todayCard}>
+            {todayItems.length > 0 ? todayItems.map((item, idx) => {
+              const c = SIGNAL_TYPE_COLORS[item.type] || SIGNAL.color.indigo;
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  style={[
+                    styles.planRow,
+                    { borderLeftColor: c },
+                    idx > 0 && { borderTopWidth: 1, borderTopColor: SIGNAL.color.line },
+                  ]}
+                  onPress={() => setTodayWorkoutDetail(item)}
+                  activeOpacity={0.85}
+                >
+                  <View style={[styles.planChip, { backgroundColor: `${c}${SIGNAL.tint.chip}` }]}>
+                    <View style={[styles.planChipDot, { backgroundColor: c }]} />
+                    <Text style={[styles.planChipText, { color: c }]}>{item.type}</Text>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.trainingTitle} numberOfLines={1}>{item.title}{item.baseMiles ? ` — ${item.baseMiles} mi` : ''}</Text>
-                    {item.description && <Text style={styles.todayCardDesc} numberOfLines={1}>{item.description}</Text>}
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.planTitle} numberOfLines={1}>
+                      {item.title}{item.baseMiles ? ` — ${item.baseMiles} mi` : ''}
+                    </Text>
+                    {item.description && (
+                      <Text style={styles.planDesc} numberOfLines={1}>{item.description}</Text>
+                    )}
                   </View>
-                  <Ionicons name="chevron-forward" size={16} color={NEUTRAL.input} />
-                </View>
-              </TouchableOpacity>
-            )) : (
-              <View style={styles.emptyCard}>
-                <Text style={styles.emptyText}>No training scheduled today.</Text>
+                  <Text style={styles.chevron}>›</Text>
+                </TouchableOpacity>
+              );
+            }) : (
+              <View style={styles.planEmpty}>
+                <Text style={styles.planEmptyText}>No training scheduled today.</Text>
               </View>
-            )}
-            {isAdmin && !todayTipSent && (
-              <TouchableOpacity
-                style={styles.msgBtn}
-                onPress={() => handleOpenTip(currentPhase)}
-              >
-                <Text style={styles.msgBtnText}>
-                  💬 Send daily message to team
-                </Text>
-              </TouchableOpacity>
             )}
           </View>
         </View>
+
+        {/* ── Send daily message (own card) ── */}
+        {isAdmin && !todayTipSent && (
+          <View style={styles.messageCardWrap}>
+            <TouchableOpacity
+              style={styles.messageCard}
+              onPress={() => handleOpenTip(currentPhase)}
+              activeOpacity={0.85}
+            >
+              <View style={styles.messageCardIcon}>
+                <Ionicons name="chatbubble-ellipses-outline" size={18} color={SIGNAL.color.indigo} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.messageCardTitle}>Send daily message</Text>
+                <Text style={styles.messageCardDesc}>Share a focus or note with your team.</Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* ── Season in Review banner ── */}
         {(() => {
@@ -982,14 +1078,15 @@ export default function CoachDashboard({ userData }) {
           });
           if (!unreviewedSeason) return null;
           return (
-            <TouchableOpacity
-              style={[styles.complianceCard, { borderColor: STATUS.success + '60' }]}
-              onPress={() => { setSeasonReviewSeason(unreviewedSeason); setSeasonReviewVisible(true); }}
-            >
-              <View style={styles.complianceHeader}>
-                <Ionicons name="trophy" size={20} color={STATUS.success} />
-                <Text style={[styles.complianceTitle, { color: STATUS.success }]}>
-                  {unreviewedSeason.name || 'Season'} Complete — View Season in Review
+            <View style={{ paddingHorizontal: 14, marginTop: 12 }}>
+              <TouchableOpacity
+                style={styles.seasonReviewCard}
+                onPress={() => { setSeasonReviewSeason(unreviewedSeason); setSeasonReviewVisible(true); }}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="trophy" size={20} color={SIGNAL.color.emerald} />
+                <Text style={styles.seasonReviewTitle} numberOfLines={2}>
+                  {unreviewedSeason.name || 'Season'} complete — view Season in Review
                 </Text>
                 <TouchableOpacity onPress={async (e) => {
                   e.stopPropagation?.();
@@ -997,400 +1094,604 @@ export default function CoachDashboard({ userData }) {
                   setReviewDismissed(prev => ({ ...prev, [key]: true }));
                   try { await updateDoc(doc(db, 'users', auth.currentUser.uid), { [`reviewedSeasons.${key}`]: true }); } catch (e2) { console.warn('Save review dismiss:', e2); }
                 }}>
-                  <Ionicons name="close" size={18} color={NEUTRAL.muted} />
+                  <Ionicons name="close" size={18} color={SIGNAL.color.mute} />
                 </TouchableOpacity>
-              </View>
-            </TouchableOpacity>
-          );
-        })()}
-
-        {/* ── Mileage Volume card (expandable, like injury card) ── */}
-        {(complianceData.underTarget.length > 0 || complianceData.overTarget.length > 0) && (
-          <View style={styles.complianceCard}>
-            <TouchableOpacity style={styles.complianceHeader} onPress={() => setComplianceExpanded(prev => !prev)}>
-              <Ionicons name="trending-up" size={20} color={BRAND} />
-              <Text style={styles.complianceTitle}>
-                Mileage Volume — {complianceData.onTarget.length} on track
-                {complianceData.underTarget.length > 0 ? `, ${complianceData.underTarget.length} under` : ''}
-                {complianceData.overTarget.length > 0 ? `, ${complianceData.overTarget.length} over` : ''}
-              </Text>
-              <Ionicons name={complianceExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={NEUTRAL.muted} />
-            </TouchableOpacity>
-            {complianceExpanded && (
-              <View style={{ marginTop: SPACE.sm }}>
-                {complianceData.underTarget.length > 0 && (
-                  <View style={{ marginBottom: SPACE.sm }}>
-                    <Text style={[styles.complianceGroupLabel, { color: STATUS.error }]}>Under target</Text>
-                    {complianceData.underTarget.map(a => (
-                      <TouchableOpacity key={a.id} style={styles.complianceRow} onPress={() => setSelectedAthlete(a)}>
-                        <View style={[styles.avatar, { backgroundColor: a.avatarColor || BRAND, width: 28, height: 28 }]}>
-                          <Text style={[styles.avatarText, { fontSize: 10 }]}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
-                        </View>
-                        <Text style={styles.complianceRowName}>{a.firstName} {a.lastName}</Text>
-                        <View style={styles.complianceWeeks}>
-                          <Text style={[styles.complianceWeekVal, a.w3Status === 'under' && styles.complianceUnder, a.w3Status === 'over' && styles.complianceOver]}>
-                            {a.w3Status === 'under' ? '↓' : a.w3Status === 'over' ? '↑' : '✓'} {a.wb.w3}
-                          </Text>
-                          <Text style={[styles.complianceWeekVal, a.w2Status === 'under' && styles.complianceUnder, a.w2Status === 'over' && styles.complianceOver]}>
-                            {a.w2Status === 'under' ? '↓' : a.w2Status === 'over' ? '↑' : '✓'} {a.wb.w2}
-                          </Text>
-                          <Text style={[styles.complianceWeekVal, a.w1Status === 'under' && styles.complianceUnder, a.w1Status === 'over' && styles.complianceOver]}>
-                            {a.w1Status === 'under' ? '↓' : a.w1Status === 'over' ? '↑' : '✓'} {a.wb.w1}
-                          </Text>
-                        </View>
-                        {a.target && <Text style={styles.complianceTarget}>{a.target} mi</Text>}
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-                {complianceData.overTarget.length > 0 && (
-                  <View style={{ marginBottom: SPACE.sm }}>
-                    <Text style={[styles.complianceGroupLabel, { color: STATUS.warning }]}>Over target</Text>
-                    {complianceData.overTarget.map(a => (
-                      <TouchableOpacity key={a.id} style={styles.complianceRow} onPress={() => setSelectedAthlete(a)}>
-                        <View style={[styles.avatar, { backgroundColor: a.avatarColor || BRAND, width: 28, height: 28 }]}>
-                          <Text style={[styles.avatarText, { fontSize: 10 }]}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
-                        </View>
-                        <Text style={styles.complianceRowName}>{a.firstName} {a.lastName}</Text>
-                        <View style={styles.complianceWeeks}>
-                          <Text style={[styles.complianceWeekVal, a.w3Status === 'under' && styles.complianceUnder, a.w3Status === 'over' && styles.complianceOver]}>
-                            {a.w3Status === 'under' ? '↓' : a.w3Status === 'over' ? '↑' : '✓'} {a.wb.w3}
-                          </Text>
-                          <Text style={[styles.complianceWeekVal, a.w2Status === 'under' && styles.complianceUnder, a.w2Status === 'over' && styles.complianceOver]}>
-                            {a.w2Status === 'under' ? '↓' : a.w2Status === 'over' ? '↑' : '✓'} {a.wb.w2}
-                          </Text>
-                          <Text style={[styles.complianceWeekVal, a.w1Status === 'under' && styles.complianceUnder, a.w1Status === 'over' && styles.complianceOver]}>
-                            {a.w1Status === 'under' ? '↓' : a.w1Status === 'over' ? '↑' : '✓'} {a.wb.w1}
-                          </Text>
-                        </View>
-                        {a.target && <Text style={styles.complianceTarget}>{a.target} mi</Text>}
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* ── Easy-Hard Balance card (expandable) ── */}
-        {(paceComplianceData.tooHard.length > 0 || paceComplianceData.runningEasy.length > 0 || paceComplianceData.noPaces > 0) && (
-          <View style={styles.complianceCard}>
-            <TouchableOpacity style={styles.complianceHeader} onPress={() => setPaceComplianceExpanded(prev => !prev)}>
-              <Ionicons name="speedometer-outline" size={20} color={BRAND} />
-              <Text style={styles.complianceTitle}>
-                Easy-Hard Balance — {paceComplianceData.runningEasy.length} running easy
-                {paceComplianceData.tooHard.length > 0 ? `, ${paceComplianceData.tooHard.length} too hard` : ''}
-                {paceComplianceData.noPaces > 0 ? `, ${paceComplianceData.noPaces} need paces` : ''}
-              </Text>
-              <Ionicons name={paceComplianceExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={NEUTRAL.muted} />
-            </TouchableOpacity>
-            {paceComplianceExpanded && (
-              <View style={{ marginTop: SPACE.sm }}>
-                {paceComplianceData.tooHard.length > 0 && (
-                  <View style={{ marginBottom: SPACE.sm }}>
-                    <Text style={[styles.complianceGroupLabel, { color: STATUS.error }]}>Too hard (easy &lt; 68%)</Text>
-                    {paceComplianceData.tooHard.map(a => (
-                      <TouchableOpacity key={a.id} style={styles.complianceRow} onPress={() => setSelectedAthlete(a)}>
-                        <View style={[styles.avatar, { backgroundColor: a.avatarColor || BRAND, width: 28, height: 28 }]}>
-                          <Text style={[styles.avatarText, { fontSize: 10 }]}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
-                        </View>
-                        <Text style={styles.complianceRowName}>{a.firstName} {a.lastName}</Text>
-                        <Text style={[styles.complianceTarget, { color: STATUS.error }]}>Easy: {a.easyPct}%</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-                {paceComplianceData.runningEasy.length > 0 && (
-                  <View style={{ marginBottom: SPACE.sm }}>
-                    <Text style={[styles.complianceGroupLabel, { color: STATUS.success }]}>Running easy (≥ 68%)</Text>
-                    {paceComplianceData.runningEasy.map(a => (
-                      <TouchableOpacity key={a.id} style={styles.complianceRow} onPress={() => setSelectedAthlete(a)}>
-                        <View style={[styles.avatar, { backgroundColor: a.avatarColor || BRAND, width: 28, height: 28 }]}>
-                          <Text style={[styles.avatarText, { fontSize: 10 }]}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
-                        </View>
-                        <Text style={styles.complianceRowName}>{a.firstName} {a.lastName}</Text>
-                        <Text style={[styles.complianceTarget, { color: STATUS.success }]}>Easy: {a.easyPct}%</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-                {paceComplianceData.noPacesAthletes && paceComplianceData.noPacesAthletes.length > 0 && (
-                  <View style={{ marginBottom: SPACE.sm }}>
-                    <Text style={[styles.complianceGroupLabel, { color: STATUS.warning }]}>Need training paces</Text>
-                    {paceComplianceData.noPacesAthletes.map(a => (
-                      <TouchableOpacity key={a.id} style={styles.complianceRow} onPress={() => setSelectedAthlete(a)}>
-                        <View style={[styles.avatar, { backgroundColor: a.avatarColor || BRAND, width: 28, height: 28 }]}>
-                          <Text style={[styles.avatarText, { fontSize: 10 }]}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
-                        </View>
-                        <Text style={styles.complianceRowName}>{a.firstName} {a.lastName}</Text>
-                        <Text style={[styles.complianceTarget, { color: NEUTRAL.muted, fontStyle: 'italic' }]}>No paces set</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* ── Self-Reported Injury / Illness alert card ── */}
-        {(() => {
-          const injuredAthletes = athletes.filter(a => overtTrainingAlerts[a.id]?.todayInjury || overtTrainingAlerts[a.id]?.todayIllness);
-          if (injuredAthletes.length === 0) return null;
-          const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-          const formatWhen = (d) => {
-            if (!d) return '';
-            if (d >= todayStart) return 'today';
-            const daysAgo = Math.ceil((todayStart - d) / 86400000);
-            return daysAgo === 1 ? 'yesterday' : `${daysAgo}d ago`;
-          };
-          return (
-            <View style={styles.injuryAlertCard}>
-              <TouchableOpacity style={styles.injuryAlertHeader} onPress={() => setInjuryCardExpanded(prev => !prev)}>
-                <Ionicons name="warning" size={20} color={STATUS.error} />
-                <Text style={styles.injuryAlertTitle}>
-                  {injuredAthletes.length} athlete{injuredAthletes.length > 1 ? 's' : ''} reporting injury or illness
-                </Text>
-                <Ionicons name={injuryCardExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={STATUS.error} />
               </TouchableOpacity>
-              {injuryCardExpanded && injuredAthletes.map(athlete => {
-                const alerts = overtTrainingAlerts[athlete.id];
-                const inj = alerts?.todayInjury;
-                const ill = alerts?.todayIllness;
-                const when = formatWhen(alerts?.injuryCheckinDate);
-                const worstSeverity = [inj?.severity, ill?.severity]
-                  .filter(Boolean)
-                  .reduce((w, s) => s === 'severe' || w === 'severe' ? 'severe' : s === 'moderate' || w === 'moderate' ? 'moderate' : 'mild', 'mild');
-                const sevColor = worstSeverity === 'severe' ? STATUS.error : worstSeverity === 'moderate' ? STATUS.warning : NEUTRAL.label;
-                const rec = worstSeverity === 'severe' ? 'Recommend rest day'
-                  : worstSeverity === 'moderate' ? 'Consider modified workout'
-                  : 'Monitor during practice';
-                return (
-                  <TouchableOpacity key={athlete.id} style={styles.injuryAlertRow} onPress={() => setSelectedAthlete(athlete)}>
-                    <View style={[styles.avatar, { backgroundColor: athlete.avatarColor || BRAND, width: 32, height: 32 }]}>
-                      <Text style={[styles.avatarText, { fontSize: FONT_SIZE.xs }]}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.injuryAlertName}>{athlete.firstName} {athlete.lastName}{when ? <Text style={styles.injuryAlertWhen}> — reported {when}</Text> : ''}</Text>
-                      {inj && (
-                        <Text style={styles.injuryAlertDetail}>
-                          🩹 {inj.perLocation
-                            ? inj.perLocation.map(p => `${p.location.charAt(0).toUpperCase() + p.location.slice(1)} (${p.severity})`).join(', ')
-                            : `${inj.locations?.map(l => l.charAt(0).toUpperCase() + l.slice(1)).join(', ')} — ${inj.severity}`
-                          }{inj.note ? ` — "${inj.note}"` : ''}
-                        </Text>
-                      )}
-                      {ill && (
-                        <Text style={styles.injuryAlertDetail}>
-                          🤒 {ill.symptoms?.map(s => s.replace(/_/g, ' ')).join(', ')} — <Text style={{ color: sevColor, fontWeight: FONT_WEIGHT.bold }}>{ill.severity}</Text>
-                        </Text>
-                      )}
-                      <Text style={[styles.injuryAlertRec, { color: sevColor }]}>{rec}</Text>
-                    </View>
-                    <Text style={styles.chevron}>›</Text>
-                  </TouchableOpacity>
-                );
-              })}
             </View>
           );
         })()}
 
-        {/* ── Injury Risk (ACWR) card ── */}
-        {(() => {
-          const buckets = { spike: [], elevated: [], sweet: [], under: [], insufficient: 0 };
-          filteredAthletes.forEach(a => {
-            const data = athleteACWR[a.id];
-            if (!data) { buckets.insufficient++; return; }
-            if (data.status === ACWR_STATUS.SPIKE)         buckets.spike.push({ ...a, acwr: data });
-            else if (data.status === ACWR_STATUS.ELEVATED) buckets.elevated.push({ ...a, acwr: data });
-            else if (data.status === ACWR_STATUS.SWEET_SPOT) buckets.sweet.push({ ...a, acwr: data });
-            else if (data.status === ACWR_STATUS.UNDERTRAINING) buckets.under.push({ ...a, acwr: data });
-            else buckets.insufficient++;
-          });
-          // Only render the card if there's anything to flag beyond "need more data"
-          const hasSignal = buckets.spike.length || buckets.elevated.length
-            || buckets.sweet.length || buckets.under.length;
-          if (!hasSignal) return null;
-          const summary = [
-            buckets.sweet.length    && `${buckets.sweet.length} sweet spot`,
-            buckets.elevated.length && `${buckets.elevated.length} elevated`,
-            buckets.spike.length    && `${buckets.spike.length} spike`,
-            buckets.under.length    && `${buckets.under.length} ramping up`,
-          ].filter(Boolean).join(' · ');
-          const renderRow = (a) => (
-            <TouchableOpacity key={a.id} style={styles.complianceRow} onPress={() => setSelectedAthlete(a)}>
-              <View style={[styles.avatar, { backgroundColor: a.avatarColor || BRAND, width: 28, height: 28 }]}>
-                <Text style={[styles.avatarText, { fontSize: 10 }]}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
-              </View>
-              <Text style={styles.complianceRowName}>{a.firstName} {a.lastName}</Text>
-              <View style={[styles.acwrBadge, { backgroundColor: getACWRColorBg(a.acwr.status) }]}>
-                <Text style={[styles.acwrBadgeText, { color: getACWRColor(a.acwr.status) }]}>
-                  {a.acwr.ratio.toFixed(2)}
-                </Text>
-              </View>
-              <Text style={styles.acwrAcute}>{Math.round(a.acwr.acute)}/{Math.round(a.acwr.chronic)} mi</Text>
-            </TouchableOpacity>
-          );
-          return (
-            <View style={styles.complianceCard}>
-              <TouchableOpacity style={styles.complianceHeader} onPress={() => setAcwrExpanded(prev => !prev)}>
-                <Ionicons name="shield-checkmark-outline" size={20} color={BRAND} />
-                <Text style={styles.complianceTitle}>Injury Risk — {summary}</Text>
-                <Ionicons name={acwrExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={NEUTRAL.muted} />
+        {/* ── Triage cards ── */}
+        <View style={styles.triageStack}>
+
+          {/* Mileage Volume */}
+          {(complianceData.underTarget.length > 0 || complianceData.overTarget.length > 0 || complianceData.onTarget.length > 0) && (
+            <View style={styles.triageCard}>
+              <TouchableOpacity
+                style={styles.triageHeader}
+                onPress={() => setComplianceExpanded(prev => !prev)}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.triageIcon, { backgroundColor: `${SIGNAL.color.indigo}1A` }]}>
+                  <Ionicons name="trending-up" size={16} color={SIGNAL.color.indigo} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.triageTitle}>Mileage Volume</Text>
+                  <Text style={styles.triageSummary} numberOfLines={1}>
+                    <Text style={{ color: SIGNAL.color.emerald, fontFamily: SIGNAL.font.bodySemi }}>{complianceData.onTarget.length} on track</Text>
+                    {complianceData.underTarget.length > 0 ? (
+                      <Text>, <Text style={{ color: SIGNAL.color.amber, fontFamily: SIGNAL.font.bodySemi }}>{complianceData.underTarget.length} under</Text></Text>
+                    ) : null}
+                    {complianceData.overTarget.length > 0 ? (
+                      <Text>, <Text style={{ color: SIGNAL.color.coral, fontFamily: SIGNAL.font.bodySemi }}>{complianceData.overTarget.length} over</Text></Text>
+                    ) : null}
+                  </Text>
+                </View>
+                <Ionicons name={complianceExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={SIGNAL.color.mute2} />
               </TouchableOpacity>
+
+              {complianceExpanded && (
+                <View style={styles.triageBody}>
+                  {volumeOnPct != null && (
+                    volumeStatus === 'nodata' ? (
+                      <View style={[styles.heroPill, { backgroundColor: SIGNAL.color.mute }]}>
+                        <Text style={styles.heroPillNum}>—</Text>
+                        <Text style={styles.heroPillSub}>No volume data yet</Text>
+                      </View>
+                    ) : (
+                      <LinearGradient
+                        colors={volumeGradient}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.heroPill}
+                      >
+                        <Text style={styles.heroPillNum}>{volumeOnPct}%</Text>
+                        <Text style={styles.heroPillSub}>on weekly target</Text>
+                      </LinearGradient>
+                    )
+                  )}
+
+                  {complianceData.underTarget.length > 0 && (
+                    <View style={styles.triageGroup}>
+                      <Text style={[styles.triageGroupLabel, { color: SIGNAL.color.amber }]}>Under target</Text>
+                      {complianceData.underTarget.map(a => (
+                        <TouchableOpacity key={a.id} style={styles.triageRow} onPress={() => setSelectedAthlete(a)} activeOpacity={0.85}>
+                          <View style={[styles.miniAvatar, { backgroundColor: a.avatarColor || SIGNAL.color.indigo }]}>
+                            <Text style={styles.miniAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
+                          </View>
+                          <Text style={styles.triageRowName} numberOfLines={1}>{a.firstName} {a.lastName}</Text>
+                          <View style={styles.weekDots}>
+                            <Text style={[styles.weekDot, statusToWeekStyle(a.w3Status)]}>
+                              {a.w3Status === 'under' ? '↓' : a.w3Status === 'over' ? '↑' : '✓'}{a.wb.w3}
+                            </Text>
+                            <Text style={[styles.weekDot, statusToWeekStyle(a.w2Status)]}>
+                              {a.w2Status === 'under' ? '↓' : a.w2Status === 'over' ? '↑' : '✓'}{a.wb.w2}
+                            </Text>
+                            <Text style={[styles.weekDot, statusToWeekStyle(a.w1Status)]}>
+                              {a.w1Status === 'under' ? '↓' : a.w1Status === 'over' ? '↑' : '✓'}{a.wb.w1}
+                            </Text>
+                          </View>
+                          {a.target ? <Text style={styles.triageTarget}>{a.target} mi</Text> : null}
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+
+                  {complianceData.overTarget.length > 0 && (
+                    <View style={styles.triageGroup}>
+                      <Text style={[styles.triageGroupLabel, { color: SIGNAL.color.coral }]}>Over target</Text>
+                      {complianceData.overTarget.map(a => (
+                        <TouchableOpacity key={a.id} style={styles.triageRow} onPress={() => setSelectedAthlete(a)} activeOpacity={0.85}>
+                          <View style={[styles.miniAvatar, { backgroundColor: a.avatarColor || SIGNAL.color.indigo }]}>
+                            <Text style={styles.miniAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
+                          </View>
+                          <Text style={styles.triageRowName} numberOfLines={1}>{a.firstName} {a.lastName}</Text>
+                          <View style={styles.weekDots}>
+                            <Text style={[styles.weekDot, statusToWeekStyle(a.w3Status)]}>
+                              {a.w3Status === 'under' ? '↓' : a.w3Status === 'over' ? '↑' : '✓'}{a.wb.w3}
+                            </Text>
+                            <Text style={[styles.weekDot, statusToWeekStyle(a.w2Status)]}>
+                              {a.w2Status === 'under' ? '↓' : a.w2Status === 'over' ? '↑' : '✓'}{a.wb.w2}
+                            </Text>
+                            <Text style={[styles.weekDot, statusToWeekStyle(a.w1Status)]}>
+                              {a.w1Status === 'under' ? '↓' : a.w1Status === 'over' ? '↑' : '✓'}{a.wb.w1}
+                            </Text>
+                          </View>
+                          {a.target ? <Text style={styles.triageTarget}>{a.target} mi</Text> : null}
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Easy-Hard Balance */}
+          {(paceComplianceData.tooHard.length > 0 || paceComplianceData.runningEasy.length > 0 || paceComplianceData.noPaces > 0) && (
+            <View style={styles.triageCard}>
+              <TouchableOpacity
+                style={styles.triageHeader}
+                onPress={() => setPaceComplianceExpanded(prev => !prev)}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.triageIcon, { backgroundColor: `${SIGNAL.color.indigo}1A` }]}>
+                  <Ionicons name="speedometer-outline" size={16} color={SIGNAL.color.indigo} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.triageTitle}>Easy-Hard Balance</Text>
+                  <Text style={styles.triageSummary} numberOfLines={1}>
+                    <Text style={{ color: SIGNAL.color.emerald, fontFamily: SIGNAL.font.bodySemi }}>{paceComplianceData.runningEasy.length} running easy</Text>
+                    {paceComplianceData.tooHard.length > 0 ? (
+                      <Text>, <Text style={{ color: SIGNAL.color.coral, fontFamily: SIGNAL.font.bodySemi }}>{paceComplianceData.tooHard.length} too hard</Text></Text>
+                    ) : null}
+                    {paceComplianceData.noPaces > 0 ? (
+                      <Text>, <Text style={{ color: SIGNAL.color.amber, fontFamily: SIGNAL.font.bodySemi }}>{paceComplianceData.noPaces} need paces</Text></Text>
+                    ) : null}
+                  </Text>
+                </View>
+                <Ionicons name={paceComplianceExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={SIGNAL.color.mute2} />
+              </TouchableOpacity>
+
+              {paceComplianceExpanded && (
+                <View style={styles.triageBody}>
+                  {easyOnPct != null && (
+                    easyStatus === 'nodata' ? (
+                      <View style={[styles.heroPill, { backgroundColor: SIGNAL.color.mute }]}>
+                        <Text style={styles.heroPillNum}>—</Text>
+                        <Text style={styles.heroPillSub}>No pace data yet</Text>
+                      </View>
+                    ) : (
+                      <LinearGradient
+                        colors={easyGradient}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.heroPill}
+                      >
+                        <Text style={styles.heroPillNum}>{easyOnPct}%</Text>
+                        <Text style={styles.heroPillSub}>running easy · target 78%+</Text>
+                      </LinearGradient>
+                    )
+                  )}
+
+                  {paceComplianceData.tooHard.length > 0 && (
+                    <View style={styles.triageGroup}>
+                      <Text style={[styles.triageGroupLabel, { color: SIGNAL.color.coral }]}>Too hard (easy &lt; 68%)</Text>
+                      {paceComplianceData.tooHard.map(a => (
+                        <TouchableOpacity key={a.id} style={styles.triageRow} onPress={() => setSelectedAthlete(a)} activeOpacity={0.85}>
+                          <View style={[styles.miniAvatar, { backgroundColor: a.avatarColor || SIGNAL.color.indigo }]}>
+                            <Text style={styles.miniAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
+                          </View>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={styles.triageRowName} numberOfLines={1}>{a.firstName} {a.lastName}</Text>
+                            <Text style={styles.triageRowMeta}>Easy {a.easyPct}% · target 80%</Text>
+                          </View>
+                          <Text style={[styles.easyPctNum, { color: SIGNAL.color.coral }]}>{a.easyPct}%</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+
+                  {paceComplianceData.runningEasy.length > 0 && (
+                    <View style={styles.triageGroup}>
+                      <Text style={[styles.triageGroupLabel, { color: SIGNAL.color.emerald }]}>Running easy (≥ 68%)</Text>
+                      {paceComplianceData.runningEasy.map(a => (
+                        <TouchableOpacity key={a.id} style={styles.triageRow} onPress={() => setSelectedAthlete(a)} activeOpacity={0.85}>
+                          <View style={[styles.miniAvatar, { backgroundColor: a.avatarColor || SIGNAL.color.indigo }]}>
+                            <Text style={styles.miniAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
+                          </View>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={styles.triageRowName} numberOfLines={1}>{a.firstName} {a.lastName}</Text>
+                            <Text style={styles.triageRowMeta}>Easy {a.easyPct}% · target 80%</Text>
+                          </View>
+                          <Text style={[styles.easyPctNum, { color: SIGNAL.color.emerald }]}>{a.easyPct}%</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+
+                  {paceComplianceData.noPacesAthletes && paceComplianceData.noPacesAthletes.length > 0 && (
+                    <View style={styles.triageGroup}>
+                      <Text style={[styles.triageGroupLabel, { color: SIGNAL.color.amber }]}>Need training paces</Text>
+                      {paceComplianceData.noPacesAthletes.map(a => (
+                        <TouchableOpacity key={a.id} style={styles.triageRow} onPress={() => setSelectedAthlete(a)} activeOpacity={0.85}>
+                          <View style={[styles.miniAvatar, { backgroundColor: a.avatarColor || SIGNAL.color.indigo }]}>
+                            <Text style={styles.miniAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
+                          </View>
+                          <Text style={styles.triageRowName} numberOfLines={1}>{a.firstName} {a.lastName}</Text>
+                          <Text style={[styles.triageTarget, { color: SIGNAL.color.mute }]}>No paces set</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Injury Risk (ACWR) */}
+          {acwrHasSignal ? (
+            <View style={styles.triageCard}>
+              <TouchableOpacity
+                style={styles.triageHeader}
+                onPress={() => setAcwrExpanded(prev => !prev)}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.triageIcon, { backgroundColor: `${SIGNAL.color.indigo}1A` }]}>
+                  <Ionicons name="shield-checkmark-outline" size={16} color={SIGNAL.color.indigo} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.triageTitle}>Injury Risk · ACWR</Text>
+                  <Text style={styles.triageSummary} numberOfLines={1}>
+                    {acwrBuckets.sweet.length > 0 ? (
+                      <Text><Text style={{ color: SIGNAL.color.emerald, fontFamily: SIGNAL.font.bodySemi }}>{acwrBuckets.sweet.length} sweet</Text></Text>
+                    ) : null}
+                    {acwrBuckets.elevated.length > 0 ? (
+                      <Text>{acwrBuckets.sweet.length > 0 ? ' · ' : ''}<Text style={{ color: SIGNAL.color.amber, fontFamily: SIGNAL.font.bodySemi }}>{acwrBuckets.elevated.length} elevated</Text></Text>
+                    ) : null}
+                    {acwrBuckets.spike.length > 0 ? (
+                      <Text>{(acwrBuckets.sweet.length > 0 || acwrBuckets.elevated.length > 0) ? ' · ' : ''}<Text style={{ color: SIGNAL.color.coral, fontFamily: SIGNAL.font.bodySemi }}>{acwrBuckets.spike.length} spike</Text></Text>
+                    ) : null}
+                    {acwrBuckets.under.length > 0 ? (
+                      <Text>{(acwrBuckets.sweet.length > 0 || acwrBuckets.elevated.length > 0 || acwrBuckets.spike.length > 0) ? ' · ' : ''}<Text style={{ color: SIGNAL.color.cyan, fontFamily: SIGNAL.font.bodySemi }}>{acwrBuckets.under.length} ramping</Text></Text>
+                    ) : null}
+                  </Text>
+                </View>
+                <Ionicons name={acwrExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={SIGNAL.color.mute2} />
+              </TouchableOpacity>
+
               {acwrExpanded && (
-                <View style={{ marginTop: SPACE.sm }}>
-                  {buckets.spike.length > 0 && (
-                    <View style={{ marginBottom: SPACE.sm }}>
-                      <Text style={[styles.complianceGroupLabel, { color: STATUS.error }]}>Spike ({'>'}1.5) — high injury risk</Text>
-                      {buckets.spike.map(renderRow)}
+                <View style={styles.triageBody}>
+                  {acwrStatus === 'nodata' ? (
+                    <View style={[styles.heroPill, { backgroundColor: SIGNAL.color.mute }]}>
+                      <Text style={styles.heroPillNum}>—</Text>
+                      <Text style={styles.heroPillSub}>Not enough data</Text>
+                    </View>
+                  ) : (
+                    <LinearGradient
+                      colors={acwrGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.heroPill}
+                    >
+                      <Text style={styles.heroPillNum}>
+                        {acwrStatus === 'alert' ? acwrBuckets.spike.length
+                          : acwrStatus === 'warn' ? acwrBuckets.elevated.length
+                          : acwrBuckets.sweet.length + acwrBuckets.under.length}
+                      </Text>
+                      <Text style={styles.heroPillSub}>
+                        {acwrStatus === 'alert' ? 'at spike (high risk)'
+                          : acwrStatus === 'warn' ? 'elevated load'
+                          : 'within safe range'}
+                      </Text>
+                    </LinearGradient>
+                  )}
+
+                  {acwrBuckets.spike.length > 0 && (
+                    <View style={styles.triageGroup}>
+                      <Text style={[styles.triageGroupLabel, { color: SIGNAL.color.coral }]}>Spike (&gt;1.5) — high injury risk</Text>
+                      {acwrBuckets.spike.map(a => (
+                        <TouchableOpacity key={a.id} style={styles.triageRow} onPress={() => setSelectedAthlete(a)} activeOpacity={0.85}>
+                          <View style={[styles.miniAvatar, { backgroundColor: a.avatarColor || SIGNAL.color.indigo }]}>
+                            <Text style={styles.miniAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
+                          </View>
+                          <Text style={styles.triageRowName} numberOfLines={1}>{a.firstName} {a.lastName}</Text>
+                          <View style={[styles.acwrBadge, { backgroundColor: `${SIGNAL.color.coral}1A` }]}>
+                            <Text style={[styles.acwrBadgeText, { color: SIGNAL.color.coral }]}>{a.acwr.ratio.toFixed(2)}</Text>
+                          </View>
+                          <Text style={styles.acwrAcute}>{Math.round(a.acwr.acute)}/{Math.round(a.acwr.chronic)} mi</Text>
+                        </TouchableOpacity>
+                      ))}
                     </View>
                   )}
-                  {buckets.elevated.length > 0 && (
-                    <View style={{ marginBottom: SPACE.sm }}>
-                      <Text style={[styles.complianceGroupLabel, { color: STATUS.warning }]}>Elevated (1.3–1.5)</Text>
-                      {buckets.elevated.map(renderRow)}
+
+                  {acwrBuckets.elevated.length > 0 && (
+                    <View style={styles.triageGroup}>
+                      <Text style={[styles.triageGroupLabel, { color: SIGNAL.color.amber }]}>Elevated (1.3–1.5)</Text>
+                      {acwrBuckets.elevated.map(a => (
+                        <TouchableOpacity key={a.id} style={styles.triageRow} onPress={() => setSelectedAthlete(a)} activeOpacity={0.85}>
+                          <View style={[styles.miniAvatar, { backgroundColor: a.avatarColor || SIGNAL.color.indigo }]}>
+                            <Text style={styles.miniAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
+                          </View>
+                          <Text style={styles.triageRowName} numberOfLines={1}>{a.firstName} {a.lastName}</Text>
+                          <View style={[styles.acwrBadge, { backgroundColor: `${SIGNAL.color.amber}1A` }]}>
+                            <Text style={[styles.acwrBadgeText, { color: SIGNAL.color.amber }]}>{a.acwr.ratio.toFixed(2)}</Text>
+                          </View>
+                          <Text style={styles.acwrAcute}>{Math.round(a.acwr.acute)}/{Math.round(a.acwr.chronic)} mi</Text>
+                        </TouchableOpacity>
+                      ))}
                     </View>
                   )}
-                  {buckets.under.length > 0 && (
-                    <View style={{ marginBottom: SPACE.sm }}>
-                      <Text style={[styles.complianceGroupLabel, { color: STATUS.info }]}>Ramping up ({'<'}0.8)</Text>
-                      {buckets.under.map(renderRow)}
+
+                  {acwrBuckets.under.length > 0 && (
+                    <View style={styles.triageGroup}>
+                      <Text style={[styles.triageGroupLabel, { color: SIGNAL.color.cyan }]}>Ramping up (&lt;0.8)</Text>
+                      {acwrBuckets.under.map(a => (
+                        <TouchableOpacity key={a.id} style={styles.triageRow} onPress={() => setSelectedAthlete(a)} activeOpacity={0.85}>
+                          <View style={[styles.miniAvatar, { backgroundColor: a.avatarColor || SIGNAL.color.indigo }]}>
+                            <Text style={styles.miniAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
+                          </View>
+                          <Text style={styles.triageRowName} numberOfLines={1}>{a.firstName} {a.lastName}</Text>
+                          <View style={[styles.acwrBadge, { backgroundColor: `${SIGNAL.color.cyan}1A` }]}>
+                            <Text style={[styles.acwrBadgeText, { color: SIGNAL.color.cyan }]}>{a.acwr.ratio.toFixed(2)}</Text>
+                          </View>
+                          <Text style={styles.acwrAcute}>{Math.round(a.acwr.acute)}/{Math.round(a.acwr.chronic)} mi</Text>
+                        </TouchableOpacity>
+                      ))}
                     </View>
                   )}
-                  {buckets.sweet.length > 0 && (
-                    <View style={{ marginBottom: SPACE.sm }}>
-                      <Text style={[styles.complianceGroupLabel, { color: STATUS.success }]}>Sweet spot (0.8–1.3)</Text>
-                      {buckets.sweet.map(renderRow)}
+
+                  {acwrBuckets.sweet.length > 0 && (
+                    <View style={styles.triageGroup}>
+                      <Text style={[styles.triageGroupLabel, { color: SIGNAL.color.emerald }]}>Sweet spot (0.8–1.3)</Text>
+                      {acwrBuckets.sweet.map(a => (
+                        <TouchableOpacity key={a.id} style={styles.triageRow} onPress={() => setSelectedAthlete(a)} activeOpacity={0.85}>
+                          <View style={[styles.miniAvatar, { backgroundColor: a.avatarColor || SIGNAL.color.indigo }]}>
+                            <Text style={styles.miniAvatarText}>{a.firstName?.[0]}{a.lastName?.[0]}</Text>
+                          </View>
+                          <Text style={styles.triageRowName} numberOfLines={1}>{a.firstName} {a.lastName}</Text>
+                          <View style={[styles.acwrBadge, { backgroundColor: `${SIGNAL.color.emerald}1A` }]}>
+                            <Text style={[styles.acwrBadgeText, { color: SIGNAL.color.emerald }]}>{a.acwr.ratio.toFixed(2)}</Text>
+                          </View>
+                          <Text style={styles.acwrAcute}>{Math.round(a.acwr.acute)}/{Math.round(a.acwr.chronic)} mi</Text>
+                        </TouchableOpacity>
+                      ))}
                     </View>
                   )}
+
                   <Text style={styles.acwrInfo}>
-                    ACWR compares last-7-day miles to the 4-week average. Ratios above 1.5 indicate a load spike vs. the athlete's adapted baseline — the strongest predictor of soft-tissue injury.
+                    ACWR compares last-7-day miles to the 4-week average. Above 1.5 signals a spike vs. the athlete's adapted baseline — the strongest predictor of soft-tissue injury.
                   </Text>
                 </View>
               )}
             </View>
-          );
-        })()}
+          ) : null}
 
-        {/* ── Team ── */}
-        <View style={styles.section}>
+          {/* Injury / Illness alert */}
+          {injuredAthletes.length > 0 && (() => {
+            const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+            const formatWhen = (d) => {
+              if (!d) return '';
+              if (d >= todayStart) return 'today';
+              const daysAgo = Math.ceil((todayStart - d) / 86400000);
+              return daysAgo === 1 ? 'yesterday' : `${daysAgo}d ago`;
+            };
+            return (
+              <View style={[styles.triageCard, styles.triageCardAlert]}>
+                <TouchableOpacity
+                  style={styles.triageHeader}
+                  onPress={() => setInjuryCardExpanded(prev => !prev)}
+                  activeOpacity={0.85}
+                >
+                  <View style={[styles.triageIcon, { backgroundColor: `${SIGNAL.color.coral}18` }]}>
+                    <Ionicons name="warning" size={16} color={SIGNAL.color.coral} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={[styles.triageTitle, { color: SIGNAL.color.coral }]}>
+                      {injuredAthletes.length} reporting injury or illness
+                    </Text>
+                  </View>
+                  <Ionicons name={injuryCardExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={SIGNAL.color.coral} />
+                </TouchableOpacity>
 
-          <View style={styles.timeframeRow}>
-            <View style={{ flex: 1 }}>
-              <TimeframePicker
-                selected={selectedTimeframe}
-                onSelect={setSelectedTimeframe}
-                activeSeason={activeSeasonData}
-                primaryColor={primaryColor}
-              />
-            </View>
-            <TouchableOpacity style={styles.shareBtn} onPress={handleShareLeaderboard}>
-              <Text style={styles.shareBtnText}>Share</Text>
-            </TouchableOpacity>
-          </View>
+                {injuryCardExpanded && (
+                  <View style={styles.triageBody}>
+                    <LinearGradient
+                      colors={injuryGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.heroPill}
+                    >
+                      <Text style={styles.heroPillNum}>{injuredAthletes.length}</Text>
+                      <Text style={styles.heroPillSub}>athletes need attention</Text>
+                    </LinearGradient>
 
-          <View style={styles.genderRow}>
-            {['all', 'boys', 'girls'].map(g => (
+                    {injuredAthletes.map(athlete => {
+                      const alerts = overtTrainingAlerts[athlete.id];
+                      const inj = alerts?.todayInjury;
+                      const ill = alerts?.todayIllness;
+                      const when = formatWhen(alerts?.injuryCheckinDate);
+                      const worstSeverity = [inj?.severity, ill?.severity]
+                        .filter(Boolean)
+                        .reduce((w, s) => s === 'severe' || w === 'severe' ? 'severe' : s === 'moderate' || w === 'moderate' ? 'moderate' : 'mild', 'mild');
+                      const sevColor = worstSeverity === 'severe' ? SIGNAL.color.coral
+                        : worstSeverity === 'moderate' ? SIGNAL.color.amber
+                        : SIGNAL.color.inkSoft;
+                      const rec = worstSeverity === 'severe' ? 'Recommend rest day'
+                        : worstSeverity === 'moderate' ? 'Consider modified workout'
+                        : 'Monitor during practice';
+                      return (
+                        <TouchableOpacity
+                          key={athlete.id}
+                          style={styles.injuryRow}
+                          onPress={() => setSelectedAthlete(athlete)}
+                          activeOpacity={0.85}
+                        >
+                          <View style={[styles.injuryAvatar, { backgroundColor: athlete.avatarColor || SIGNAL.color.indigo }]}>
+                            <Text style={styles.injuryAvatarText}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
+                          </View>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={styles.injuryName}>
+                              {athlete.firstName} {athlete.lastName}
+                              {when ? <Text style={styles.injuryWhen}>  ·  {when}</Text> : null}
+                            </Text>
+                            {inj && (
+                              <Text style={styles.injuryDetail}>
+                                🩹 {inj.perLocation
+                                  ? inj.perLocation.map(p => `${p.location.charAt(0).toUpperCase() + p.location.slice(1)} (${p.severity})`).join(', ')
+                                  : `${inj.locations?.map(l => l.charAt(0).toUpperCase() + l.slice(1)).join(', ')} — ${inj.severity}`
+                                }{inj.note ? ` — "${inj.note}"` : ''}
+                              </Text>
+                            )}
+                            {ill && (
+                              <Text style={styles.injuryDetail}>
+                                🤒 {ill.symptoms?.map(s => s.replace(/_/g, ' ')).join(', ')} — <Text style={{ color: sevColor, fontFamily: SIGNAL.font.bodySemi }}>{ill.severity}</Text>
+                              </Text>
+                            )}
+                            <Text style={[styles.injuryRec, { color: sevColor }]}>{rec}</Text>
+                          </View>
+                          <Text style={styles.chevron}>›</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            );
+          })()}
+        </View>
+
+        {/* ── Team roster ── */}
+        <View style={styles.teamHeader}>
+          <Text style={styles.sectionTitle}>Team</Text>
+          <TouchableOpacity onPress={handleShareLeaderboard} activeOpacity={0.7}>
+            <Text style={styles.shareLink}>Share ↗</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Timeframe row */}
+        <View style={styles.timeframeWrap}>
+          <TimeframePicker
+            selected={selectedTimeframe}
+            onSelect={setSelectedTimeframe}
+            activeSeason={activeSeasonData}
+            primaryColor={SIGNAL.color.indigo}
+          />
+        </View>
+
+        {/* Gender filter chips */}
+        <View style={styles.chipRow}>
+          {[['all', 'All'], ['boys', 'Boys'], ['girls', 'Girls']].map(([key, label]) => {
+            const active = genderFilter === key;
+            return (
               <TouchableOpacity
-                key={g}
-                style={[styles.genderBtn, genderFilter === g && { backgroundColor: BRAND, borderColor: BRAND }]}
-                onPress={() => setGenderFilter(g)}
+                key={key}
+                style={[styles.filterChip, active && styles.filterChipActive]}
+                onPress={() => setGenderFilter(key)}
+                activeOpacity={0.85}
               >
-                <Text style={[styles.genderBtnText, genderFilter === g && { color: '#fff' }]}>
-                  {g === 'all' ? 'All' : g === 'boys' ? 'Boys' : 'Girls'}
-                </Text>
+                <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{label}</Text>
               </TouchableOpacity>
-            ))}
-          </View>
+            );
+          })}
+        </View>
 
-          {groups.length > 0 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.groupFilterRow}>
-              {[{ id: 'all', name: 'All' }, { id: 'bygroup', name: 'By Group' }, ...groups, { id: 'unassigned', name: 'Unassigned' }].map(g => (
+        {/* Group filter chips */}
+        {groups.length > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.groupChipRow}
+          >
+            {[{ id: 'all', name: 'All' }, { id: 'bygroup', name: 'By Group' }, ...groups, { id: 'unassigned', name: 'Unassigned' }].map(g => {
+              const active = groupFilter === g.id;
+              return (
                 <TouchableOpacity
                   key={g.id}
-                  style={[styles.groupFilterBtn, groupFilter === g.id && { backgroundColor: BRAND, borderColor: BRAND }]}
+                  style={[styles.filterChip, active && styles.filterChipActive]}
                   onPress={() => setGroupFilter(g.id)}
+                  activeOpacity={0.85}
                 >
-                  <Text style={[styles.groupFilterBtnText, groupFilter === g.id && { color: '#fff' }]}>
-                    {g.name}
-                  </Text>
+                  <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{g.name}</Text>
                 </TouchableOpacity>
-              ))}
-              <TouchableOpacity style={styles.manageGroupsBtn} onPress={() => { setFeedVisible(false); setZonesVisible(false); setProfileVisible(false); setAnalyticsVisible(false); setAddFromDashboard(false); setTrainingSection('groups'); }}>
-                <Ionicons name="settings-outline" size={14} color={NEUTRAL.muted} />
-              </TouchableOpacity>
-            </ScrollView>
-          ) : (
-            <TouchableOpacity style={styles.createGroupsBtn} onPress={() => { setFeedVisible(false); setZonesVisible(false); setProfileVisible(false); setAnalyticsVisible(false); setAddFromDashboard(false); setTrainingSection('groups'); }}>
-              <Ionicons name="people-outline" size={16} color={BRAND} />
+              );
+            })}
+            <TouchableOpacity
+              style={styles.manageGroupsBtn}
+              onPress={() => { setFeedVisible(false); setZonesVisible(false); setProfileVisible(false); setAnalyticsVisible(false); setAddFromDashboard(false); setTrainingSection('groups'); }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="settings-outline" size={14} color={SIGNAL.color.mute} />
+            </TouchableOpacity>
+          </ScrollView>
+        ) : (
+          <View style={styles.chipRow}>
+            <TouchableOpacity
+              style={styles.createGroupsBtn}
+              onPress={() => { setFeedVisible(false); setZonesVisible(false); setProfileVisible(false); setAnalyticsVisible(false); setAddFromDashboard(false); setTrainingSection('groups'); }}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="people-outline" size={16} color={SIGNAL.color.indigo} />
               <Text style={styles.createGroupsBtnText}>Create training groups</Text>
             </TouchableOpacity>
-          )}
-
-            {refreshing && (
-              <View style={styles.refreshingRow}>
-                <ActivityIndicator size="small" color={BRAND} />
-                <Text style={styles.refreshingText}>Updating…</Text>
-              </View>
-            )}
-            {filteredAthletes.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Text style={styles.emptyText}>No approved athletes yet.</Text>
-                <Text style={styles.emptySubText}>Share join code: {school?.joinCode}</Text>
-              </View>
-            ) : groupFilter === 'bygroup' ? (
-              // ── By Group view: athletes grouped under headers ──
-              [...groups, { id: null, name: 'Unassigned' }].map(group => {
-                const groupAthletes = athletes
-                  .filter(a => group.id ? a.groupId === group.id : !a.groupId)
-                  .filter(a => genderFilter === 'all' || a.gender === genderFilter)
-                  .sort((a, b) => (athleteMiles[b.id] || 0) - (athleteMiles[a.id] || 0));
-                if (groupAthletes.length === 0) return null;
-                return (
-                  <View key={group.id || 'unassigned'} style={styles.groupSection}>
-                    <Text style={[styles.groupHeader, group.id && { color: BRAND }]}>
-                      {group.name}{group.weeklyMilesTarget ? ` · ${group.weeklyMilesTarget} mi/wk target` : ''}
-                    </Text>
-                    {groupAthletes.map((athlete, index) => renderAthleteCard(athlete, index))}
-                  </View>
-                );
-              })
-            ) : (
-              // ── Flat sorted view ──
-              [...filteredAthletes]
-                .sort((a, b) => (athleteMiles[b.id] || 0) - (athleteMiles[a.id] || 0))
-                .map((athlete, index) => renderAthleteCard(athlete, index))
-            )}
-
           </View>
+        )}
 
-          {/* ── Upcoming training ── */}
-          <View style={styles.section}>
-            <View style={styles.upcomingSection}>
-              <View style={styles.upcomingHeader}>
-                <Text style={styles.upcomingSectionTitle}>Upcoming training</Text>
-              </View>
-              {upcomingItems.length === 0 ? (
-                <View style={styles.emptyCard}><Text style={styles.emptyText}>No upcoming training scheduled.</Text></View>
-              ) : upcomingItems.map(item => (
-                <TouchableOpacity key={item.id} style={styles.trainingCard} onPress={() => setTodayWorkoutDetail(item)}>
-                  <View style={[styles.typeBadge, { backgroundColor: TYPE_COLORS[item.type] || primaryColor }]}>
-                    <Text style={styles.typeBadgeText}>{item.type}</Text>
-                  </View>
-                  <View style={styles.trainingInfo}>
-                    <Text style={styles.trainingTitle}>{item.title}{item.baseMiles ? ` — ${item.baseMiles} mi` : ''}</Text>
-                    {item.description && <Text style={styles.trainingDesc} numberOfLines={1}>{item.description}</Text>}
-                    <Text style={styles.trainingDate}>
-                      {item.date?.toDate?.()?.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={NEUTRAL.input} />
-                </TouchableOpacity>
-              ))}
+        {refreshing && (
+          <View style={styles.refreshingRow}>
+            <ActivityIndicator size="small" color={SIGNAL.color.indigo} />
+            <Text style={styles.refreshingText}>Updating…</Text>
+          </View>
+        )}
+
+        {/* Athlete cards */}
+        <View style={styles.rosterWrap}>
+          {filteredAthletes.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyText}>No approved athletes yet.</Text>
+              <Text style={styles.emptySubText}>Share join code: <Text style={styles.emptyCodeMono}>{school?.joinCode || '----'}</Text></Text>
             </View>
-          </View>
+          ) : groupFilter === 'bygroup' ? (
+            [...groups, { id: null, name: 'Unassigned' }].map(group => {
+              const groupAthletes = athletes
+                .filter(a => group.id ? a.groupId === group.id : !a.groupId)
+                .filter(a => genderFilter === 'all' || a.gender === genderFilter)
+                .sort((a, b) => (athleteMiles[b.id] || 0) - (athleteMiles[a.id] || 0));
+              if (groupAthletes.length === 0) return null;
+              return (
+                <View key={group.id || 'unassigned'} style={styles.groupSection}>
+                  <Text style={styles.groupHeader}>
+                    {group.name}{group.weeklyMilesTarget ? ` · ${group.weeklyMilesTarget} mi/wk target` : ''}
+                  </Text>
+                  {groupAthletes.map((athlete, index) => renderAthleteCard(athlete, index))}
+                </View>
+              );
+            })
+          ) : (
+            [...filteredAthletes]
+              .sort((a, b) => (athleteMiles[b.id] || 0) - (athleteMiles[a.id] || 0))
+              .map((athlete, index) => renderAthleteCard(athlete, index))
+          )}
+        </View>
+
+        {/* ── Upcoming training ── */}
+        <View style={styles.upcomingHeader}>
+          <Text style={styles.sectionTitle}>Upcoming training</Text>
+        </View>
+        <View style={styles.upcomingWrap}>
+          {upcomingItems.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyText}>No upcoming training scheduled.</Text>
+            </View>
+          ) : upcomingItems.map(item => {
+            const c = SIGNAL_TYPE_COLORS[item.type] || SIGNAL.color.indigo;
+            return (
+              <TouchableOpacity
+                key={item.id}
+                style={[styles.upcomingCard, { borderLeftColor: c, borderLeftWidth: 3 }]}
+                onPress={() => setTodayWorkoutDetail(item)}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.planChip, { backgroundColor: `${c}${SIGNAL.tint.chip}` }]}>
+                  <View style={[styles.planChipDot, { backgroundColor: c }]} />
+                  <Text style={[styles.planChipText, { color: c }]}>{item.type}</Text>
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.planTitle} numberOfLines={1}>
+                    {item.title}{item.baseMiles ? ` — ${item.baseMiles} mi` : ''}
+                  </Text>
+                  <Text style={styles.upcomingDate}>
+                    {item.date?.toDate?.()?.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                  </Text>
+                  {item.description && (
+                    <Text style={styles.planDesc} numberOfLines={1}>{item.description}</Text>
+                  )}
+                </View>
+                <Text style={styles.chevron}>›</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
       </ScrollView>
 
@@ -1571,47 +1872,47 @@ export default function CoachDashboard({ userData }) {
         }}
       >
         <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setTrainingSection(null); setFeedVisible(false); setZonesVisible(false); setProfileVisible(false); setAnalyticsVisible(false); setAddFromDashboard(false); }}>
-          <Ionicons name="home-outline" size={24} color={!trainingSection && !feedVisible && !zonesVisible && !profileVisible && !analyticsVisible && !addFromDashboard ? BRAND : NEUTRAL.muted} />
-          <Text style={[styles.bottomNavLabel, !trainingSection && !feedVisible && !zonesVisible && !profileVisible && !analyticsVisible && !addFromDashboard && { color: BRAND }]}>Home</Text>
+          <Ionicons name="home-outline" size={22} color={!trainingSection && !feedVisible && !zonesVisible && !profileVisible && !analyticsVisible && !addFromDashboard ? SIGNAL.color.indigo : SIGNAL.color.mute2} />
+          <Text style={[styles.bottomNavLabel, !trainingSection && !feedVisible && !zonesVisible && !profileVisible && !analyticsVisible && !addFromDashboard && styles.bottomNavLabelActive]}>Home</Text>
         </TouchableOpacity>
         {hasTrainingAccess && (
         <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setFeedVisible(false); setZonesVisible(false); setProfileVisible(false); setAnalyticsVisible(false); setAddFromDashboard(false); setTrainingSection('hub'); }}>
           <View>
-            <Ionicons name="calendar-outline" size={24} color={trainingSection || addFromDashboard ? BRAND : NEUTRAL.muted} />
+            <Ionicons name="calendar-outline" size={22} color={trainingSection || addFromDashboard ? SIGNAL.color.indigo : SIGNAL.color.mute2} />
             {pendingAthletes.length > 0 && (
               <View style={styles.badge}>
                 <Text style={styles.badgeText}>{pendingAthletes.length > 99 ? '99+' : pendingAthletes.length}</Text>
               </View>
             )}
           </View>
-          <Text style={[styles.bottomNavLabel, (trainingSection || addFromDashboard) && { color: BRAND }]}>Program</Text>
+          <Text style={[styles.bottomNavLabel, (trainingSection || addFromDashboard) && styles.bottomNavLabelActive]}>Program</Text>
         </TouchableOpacity>
         )}
         <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setTrainingSection(null); setFeedVisible(false); setZonesVisible(false); setProfileVisible(false); setAddFromDashboard(false); setAnalyticsVisible(true); }}>
-          <Ionicons name="analytics-outline" size={24} color={analyticsVisible ? BRAND : NEUTRAL.muted} />
-          <Text style={[styles.bottomNavLabel, analyticsVisible && { color: BRAND }]}>Analytics</Text>
+          <Ionicons name="analytics-outline" size={22} color={analyticsVisible ? SIGNAL.color.indigo : SIGNAL.color.mute2} />
+          <Text style={[styles.bottomNavLabel, analyticsVisible && styles.bottomNavLabelActive]}>Analytics</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setTrainingSection(null); setZonesVisible(false); setProfileVisible(false); setAnalyticsVisible(false); setAddFromDashboard(false); setFeedVisible(true); }}>
           <View>
-            <Ionicons name="chatbubbles-outline" size={24} color={feedVisible ? BRAND : NEUTRAL.muted} />
+            <Ionicons name="chatbubbles-outline" size={22} color={feedVisible ? SIGNAL.color.indigo : SIGNAL.color.mute2} />
             {unreadFeedCount > 0 && (
               <View style={styles.badge}>
                 <Text style={styles.badgeText}>{unreadFeedCount > 99 ? '99+' : unreadFeedCount}</Text>
               </View>
             )}
           </View>
-          <Text style={[styles.bottomNavLabel, feedVisible && { color: BRAND }]}>Feed</Text>
+          <Text style={[styles.bottomNavLabel, feedVisible && styles.bottomNavLabelActive]}>Feed</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.bottomNavBtn} onPress={() => { setTrainingSection(null); setFeedVisible(false); setZonesVisible(false); setAnalyticsVisible(false); setAddFromDashboard(false); setProfileVisible(true); }}>
           <View>
-            <Ionicons name="person-outline" size={24} color={profileVisible ? BRAND : NEUTRAL.muted} />
+            <Ionicons name="person-outline" size={22} color={profileVisible ? SIGNAL.color.indigo : SIGNAL.color.mute2} />
             {pendingCoachCount > 0 && (
               <View style={styles.badge}>
                 <Text style={styles.badgeText}>{pendingCoachCount}</Text>
               </View>
             )}
           </View>
-          <Text style={[styles.bottomNavLabel, profileVisible && { color: BRAND }]}>Profile</Text>
+          <Text style={[styles.bottomNavLabel, profileVisible && styles.bottomNavLabelActive]}>Profile</Text>
         </TouchableOpacity>
       </View>
 
@@ -1627,6 +1928,7 @@ export default function CoachDashboard({ userData }) {
               <View style={{ width: 60 }} />
             </View>
             <ScrollView style={styles.tipModalBody} keyboardShouldPersistTaps="handled">
+              <Text style={styles.tipModalEyebrow}>To the team</Text>
               <Text style={styles.tipModalSubtitle}>
                 This message will be pinned to every athlete's dashboard today.
               </Text>
@@ -1637,19 +1939,20 @@ export default function CoachDashboard({ userData }) {
                 multiline
                 autoFocus
                 placeholder="Write your message to the team..."
-                placeholderTextColor={NEUTRAL.muted}
+                placeholderTextColor={SIGNAL.color.mute2}
               />
               <Text style={styles.tipModalHint}>
-                💡 Auto-generated based on your current training phase. Make it your own.
+                💡  Auto-generated based on your current training phase. Make it your own.
               </Text>
               <TouchableOpacity
-                style={[styles.tipSendBtn, { backgroundColor: tipText.trim() ? BRAND : NEUTRAL.input }]}
+                style={[styles.tipSendBtn, { backgroundColor: tipText.trim() ? SIGNAL.color.indigo : SIGNAL.color.mute2 }]}
                 onPress={handleSendTip}
                 disabled={sendingTip || !tipText.trim()}
+                activeOpacity={0.85}
               >
                 {sendingTip
                   ? <ActivityIndicator color="#fff" />
-                  : <Text style={styles.tipSendBtnText}>Send to team →</Text>
+                  : <Text style={styles.tipSendBtnText}>Send to team  →</Text>
                 }
               </TouchableOpacity>
             </ScrollView>
@@ -1661,152 +1964,758 @@ export default function CoachDashboard({ userData }) {
   );
 }
 
+// ── Helper: maps a week status string to the colored style for week-dot text ──
+function statusToWeekStyle(status) {
+  if (status === 'under') return { color: SIGNAL.color.amber };
+  if (status === 'over')  return { color: SIGNAL.color.coral };
+  return { color: SIGNAL.color.emerald };
+}
+
 const styles = StyleSheet.create({
-  groupSection:         { marginBottom: SPACE.lg },
-  groupHeader:          { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: NEUTRAL.label, marginBottom: SPACE.sm, marginTop: SPACE.xs },
-  groupFilterRow:       { flexDirection: 'row', marginBottom: SPACE.md, maxHeight: 36 },
-  groupFilterBtn:       { borderRadius: RADIUS.sm, borderWidth: 1.5, borderColor: NEUTRAL.border, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm, marginRight: SPACE.sm, backgroundColor: NEUTRAL.card },
-  groupFilterBtnText:   { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.body },
-  manageGroupsBtn:     { justifyContent: 'center', paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm, marginRight: SPACE.sm },
-  createGroupsBtn:     { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, backgroundColor: BRAND_LIGHT, borderRadius: RADIUS.md, padding: SPACE.md, marginBottom: SPACE.md },
-  createGroupsBtnText: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: BRAND },
-  timeframeRow:         { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: SPACE.md, marginBottom: 0 },
-  shareBtn:             { borderRadius: RADIUS.md, borderWidth: 1.5, borderColor: BRAND, paddingHorizontal: SPACE.lg - 2, paddingVertical: SPACE.md, backgroundColor: NEUTRAL.card },
-  shareBtnText:         { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.semibold, color: BRAND },
-  container:            { flex: 1, backgroundColor: NEUTRAL.bg },
-  loading:              { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header:               { backgroundColor: NEUTRAL.card, paddingTop: Platform.OS === 'ios' ? SPACE['5xl'] : SPACE['3xl'], paddingBottom: SPACE.md, paddingHorizontal: SPACE.xl, borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
-  headerRow:            { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  greeting:             { fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  schoolName:           { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginTop: 1 },
-  headerRight:          { alignItems: 'flex-end' },
-  headerRightText:      { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, fontWeight: FONT_WEIGHT.semibold },
-  headerAlertText:      { fontSize: FONT_SIZE.xs, color: STATUS.error, fontWeight: FONT_WEIGHT.bold, marginTop: 2 },
-  headerInjuryText:     { fontSize: FONT_SIZE.xs, color: STATUS.warning, fontWeight: FONT_WEIGHT.bold, marginTop: 2 },
-  profileBtn:           { paddingVertical: SPACE.sm, paddingHorizontal: SPACE.md, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: RADIUS.sm },
-  profileBtnText:       { color: '#fff', fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold },
-  headerStats:          { flexDirection: 'row', alignItems: 'center', gap: SPACE.lg - 2 },
-  headerStat:           { alignItems: 'center' },
-  headerStatNum:        { fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold, color: '#fff' },
-  headerStatLabel:      { fontSize: FONT_SIZE.xs, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
-  alertStatBox:         { backgroundColor: 'rgba(239,68,68,0.3)', borderRadius: RADIUS.sm, paddingHorizontal: SPACE.sm, paddingVertical: SPACE.xs },
-  alertStatNum:         { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold, color: '#fff' },
-  alertStatLabel:       { fontSize: 10, color: 'rgba(255,255,255,0.9)', marginTop: 1 },
-  tabs:                 { flexDirection: 'row', backgroundColor: NEUTRAL.card, borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
-  tab:                  { flex: 1, paddingVertical: SPACE.lg - 2, alignItems: 'center' },
-  tabActive:            { borderBottomWidth: 2, borderBottomColor: BRAND },
-  tabText:              { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.muted },
-  scroll:               { flex: 1 },
-  msgRow:               { paddingHorizontal: SPACE.lg, marginTop: SPACE.md, marginBottom: SPACE.xs },
-  msgBtn:               { backgroundColor: BRAND_LIGHT, borderRadius: RADIUS.md, paddingVertical: SPACE.md, paddingHorizontal: SPACE.lg - 2, alignItems: 'center' },
-  msgBtnText:           { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND },
-  section:              { padding: SPACE.lg },
-  genderRow:            { flexDirection: 'row', gap: SPACE.sm, marginBottom: SPACE.md },
-  genderBtn:            { flex: 1, borderRadius: RADIUS.md, paddingVertical: SPACE.md, alignItems: 'center', backgroundColor: NEUTRAL.card, borderWidth: 1.5, borderColor: NEUTRAL.border },
-  genderBtnText:        { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: NEUTRAL.body },
-  refreshingRow:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm, paddingVertical: SPACE.sm },
-  refreshingText:       { color: NEUTRAL.muted, fontSize: FONT_SIZE.sm },
-  emptyCard:            { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.xl, alignItems: 'center', gap: SPACE.md, ...SHADOW.sm },
-  emptyText:            { color: NEUTRAL.muted, fontSize: FONT_SIZE.sm, textAlign: 'center' },
-  emptySubText:         { color: NEUTRAL.muted, fontSize: FONT_SIZE.sm },
-  athleteCard:          { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.md, marginBottom: SPACE.sm, ...SHADOW.sm },
-  athleteCardAlert:     { borderWidth: 1.5, borderColor: STATUS.error, backgroundColor: STATUS.errorBg },
-  athleteCardTop:       { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
-  athleteCardStats:     { flexDirection: 'row', gap: SPACE.md, paddingTop: SPACE.md, borderTopWidth: 1, borderTopColor: NEUTRAL.bg },
-  athleteStatChip:      { flex: 1, backgroundColor: NEUTRAL.bg, borderRadius: RADIUS.sm, padding: SPACE.sm },
-  athleteStatChipLabel: { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginBottom: 2 },
-  athleteStatChipVal:   { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  statValRed:           { color: STATUS.error },
-  statFlagRed:          { fontSize: FONT_SIZE.xs, color: STATUS.error, fontWeight: FONT_WEIGHT.semibold, marginTop: 2 },
-  rankNum:              { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: NEUTRAL.muted, width: 24 },
-  avatar:               { width: 38, height: 38, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center' },
-  paceDot:              { position: 'absolute', bottom: -1, right: -1, width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: NEUTRAL.card },
-  avatarText:           { color: '#fff', fontWeight: FONT_WEIGHT.bold, fontSize: FONT_SIZE.sm },
-  athleteInfo:          { flex: 1 },
-  athleteNameRow:       { flexDirection: 'row', alignItems: 'center', gap: SPACE.xs },
-  athleteName:          { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  injuryBadge:          { fontSize: 14 },
-  athleteSub:           { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 2 },
-  alertText:            { fontSize: FONT_SIZE.xs, color: STATUS.error, marginTop: 2, fontWeight: FONT_WEIGHT.semibold },
-  milesBox:             { alignItems: 'center' },
-  milesNum:             { fontSize: FONT_SIZE.xl - 2, fontWeight: FONT_WEIGHT.bold },
-  milesLabel:           { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted },
-  chevron:              { fontSize: 22, color: NEUTRAL.input },
-  injuryAlertCard:      { marginHorizontal: SPACE.lg, marginTop: SPACE.md, backgroundColor: STATUS.errorBg, borderRadius: RADIUS.lg, padding: SPACE.lg, borderWidth: 1.5, borderColor: STATUS.error + '40' },
-  injuryAlertHeader:    { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
-  injuryAlertTitle:     { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: STATUS.error, flex: 1 },
-  injuryAlertRow:       { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, paddingVertical: SPACE.md, borderTopWidth: 1, borderTopColor: STATUS.error + '20' },
-  injuryAlertName:      { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  injuryAlertDetail:    { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginTop: 2 },
-  injuryAlertRec:       { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, marginTop: SPACE.xs },
-  injuryAlertWhen:      { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium, color: NEUTRAL.body },
-  alertSection:         { marginTop: SPACE.sm },
-  alertSectionTitle:    { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: STATUS.error, marginBottom: SPACE.md },
-  alertCard:            { backgroundColor: STATUS.errorBg, borderRadius: RADIUS.lg, padding: SPACE.lg - 2, marginBottom: SPACE.md, borderLeftWidth: 4, borderLeftColor: STATUS.error },
-  alertAthleteName:     { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, marginBottom: SPACE.sm },
-  alertSignal:          { fontSize: FONT_SIZE.sm, color: STATUS.error, marginBottom: 3 },
-  alertRec:             { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: SPACE.sm, fontStyle: 'italic' },
-  paceSetupNote:        { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginHorizontal: SPACE.lg, marginTop: SPACE.md, paddingVertical: SPACE.sm, paddingHorizontal: SPACE.md, backgroundColor: '#fff8e1', borderRadius: RADIUS.md },
-  paceSetupNoteText:    { fontSize: FONT_SIZE.sm, color: STATUS.warning, fontWeight: FONT_WEIGHT.medium },
-  complianceCard:       { marginHorizontal: SPACE.lg, marginTop: SPACE.md, backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, borderWidth: 1.5, borderColor: NEUTRAL.border, ...SHADOW.sm },
-  complianceHeader:     { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
-  complianceTitle:      { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK, flex: 1 },
-  complianceGroupLabel: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, marginBottom: SPACE.xs, letterSpacing: 0.5 },
-  complianceRow:        { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, paddingVertical: SPACE.xs + 2 },
-  complianceRowName:    { flex: 1, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: BRAND_DARK },
-  complianceWeeks:      { flexDirection: 'row', gap: SPACE.sm },
-  complianceWeekVal:    { fontSize: FONT_SIZE.xs, color: STATUS.success, fontWeight: FONT_WEIGHT.semibold, minWidth: 40, textAlign: 'right' },
-  complianceUnder:      { color: STATUS.error },
-  complianceOver:       { color: STATUS.warning },
-  complianceTarget:     { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, minWidth: 40, textAlign: 'right' },
-  acwrBadge:            { paddingHorizontal: SPACE.sm, paddingVertical: 2, borderRadius: RADIUS.sm, minWidth: 44, alignItems: 'center' },
-  acwrBadgeText:        { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
-  acwrAcute:            { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, minWidth: 64, textAlign: 'right' },
-  acwrInfo:             { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, fontStyle: 'italic', marginTop: SPACE.sm, lineHeight: 16 },
-  pulseRow:             { flexDirection: 'row', marginHorizontal: SPACE.lg, marginTop: SPACE.md, gap: SPACE.sm },
-  pulseCard:            { flex: 1, backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.md, alignItems: 'center', borderWidth: 1, borderColor: NEUTRAL.border, ...SHADOW.sm },
-  pulseValue:           { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  pulseLabel:           { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 2 },
-  groupMilesRow:        { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.sm, marginTop: SPACE.sm },
-  groupMilesChip:       { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, backgroundColor: NEUTRAL.bg, borderRadius: RADIUS.sm, paddingHorizontal: SPACE.sm, paddingVertical: 3, overflow: 'hidden' },
-  todaySection:         { marginBottom: SPACE.sm },
-  todayLabel:           { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, color: NEUTRAL.muted, letterSpacing: 1, marginBottom: SPACE.sm },
-  todayCard:            { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, paddingVertical: SPACE.md, paddingHorizontal: SPACE.lg - 2, borderLeftWidth: 4, marginBottom: SPACE.xs, ...SHADOW.sm },
-  todayCardRow:         { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
-  todayCardMiles:       { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, fontWeight: FONT_WEIGHT.semibold },
-  todayCardDesc:        { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: 2 },
-  upcomingSection:      { marginBottom: SPACE.lg },
-  upcomingHeader:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACE.md },
-  upcomingSectionTitle: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  typeBadge:            { alignSelf: 'flex-start', borderRadius: RADIUS.sm, paddingHorizontal: SPACE.md, paddingVertical: 5, marginBottom: SPACE.sm },
-  typeBadgeText:        { color: '#fff', fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
-  trainingCard:         { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg - 2, marginBottom: SPACE.md, flexDirection: 'row', alignItems: 'flex-start', gap: SPACE.md, ...SHADOW.sm },
-  trainingInfo:         { flex: 1 },
-  trainingTitle:        { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  trainingDesc:         { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginTop: 2 },
-  trainingNotes:        { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted, marginTop: SPACE.xs, fontStyle: 'italic' },
-  trainingDate:         { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginTop: SPACE.xs },
-  pendingCard:          { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg - 2, marginBottom: SPACE.md, gap: SPACE.md },
-  minorTag:             { fontSize: FONT_SIZE.xs, color: STATUS.warning, marginTop: SPACE.xs, fontWeight: FONT_WEIGHT.semibold },
-  approvalBtns:         { flexDirection: 'row', gap: SPACE.sm },
-  approveBtn:           { flex: 1, borderRadius: RADIUS.sm, padding: SPACE.md, alignItems: 'center' },
-  approveBtnText:       { color: '#fff', fontWeight: FONT_WEIGHT.bold },
-  denyBtn:              { flex: 1, borderRadius: RADIUS.sm, padding: SPACE.md, alignItems: 'center', backgroundColor: STATUS.errorBg },
-  denyBtnText:          { color: STATUS.error, fontWeight: FONT_WEIGHT.bold },
-  subScreen:            { position: 'absolute', top: 0, left: 0, right: 0, bottom: Platform.OS === 'ios' ? 82 : 56, backgroundColor: NEUTRAL.bg, zIndex: 10 },
-  bottomNav:            { flexDirection: 'row', backgroundColor: NEUTRAL.card, borderTopWidth: 1, borderTopColor: NEUTRAL.border, paddingBottom: Platform.OS === 'ios' ? SPACE['2xl'] : SPACE.sm, paddingTop: SPACE.md, ...SHADOW.sm, zIndex: 20 },
-  bottomNavBtn:         { flex: 1, alignItems: 'center', gap: 2 },
-  bottomNavLabel:       { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, fontWeight: FONT_WEIGHT.medium },
-  badge:                { position: 'absolute', top: -4, right: -8, backgroundColor: STATUS.error, borderRadius: 9, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  badgeText:            { color: '#fff', fontSize: 10, fontWeight: FONT_WEIGHT.bold },
-  tipModal:             { flex: 1, backgroundColor: NEUTRAL.bg },
-  tipModalHeader:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: SPACE.xl, paddingTop: 60, backgroundColor: NEUTRAL.card, borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
-  tipModalTitle:        { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  tipModalCancel:       { color: STATUS.error, fontSize: FONT_SIZE.md, width: 60 },
-  tipModalBody:         { padding: SPACE.xl },
-  tipModalSubtitle:     { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, lineHeight: 20, marginBottom: SPACE.lg },
-  tipModalInput:        { backgroundColor: NEUTRAL.card, borderRadius: RADIUS.lg, padding: SPACE.lg, fontSize: FONT_SIZE.md, color: BRAND_DARK, borderWidth: 1, borderColor: NEUTRAL.input, minHeight: 180, textAlignVertical: 'top', lineHeight: 24, marginBottom: SPACE.md },
-  tipModalHint:         { fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, marginBottom: SPACE['2xl'], lineHeight: 18 },
-  tipSendBtn:           { borderRadius: RADIUS.lg, padding: SPACE.lg + 2, alignItems: 'center', marginBottom: SPACE['4xl'] },
-  tipSendBtnText:       { color: '#fff', fontSize: 17, fontWeight: FONT_WEIGHT.bold },
+  // ── Container / scroll ──────────────────────────────────────────────────────
+  container: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper2,
+  },
+  loading: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: SIGNAL.color.paper2,
+  },
+  scroll: { flex: 1 },
+
+  // ── Header ──────────────────────────────────────────────────────────────────
+  header: {
+    backgroundColor: SIGNAL.color.white,
+    paddingTop: Platform.OS === 'ios' ? 68 : 44,
+    paddingBottom: 14,
+    paddingHorizontal: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 14,
+  },
+  greeting: {
+    fontFamily: SIGNAL.font.display,
+    fontSize: 29,
+    lineHeight: 32,
+    color: SIGNAL.color.indigo,
+    letterSpacing: -0.58,
+  },
+  headerEyebrow: {
+    ...SIGNAL.style.eyebrow,
+    marginTop: 6,
+  },
+  headerRight: {
+    alignItems: 'flex-end',
+  },
+  headerAthleteCount: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 16,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  headerAthleteLabel: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 10,
+    color: SIGNAL.color.mute,
+    marginTop: 1,
+  },
+  headerJoinCode: {
+    fontFamily: SIGNAL.font.mono,
+    fontSize: 10,
+    color: SIGNAL.color.mute,
+    marginTop: 6,
+  },
+  headerJoinCodeStrong: {
+    fontFamily: SIGNAL.font.mono,
+    color: SIGNAL.color.ink,
+  },
+
+  // ── Eyebrow ────────────────────────────────────────────────────────────────
+  eyebrow: { ...SIGNAL.style.eyebrow },
+
+  // ── Today's plan ───────────────────────────────────────────────────────────
+  todayWrap: {
+    paddingHorizontal: 14,
+    paddingTop: 16,
+  },
+  todayCard: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    overflow: 'hidden',
+    ...SIGNAL.border.hairline,
+  },
+  planRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    borderLeftWidth: 3,
+  },
+  planChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: SIGNAL.radius.chip,
+    flexShrink: 0,
+  },
+  planChipDot: { width: 5, height: 5, borderRadius: 999 },
+  planChipText: { fontFamily: SIGNAL.font.bodySemi, fontSize: 11 },
+  planTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 13.5,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  planDesc: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 11,
+    color: SIGNAL.color.mute,
+    marginTop: 1,
+  },
+  planEmpty: {
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  planEmptyText: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 13,
+    color: SIGNAL.color.mute,
+  },
+  messageCardWrap: {
+    paddingHorizontal: 14,
+    paddingTop: 12,
+  },
+  messageCard: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    ...SIGNAL.border.hairline,
+  },
+  messageCardIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: SIGNAL.radius.chip,
+    backgroundColor: `${SIGNAL.color.indigo}${SIGNAL.tint.chip}`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  messageCardTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 14,
+    color: SIGNAL.color.ink,
+  },
+  messageCardDesc: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 12,
+    color: SIGNAL.color.mute,
+    marginTop: 2,
+  },
+
+  // ── Season Review banner ───────────────────────────────────────────────────
+  seasonReviewCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 14,
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    borderWidth: 1,
+    borderColor: `${SIGNAL.color.emerald}55`,
+  },
+  seasonReviewTitle: {
+    flex: 1,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 13.5,
+    color: SIGNAL.color.emerald,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+
+  // ── Triage cards ───────────────────────────────────────────────────────────
+  triageStack: {
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    flexDirection: 'column',
+    gap: 10,
+  },
+  triageCard: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    overflow: 'hidden',
+    ...SIGNAL.border.hairline,
+  },
+  triageCardAlert: {
+    borderColor: `${SIGNAL.color.coral}55`,
+    backgroundColor: `${SIGNAL.color.coral}08`,
+  },
+  triageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  triageIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  triageTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 14,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  triageSummary: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 11.5,
+    color: SIGNAL.color.mute,
+    marginTop: 2,
+  },
+  triageBody: {
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+  },
+  triageGroup: {
+    marginTop: 10,
+  },
+  triageGroupLabel: {
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 10.5,
+    letterSpacing: 0.42,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  triageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 9,
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  triageRowName: {
+    flex: 1,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 13,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  triageRowMeta: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 10.5,
+    color: SIGNAL.color.mute,
+    marginTop: 1,
+  },
+  triageTarget: {
+    fontFamily: SIGNAL.font.mono,
+    fontSize: 11,
+    color: SIGNAL.color.mute,
+    minWidth: 50,
+    textAlign: 'right',
+  },
+
+  // ── Hero status pill (gradient) ────────────────────────────────────────────
+  heroPill: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: SIGNAL.radius.card,
+    marginBottom: 6,
+  },
+  heroPillNum: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 36,
+    lineHeight: 40,
+    color: '#fff',
+    letterSpacing: SIGNAL.letter.numTight,
+  },
+  heroPillSub: {
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: 11.5,
+    color: 'rgba(255,255,255,0.85)',
+    marginTop: 4,
+  },
+
+  // ── Mini avatar (triage rows) ──────────────────────────────────────────────
+  miniAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  miniAvatarText: {
+    color: '#fff',
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 11,
+  },
+
+  // ── Volume week dots ───────────────────────────────────────────────────────
+  weekDots: {
+    flexDirection: 'row',
+    gap: 9,
+  },
+  weekDot: {
+    fontFamily: SIGNAL.font.mono,
+    fontSize: 11,
+    minWidth: 32,
+    textAlign: 'right',
+  },
+
+  // ── Easy-pct number (right-aligned) ────────────────────────────────────────
+  easyPctNum: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 15,
+    letterSpacing: SIGNAL.letter.bodyTight,
+    minWidth: 44,
+    textAlign: 'right',
+  },
+
+  // ── ACWR row ───────────────────────────────────────────────────────────────
+  acwrBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 7,
+    alignItems: 'center',
+  },
+  acwrBadgeText: {
+    fontFamily: SIGNAL.font.mono,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  acwrAcute: {
+    fontFamily: SIGNAL.font.mono,
+    fontSize: 10,
+    color: SIGNAL.color.mute,
+    minWidth: 54,
+    textAlign: 'right',
+  },
+  acwrInfo: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 10.5,
+    color: SIGNAL.color.mute,
+    marginTop: 10,
+    lineHeight: 16,
+  },
+
+  // ── Injury row ─────────────────────────────────────────────────────────────
+  injuryRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: `${SIGNAL.color.coral}22`,
+  },
+  injuryAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  injuryAvatarText: {
+    color: '#fff',
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 12,
+  },
+  injuryName: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 13,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  injuryWhen: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 10.5,
+    color: SIGNAL.color.mute,
+  },
+  injuryDetail: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 11.5,
+    color: SIGNAL.color.inkSoft,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  injuryRec: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 11,
+    marginTop: 3,
+  },
+
+  // ── Section titles ─────────────────────────────────────────────────────────
+  sectionTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 18,
+    color: SIGNAL.color.indigo,
+    letterSpacing: -0.36,
+  },
+  teamHeader: {
+    paddingTop: 22,
+    paddingBottom: 6,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+  },
+  shareLink: {
+    ...SIGNAL.style.eyebrow,
+    color: SIGNAL.color.indigo,
+  },
+  upcomingHeader: {
+    paddingTop: 22,
+    paddingBottom: 6,
+    paddingHorizontal: 18,
+  },
+
+  // ── Timeframe + filters ────────────────────────────────────────────────────
+  timeframeWrap: {
+    paddingHorizontal: 14,
+    paddingTop: 4,
+    paddingBottom: 0,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingTop: 8,
+    flexWrap: 'wrap',
+  },
+  groupChipRow: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingTop: 8,
+    alignItems: 'center',
+  },
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: SIGNAL.radius.chip,
+    backgroundColor: SIGNAL.color.white,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+  },
+  filterChipActive: {
+    backgroundColor: SIGNAL.color.indigo,
+    borderColor: SIGNAL.color.indigo,
+  },
+  filterChipText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 11,
+    color: SIGNAL.color.inkSoft,
+  },
+  filterChipTextActive: {
+    color: '#fff',
+  },
+  manageGroupsBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    justifyContent: 'center',
+  },
+  createGroupsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: SIGNAL.radius.button,
+    backgroundColor: `${SIGNAL.color.indigo}${SIGNAL.tint.chip}`,
+    borderWidth: 1,
+    borderColor: `${SIGNAL.color.indigo}33`,
+  },
+  createGroupsBtnText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 13,
+    color: SIGNAL.color.indigo,
+  },
+  refreshingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
+  },
+  refreshingText: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 12,
+    color: SIGNAL.color.mute,
+  },
+
+  // ── Roster ─────────────────────────────────────────────────────────────────
+  rosterWrap: {
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    gap: 8,
+  },
+  groupSection: {
+    marginBottom: 14,
+  },
+  groupHeader: {
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 11,
+    letterSpacing: 0.44,
+    textTransform: 'uppercase',
+    color: SIGNAL.color.indigo,
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  athleteCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 8,
+    ...SIGNAL.border.hairline,
+  },
+  athleteRank: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 13,
+    color: SIGNAL.color.mute2,
+    width: 18,
+    textAlign: 'center',
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  athleteAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  athleteAvatarText: {
+    color: '#fff',
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 13,
+  },
+  athleteNameRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 6,
+  },
+  athleteName: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 14,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+    flexShrink: 1,
+  },
+  athleteYear: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 10.5,
+    color: SIGNAL.color.mute,
+  },
+  athleteSub: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 11,
+    color: SIGNAL.color.mute,
+    marginTop: 1,
+  },
+  athleteMilesBox: {
+    alignItems: 'flex-end',
+  },
+  athleteMilesNum: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 16,
+    color: SIGNAL.color.indigo,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  athleteMilesLabel: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 9,
+    color: SIGNAL.color.mute,
+    letterSpacing: 0.72,
+  },
+  chevron: {
+    fontSize: 18,
+    color: SIGNAL.color.mute2,
+  },
+
+  // ── Empty / placeholder ────────────────────────────────────────────────────
+  emptyCard: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    padding: 18,
+    alignItems: 'center',
+    gap: 8,
+    ...SIGNAL.border.hairline,
+  },
+  emptyText: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 13,
+    color: SIGNAL.color.mute,
+    textAlign: 'center',
+  },
+  emptySubText: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 12,
+    color: SIGNAL.color.mute,
+  },
+  emptyCodeMono: {
+    fontFamily: SIGNAL.font.mono,
+    color: SIGNAL.color.ink,
+  },
+
+  // ── Upcoming training ──────────────────────────────────────────────────────
+  upcomingWrap: {
+    paddingHorizontal: 14,
+    gap: 8,
+  },
+  upcomingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    paddingVertical: 12,
+    paddingLeft: 12,
+    paddingRight: 14,
+    ...SIGNAL.border.hairline,
+  },
+  upcomingDate: {
+    fontFamily: SIGNAL.font.mono,
+    fontSize: 10.5,
+    color: SIGNAL.color.mute,
+    marginTop: 1,
+  },
+
+  // ── Sub-screen overlay ─────────────────────────────────────────────────────
+  subScreen: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0,
+    bottom: Platform.OS === 'ios' ? 82 : 56,
+    backgroundColor: SIGNAL.color.paper2,
+    zIndex: 10,
+  },
+
+  // ── Bottom nav ─────────────────────────────────────────────────────────────
+  bottomNav: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderTopWidth: 1,
+    borderTopColor: SIGNAL.color.line,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 10,
+    zIndex: 20,
+  },
+  bottomNavBtn: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
+  },
+  bottomNavLabel: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 11,
+    color: SIGNAL.color.mute2,
+  },
+  bottomNavLabelActive: {
+    color: SIGNAL.color.indigo,
+  },
+  badge: {
+    position: 'absolute',
+    top: -4, right: -8,
+    backgroundColor: SIGNAL.color.coral,
+    borderRadius: 9,
+    minWidth: 18, height: 18,
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: '#fff',
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 10,
+  },
+
+  // ── Daily message modal ────────────────────────────────────────────────────
+  tipModal: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper2,
+  },
+  tipModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 18,
+    paddingTop: 60,
+    backgroundColor: SIGNAL.color.white,
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  tipModalTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 17,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  tipModalCancel: {
+    fontFamily: SIGNAL.font.bodyMedium,
+    color: SIGNAL.color.indigo,
+    fontSize: 15,
+    width: 60,
+  },
+  tipModalBody: { padding: 18 },
+  tipModalEyebrow: {
+    ...SIGNAL.style.eyebrow,
+    marginBottom: 8,
+  },
+  tipModalSubtitle: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 13,
+    color: SIGNAL.color.mute,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  tipModalInput: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    padding: 16,
+    fontFamily: SIGNAL.font.body,
+    fontSize: 15,
+    color: SIGNAL.color.ink,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    minHeight: 180,
+    textAlignVertical: 'top',
+    lineHeight: 22,
+    marginBottom: 12,
+  },
+  tipModalHint: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 11.5,
+    color: SIGNAL.color.mute,
+    marginBottom: 22,
+    lineHeight: 17,
+  },
+  tipSendBtn: {
+    borderRadius: SIGNAL.radius.button,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginBottom: 36,
+  },
+  tipSendBtnText: {
+    color: '#fff',
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 15,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
 });

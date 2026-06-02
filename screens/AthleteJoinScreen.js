@@ -10,17 +10,17 @@ import {
 import React, { useState } from 'react';
 import {
     ActivityIndicator,
-    Alert, ScrollView,
+    Alert,
+    Platform,
+    ScrollView,
     StyleSheet,
     Text, TextInput, TouchableOpacity,
     View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
-import Button from '../components/Button';
-import Card from '../components/Card';
 import {
   BRAND, BRAND_ACCENT, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE,
+  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE,
 } from '../constants/design';
 
 export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
@@ -65,7 +65,7 @@ export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
       const q = query(
         schoolsRef,
         where('name', '>=', searchQuery),
-        where('name', '<=', searchQuery + '\uf8ff')
+        where('name', '<=', searchQuery + '')
       );
       const snapshot = await getDocs(q);
       const results = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -140,87 +140,94 @@ export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
 
+      {/* Brand header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Find Your School</Text>
-        <Text style={styles.subtitle}>Join your cross country program</Text>
+        <Text style={styles.title}>Find your team</Text>
+        <Text style={styles.subtitle}>Join your school's program</Text>
       </View>
 
-      {/* Tabs */}
-      <View style={styles.tabs}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'code' && styles.tabActive]}
-          onPress={() => setActiveTab('code')}
-        >
-          <Text style={[styles.tabText, activeTab === 'code' && styles.tabTextActive]}>
-            Join Code
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'search' && styles.tabActive]}
-          onPress={() => setActiveTab('search')}
-        >
-          <Text style={[styles.tabText, activeTab === 'search' && styles.tabTextActive]}>
-            Search School
-          </Text>
-        </TouchableOpacity>
-      </View>
+      {/* Join by code section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Have a join code?</Text>
+        <Text style={[styles.eyebrow, styles.eyebrowSpaced]}>Enter the code from your coach</Text>
 
-      {/* Join by code */}
-      {activeTab === 'code' && (
-        <View style={styles.section}>
-          <Text style={styles.sectionDesc}>
-            Ask your coach for your team's 6-character join code
-          </Text>
+        <View style={styles.card}>
           <TextInput
-            style={[styles.input, styles.codeInput]}
-            placeholder="Enter code (e.g. BHS2025)"
-            placeholderTextColor={NEUTRAL.muted}
+            style={styles.codeInput}
+            placeholder="ABC123"
+            placeholderTextColor={SIGNAL.color.mute2}
             value={joinCode}
             onChangeText={setJoinCode}
             autoCapitalize="characters"
             maxLength={8}
           />
-          <Button label="Find My School" onPress={handleJoinByCode} loading={loading} size="lg" />
+          <TouchableOpacity
+            style={[styles.primaryButton, loading && styles.primaryButtonDisabled]}
+            onPress={handleJoinByCode}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color={SIGNAL.color.white} size="small" />
+            ) : (
+              <Text style={styles.primaryButtonText}>Join team</Text>
+            )}
+          </TouchableOpacity>
         </View>
-      )}
+      </View>
 
-      {/* Search by name */}
-      {activeTab === 'search' && (
-        <View style={styles.section}>
-          <Text style={styles.sectionDesc}>
-            Search for your school by name
-          </Text>
-          <View style={styles.searchRow}>
-            <TextInput
-              style={[styles.input, styles.searchInput]}
-              placeholder="School name..."
-              placeholderTextColor={NEUTRAL.muted}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              autoCapitalize="words"
-            />
-            <TouchableOpacity style={styles.searchButton} onPress={handleSearch} disabled={searching}>
-              {searching ? <ActivityIndicator color="#fff" size="small" /> : (
-                <Text style={styles.searchButtonText}>Search</Text>
-              )}
-            </TouchableOpacity>
+      {/* OR divider */}
+      <View style={styles.divider}>
+        <View style={styles.dividerLine} />
+        <Text style={styles.dividerText}>OR SEARCH</Text>
+        <View style={styles.dividerLine} />
+      </View>
+
+      {/* Search by name section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Search by school</Text>
+        <Text style={[styles.eyebrow, styles.eyebrowSpaced]}>Find your team by name</Text>
+
+        <View style={styles.searchRow}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="School name..."
+            placeholderTextColor={SIGNAL.color.mute2}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCapitalize="words"
+          />
+          <TouchableOpacity
+            style={styles.searchButton}
+            onPress={handleSearch}
+            disabled={searching}
+          >
+            {searching ? (
+              <ActivityIndicator color={SIGNAL.color.white} size="small" />
+            ) : (
+              <Text style={styles.searchButtonText}>Search</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {searchResults.length > 0 && (
+          <View style={styles.resultsList}>
+            {searchResults.map((school) => (
+              <SchoolCard
+                key={school.id}
+                school={school}
+                onJoin={() => handleRequestToJoin(school)}
+                loading={loading}
+              />
+            ))}
           </View>
+        )}
+      </View>
 
-          {searchResults.map((school) => (
-            <SchoolCard
-              key={school.id}
-              school={school}
-              onJoin={() => handleRequestToJoin(school)}
-              loading={loading}
-            />
-          ))}
-        </View>
-      )}
-
-      {/* Selected school confirmation */}
+      {/* Selected school confirmation (from join code) */}
       {selectedSchool && (
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Found your school!</Text>
+          <Text style={styles.sectionTitle}>Found your school</Text>
+          <Text style={[styles.eyebrow, styles.eyebrowSpaced]}>Confirm and request to join</Text>
           <SchoolCard
             school={selectedSchool}
             onJoin={() => handleRequestToJoin(selectedSchool)}
@@ -245,61 +252,263 @@ export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
 
 function SchoolCard({ school, onJoin, loading }) {
   return (
-    <Card style={styles.schoolCard}>
-      <View style={styles.schoolColorBar}>
-        <View style={[styles.colorDot, { backgroundColor: school.primaryColor || BRAND }]} />
-        <View style={[styles.colorDot, { backgroundColor: school.secondaryColor || '#fff', borderWidth: 1, borderColor: NEUTRAL.border }]} />
+    <View style={styles.schoolCard}>
+      <View style={[styles.schoolAccent, { backgroundColor: school.primaryColor || SIGNAL.color.indigo }]} />
+      <View style={styles.schoolBody}>
+        <View style={styles.schoolInfo}>
+          <Text style={styles.schoolName}>{school.name}</Text>
+          {school.mascot ? (
+            <Text style={styles.schoolMeta}>
+              {school.mascot}
+              {(school.city || school.state) ? ` · ${school.city}, ${school.state}` : ''}
+            </Text>
+          ) : (
+            <Text style={styles.schoolMeta}>{school.city}, {school.state}</Text>
+          )}
+          {school.headCoachName ? (
+            <Text style={styles.schoolCoach}>Coach {school.headCoachName}</Text>
+          ) : null}
+        </View>
+        <TouchableOpacity
+          style={[styles.requestButton, loading && styles.requestButtonDisabled]}
+          onPress={onJoin}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color={SIGNAL.color.white} size="small" />
+          ) : (
+            <Text style={styles.requestButtonText}>Request to join</Text>
+          )}
+        </TouchableOpacity>
       </View>
-      <View style={styles.schoolInfo}>
-        <Text style={styles.schoolName}>{school.name}</Text>
-        {school.mascot ? <Text style={styles.schoolMascot}>{school.mascot}</Text> : null}
-        <Text style={styles.schoolLocation}>{school.city}, {school.state}</Text>
-        {school.headCoachName ? (
-          <Text style={styles.schoolCoach}>Coach: {school.headCoachName}</Text>
-        ) : null}
-      </View>
-      <Button label="Request to Join" onPress={onJoin} loading={loading} size="sm" />
-    </Card>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container:     { flex: 1, backgroundColor: NEUTRAL.bg },
-  content:       { padding: SPACE['2xl'], paddingBottom: SPACE['4xl'] },
-  header:        { marginBottom: SPACE['2xl'], marginTop: SPACE.xl },
-  title:         { fontSize: 26, fontWeight: FONT_WEIGHT.bold, color: BRAND },
-  subtitle:      { fontSize: FONT_SIZE.base, color: NEUTRAL.body, marginTop: SPACE.sm },
-  tabs: {
-    flexDirection: 'row', backgroundColor: NEUTRAL.border,
-    borderRadius: RADIUS.md, padding: SPACE.xs, marginBottom: SPACE['2xl'],
+  container: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper2,
   },
-  tab:           { flex: 1, paddingVertical: SPACE.md, alignItems: 'center', borderRadius: RADIUS.sm },
-  tabActive:     { backgroundColor: NEUTRAL.card },
-  tabText:       { fontSize: FONT_SIZE.base, color: NEUTRAL.body, fontWeight: FONT_WEIGHT.medium },
-  tabTextActive: { color: BRAND, fontWeight: FONT_WEIGHT.bold },
-  section:       { marginBottom: SPACE.lg },
-  sectionLabel:  { fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.semibold, color: BRAND_DARK, marginBottom: SPACE.md },
-  sectionDesc:   { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginBottom: SPACE.lg - 2, lineHeight: 20 },
-  input: {
-    backgroundColor: NEUTRAL.card, borderRadius: RADIUS.md, padding: SPACE.lg - 2,
-    fontSize: FONT_SIZE.md, marginBottom: SPACE.md, borderWidth: 1, borderColor: NEUTRAL.input, color: BRAND_DARK,
+  content: {
+    paddingHorizontal: SIGNAL.space.screen + 6,
+    paddingTop: Platform.OS === 'ios' ? 68 : 44,
+    paddingBottom: SIGNAL.space[8] * 2,
   },
-  codeInput:     { textAlign: 'center', fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.bold, letterSpacing: 4 },
-  searchRow:     { flexDirection: 'row', gap: SPACE.md, marginBottom: SPACE.md },
-  searchInput:   { flex: 1, marginBottom: 0 },
+
+  // ── Header ──────────────────────────────────────────────────────────────
+  header: {
+    alignItems: 'center',
+    marginBottom: SIGNAL.space[8],
+  },
+  title: {
+    fontFamily: SIGNAL.font.display,
+    fontSize: 29,
+    lineHeight: 32,
+    letterSpacing: SIGNAL.letter.titleTight,
+    color: SIGNAL.color.indigo,
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 13.5,
+    color: SIGNAL.color.mute,
+    marginTop: SIGNAL.space[2],
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+
+  // ── Sections ────────────────────────────────────────────────────────────
+  section: {
+    marginBottom: SIGNAL.space[7],
+  },
+  sectionTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 18,
+    color: SIGNAL.color.indigo,
+    letterSpacing: SIGNAL.letter.bodyTight,
+    marginBottom: SIGNAL.space[2],
+  },
+  eyebrow: {
+    ...SIGNAL.style.eyebrow,
+    fontFamily: SIGNAL.font.bodyMedium,
+  },
+  eyebrowSpaced: {
+    marginBottom: SIGNAL.space[4],
+  },
+
+  // ── Cards ───────────────────────────────────────────────────────────────
+  card: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    padding: SIGNAL.space[7],
+  },
+
+  // ── Join code input (mono, large, centered) ─────────────────────────────
+  codeInput: {
+    backgroundColor: SIGNAL.color.paper,
+    borderRadius: SIGNAL.radius.control,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    paddingVertical: SIGNAL.space[6],
+    paddingHorizontal: SIGNAL.space[6],
+    fontFamily: SIGNAL.font.mono,
+    fontSize: 26,
+    color: SIGNAL.color.ink,
+    textAlign: 'center',
+    letterSpacing: 6,
+    textTransform: 'uppercase',
+    marginBottom: SIGNAL.space[4],
+  },
+
+  // ── Primary button (indigo solid) ───────────────────────────────────────
+  primaryButton: {
+    backgroundColor: SIGNAL.color.indigo,
+    borderRadius: SIGNAL.radius.button,
+    paddingVertical: SIGNAL.space[5],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryButtonDisabled: {
+    opacity: 0.6,
+  },
+  primaryButtonText: {
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 15,
+    color: SIGNAL.color.white,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+
+  // ── OR divider ──────────────────────────────────────────────────────────
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SIGNAL.space[4],
+    marginBottom: SIGNAL.space[7],
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: SIGNAL.color.line,
+  },
+  dividerText: {
+    ...SIGNAL.style.eyebrow,
+    fontFamily: SIGNAL.font.bodyMedium,
+    color: SIGNAL.color.mute2,
+  },
+
+  // ── Search row ──────────────────────────────────────────────────────────
+  searchRow: {
+    flexDirection: 'row',
+    gap: SIGNAL.space[3],
+  },
+  searchInput: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.control,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    paddingVertical: SIGNAL.space[4] + 1,
+    paddingHorizontal: SIGNAL.space[5] + 1,
+    fontFamily: SIGNAL.font.body,
+    fontSize: 15,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
   searchButton: {
-    backgroundColor: BRAND, borderRadius: RADIUS.md,
-    paddingHorizontal: SPACE.lg, justifyContent: 'center',
+    backgroundColor: SIGNAL.color.indigo,
+    borderRadius: SIGNAL.radius.control,
+    paddingHorizontal: SIGNAL.space[6],
+    minWidth: 90,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  searchButtonText: { color: '#fff', fontWeight: FONT_WEIGHT.bold },
-  schoolCard:    { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
-  schoolColorBar: { flexDirection: 'column', gap: SPACE.xs },
-  colorDot:      { width: 20, height: 20, borderRadius: RADIUS.full },
-  schoolInfo:    { flex: 1 },
-  schoolName:    { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold, color: BRAND_DARK },
-  schoolMascot:  { fontSize: FONT_SIZE.sm, color: NEUTRAL.body, marginTop: 2 },
-  schoolLocation: { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted, marginTop: 2 },
-  schoolCoach:    { fontSize: FONT_SIZE.sm, color: BRAND, fontWeight: FONT_WEIGHT.semibold, marginTop: 2 },
-  skipButton:    { marginTop: SPACE.xl, alignItems: 'center' },
-  skipText:      { color: NEUTRAL.muted, fontSize: FONT_SIZE.sm },
+  searchButtonText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 14,
+    color: SIGNAL.color.white,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+
+  // ── Results list ────────────────────────────────────────────────────────
+  resultsList: {
+    marginTop: SIGNAL.space[4],
+    gap: SIGNAL.space[2],
+  },
+
+  // ── School card ─────────────────────────────────────────────────────────
+  schoolCard: {
+    flexDirection: 'row',
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    overflow: 'hidden',
+  },
+  schoolAccent: {
+    width: 5,
+  },
+  schoolBody: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: SIGNAL.space[5],
+    gap: SIGNAL.space[3],
+  },
+  schoolInfo: {
+    flex: 1,
+  },
+  schoolName: {
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 15,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  schoolMeta: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 12,
+    color: SIGNAL.color.mute,
+    marginTop: 2,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  schoolCoach: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 12,
+    color: SIGNAL.color.indigo,
+    marginTop: 3,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+
+  // ── Request button (indigo solid pill) ──────────────────────────────────
+  requestButton: {
+    backgroundColor: SIGNAL.color.indigo,
+    borderRadius: SIGNAL.radius.control,
+    paddingVertical: SIGNAL.space[2] + 1,
+    paddingHorizontal: SIGNAL.space[5],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  requestButtonDisabled: {
+    opacity: 0.6,
+  },
+  requestButtonText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 12.5,
+    color: SIGNAL.color.white,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+
+  // ── Skip link ───────────────────────────────────────────────────────────
+  skipButton: {
+    marginTop: SIGNAL.space[6],
+    alignItems: 'center',
+    paddingVertical: SIGNAL.space[4],
+  },
+  skipText: {
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: 13,
+    color: SIGNAL.color.mute,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
 });

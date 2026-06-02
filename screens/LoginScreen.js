@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { createUserWithEmailAndPassword, sendPasswordResetEmail, signInWithEmailAndPassword } from 'firebase/auth';
@@ -15,14 +16,14 @@ import { auth, db } from '../firebaseConfig';
 import Button from '../components/Button';
 import {
   BRAND, BRAND_ACCENT, BRAND_DARK, BRAND_LIGHT,
-  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
+  FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE, STATUS,
 } from '../constants/design';
 
 const ROLES = [
-  { key: 'admin_coach', label: 'Head Coach', description: 'Set up and manage your program' },
-  { key: 'assistant_coach', label: 'Assistant Coach', description: 'Help manage an existing program' },
-  { key: 'athlete', label: 'Athlete', description: 'Track your training and runs' },
-  { key: 'parent', label: 'Parent', description: 'Follow your athlete\'s progress' },
+  { key: 'admin_coach',     label: 'Head Coach',      description: 'Set up and manage your program',     icon: 'shield-checkmark-outline', color: SIGNAL.color.indigo },
+  { key: 'assistant_coach', label: 'Assistant Coach', description: 'Help manage an existing program',    icon: 'people-outline',           color: SIGNAL.color.violet },
+  { key: 'athlete',         label: 'Athlete',         description: 'Track your training and races',      icon: 'walk-outline',             color: SIGNAL.color.emerald },
+  { key: 'parent',          label: 'Parent',          description: "Follow your athlete's season",       icon: 'heart-outline',            color: SIGNAL.color.pink },
 ];
 
 export default function LoginScreen({ onAuthSuccess }) {
@@ -40,6 +41,7 @@ export default function LoginScreen({ onAuthSuccess }) {
   const [loading, setLoading] = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [focusedField, setFocusedField] = useState(null);
 
   useEffect(() => {
     checkBiometrics();
@@ -207,6 +209,11 @@ export default function LoginScreen({ onAuthSuccess }) {
   const age = calculateAge();
   const showParentEmail = role === 'athlete' && isSignUp && age !== null && age < 18;
 
+  const inputStyle = (field) => [
+    styles.input,
+    focusedField === field && styles.inputFocused,
+  ];
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -214,199 +221,257 @@ export default function LoginScreen({ onAuthSuccess }) {
     >
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
-        {/* Header */}
+        {/* Brand header */}
         <View style={styles.header}>
-          <Text style={styles.title}>TeamBase</Text>
-          <Text style={styles.subtitle}>Building Championship Teams</Text>
+          <LinearGradient
+            colors={[SIGNAL.color.indigo, SIGNAL.color.violet]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.brandMark}
+          >
+            <Text style={styles.brandMarkText}>TB</Text>
+          </LinearGradient>
+          <Text style={styles.brandTitle}>TeamBase</Text>
+          <Text style={styles.brandTagline}>Building championship teams</Text>
         </View>
 
-        {/* Role Selector - only on sign up */}
+        {/* Sign-in / Sign-up segmented toggle */}
+        <View style={styles.segment}>
+          <TouchableOpacity
+            style={[styles.segmentPill, !isSignUp && styles.segmentPillActive]}
+            onPress={() => setIsSignUp(false)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.segmentText, !isSignUp && styles.segmentTextActive]}>Sign in</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.segmentPill, isSignUp && styles.segmentPillActive]}
+            onPress={() => setIsSignUp(true)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.segmentText, isSignUp && styles.segmentTextActive]}>Sign up</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Role Selector — sign up only */}
         {isSignUp && (
           <View style={styles.section}>
-            <Text style={styles.sectionLabel}>I am a:</Text>
-            {ROLES.map((r) => (
-              <TouchableOpacity
-                key={r.key}
-                style={[styles.roleCard, role === r.key && styles.roleCardActive]}
-                onPress={() => setRole(r.key)}
-              >
-                <View style={styles.roleCardInner}>
-                  <Text style={[styles.roleCardTitle, role === r.key && styles.roleCardTitleActive]}>
-                    {r.label}
-                  </Text>
-                  <Text style={[styles.roleCardDesc, role === r.key && styles.roleCardDescActive]}>
-                    {r.description}
-                  </Text>
-                </View>
-                <View style={[styles.radioCircle, role === r.key && styles.radioCircleActive]}>
-                  {role === r.key && <View style={styles.radioInner} />}
-                </View>
-              </TouchableOpacity>
-            ))}
+            <Text style={styles.eyebrow}>I am a</Text>
+            <View style={{ gap: SIGNAL.space[2] }}>
+              {ROLES.map((r) => {
+                const on = role === r.key;
+                return (
+                  <TouchableOpacity
+                    key={r.key}
+                    activeOpacity={0.85}
+                    style={[styles.roleCard, on && styles.roleCardActive]}
+                    onPress={() => setRole(r.key)}
+                  >
+                    <View style={[styles.roleIconBadge, { backgroundColor: r.color + SIGNAL.tint.chip }]}>
+                      <Ionicons name={r.icon} size={20} color={r.color} />
+                    </View>
+                    <View style={styles.roleCardInner}>
+                      <Text style={[styles.roleCardTitle, on && styles.roleCardTitleActive]}>{r.label}</Text>
+                      <Text style={styles.roleCardDesc}>{r.description}</Text>
+                    </View>
+                    <View style={[styles.radioCircle, on && styles.radioCircleActive]}>
+                      {on && <View style={styles.radioInner} />}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
         )}
 
-        {/* Name fields - sign up only */}
-        {isSignUp && (
-          <View style={styles.row}>
-            <TextInput
-              style={[styles.input, styles.halfInput]}
-              placeholder="First name"
-              placeholderTextColor={NEUTRAL.muted}
-              value={firstName}
-              onChangeText={setFirstName}
-              autoCapitalize="words"
-            />
-            <TextInput
-              style={[styles.input, styles.halfInput]}
-              placeholder="Last name"
-              placeholderTextColor={NEUTRAL.muted}
-              value={lastName}
-              onChangeText={setLastName}
-              autoCapitalize="words"
-            />
-          </View>
-        )}
+        {/* Form card */}
+        <View style={styles.formCard}>
+          {isSignUp && (
+            <View style={styles.row}>
+              <TextInput
+                style={[...inputStyle('first'), styles.halfInput]}
+                placeholder="First name"
+                placeholderTextColor={SIGNAL.color.mute2}
+                value={firstName}
+                onChangeText={setFirstName}
+                autoCapitalize="words"
+                onFocus={() => setFocusedField('first')}
+                onBlur={() => setFocusedField(null)}
+              />
+              <TextInput
+                style={[...inputStyle('last'), styles.halfInput]}
+                placeholder="Last name"
+                placeholderTextColor={SIGNAL.color.mute2}
+                value={lastName}
+                onChangeText={setLastName}
+                autoCapitalize="words"
+                onFocus={() => setFocusedField('last')}
+                onBlur={() => setFocusedField(null)}
+              />
+            </View>
+          )}
 
-        {/* Email */}
-        <TextInput
-          style={styles.input}
-          placeholder="Email address"
-          placeholderTextColor={NEUTRAL.muted}
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-
-        {/* Password with show/hide */}
-        <View style={styles.passwordRow}>
+          {/* Email */}
           <TextInput
-            style={styles.passwordInput}
-            placeholder="Password"
-            placeholderTextColor={NEUTRAL.muted}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry={!showPassword}
+            style={inputStyle('email')}
+            placeholder="Email address"
+            placeholderTextColor={SIGNAL.color.mute2}
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
+            onFocus={() => setFocusedField('email')}
+            onBlur={() => setFocusedField(null)}
           />
-          <TouchableOpacity
-            style={styles.eyeBtn}
-            onPress={() => setShowPassword(v => !v)}
-          >
-            <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={22} color={NEUTRAL.body} />
-          </TouchableOpacity>
+
+          {/* Password with show/hide */}
+          <View style={[styles.passwordRow, focusedField === 'password' && styles.inputFocused]}>
+            <TextInput
+              style={styles.passwordInput}
+              placeholder="Password"
+              placeholderTextColor={SIGNAL.color.mute2}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              autoCorrect={false}
+              onFocus={() => setFocusedField('password')}
+              onBlur={() => setFocusedField(null)}
+            />
+            <TouchableOpacity
+              style={styles.eyeBtn}
+              onPress={() => setShowPassword(v => !v)}
+            >
+              <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={SIGNAL.color.mute} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Forgot password */}
+          {!isSignUp && (
+            <TouchableOpacity style={styles.forgotBtn} onPress={handleForgotPassword}>
+              <Text style={styles.forgotText}>Forgot password?</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Gender selector — athletes only on sign up */}
+          {isSignUp && role === 'athlete' && (
+            <View style={styles.subSection}>
+              <Text style={styles.eyebrow}>I compete on the</Text>
+              <View style={styles.row}>
+                {['boys', 'girls'].map(g => {
+                  const on = gender === g;
+                  return (
+                    <TouchableOpacity
+                      key={g}
+                      activeOpacity={0.85}
+                      style={[styles.genderCard, on && styles.genderCardActive]}
+                      onPress={() => setGender(g)}
+                    >
+                      <Text style={[styles.genderText, on && styles.genderTextActive]}>
+                        {g === 'boys' ? 'Boys team' : 'Girls team'}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
+          {/* Date of Birth — athletes only on sign up */}
+          {isSignUp && role === 'athlete' && (
+            <View style={styles.subSection}>
+              <Text style={styles.eyebrow}>Date of birth</Text>
+              <View style={styles.row}>
+                <TextInput
+                  style={[...inputStyle('mm'), styles.thirdInput]}
+                  placeholder="MM"
+                  placeholderTextColor={SIGNAL.color.mute2}
+                  value={birthMonth}
+                  onChangeText={setBirthMonth}
+                  keyboardType="numeric"
+                  maxLength={2}
+                  onFocus={() => setFocusedField('mm')}
+                  onBlur={() => setFocusedField(null)}
+                />
+                <TextInput
+                  style={[...inputStyle('dd'), styles.thirdInput]}
+                  placeholder="DD"
+                  placeholderTextColor={SIGNAL.color.mute2}
+                  value={birthDay}
+                  onChangeText={setBirthDay}
+                  keyboardType="numeric"
+                  maxLength={2}
+                  onFocus={() => setFocusedField('dd')}
+                  onBlur={() => setFocusedField(null)}
+                />
+                <TextInput
+                  style={[...inputStyle('yyyy'), styles.thirdInput]}
+                  placeholder="YYYY"
+                  placeholderTextColor={SIGNAL.color.mute2}
+                  value={birthYear}
+                  onChangeText={setBirthYear}
+                  keyboardType="numeric"
+                  maxLength={4}
+                  onFocus={() => setFocusedField('yyyy')}
+                  onBlur={() => setFocusedField(null)}
+                />
+              </View>
+              {age !== null && age < 18 && (
+                <View style={styles.minorNotice}>
+                  <Ionicons name="information-circle-outline" size={16} color={SIGNAL.color.amber} />
+                  <Text style={styles.minorNoticeText}>
+                    Parental consent required for athletes under 18
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Parent email — minors only */}
+          {showParentEmail && (
+            <View style={styles.subSection}>
+              <Text style={styles.eyebrow}>Parent or guardian email</Text>
+              <TextInput
+                style={inputStyle('pemail')}
+                placeholder="parent@email.com"
+                placeholderTextColor={SIGNAL.color.mute2}
+                value={parentEmail}
+                onChangeText={setParentEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                onFocus={() => setFocusedField('pemail')}
+                onBlur={() => setFocusedField(null)}
+              />
+              <Text style={styles.helperText}>
+                Your parent will receive a consent email before you can access team features.
+              </Text>
+            </View>
+          )}
         </View>
 
-        {/* Forgot password */}
-        {!isSignUp && (
-          <TouchableOpacity style={styles.forgotBtn} onPress={handleForgotPassword}>
-            <Text style={styles.forgotText}>Forgot password?</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Gender selector - athletes only on sign up */}
-        {isSignUp && role === 'athlete' && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>I compete on the:</Text>
-            <View style={styles.row}>
-              {['boys', 'girls'].map(g => (
-                <TouchableOpacity
-                  key={g}
-                  style={[styles.genderCard, gender === g && styles.genderCardActive]}
-                  onPress={() => setGender(g)}
-                >
-                  <Text style={[styles.genderText, gender === g && styles.genderTextActive]}>
-                    {g === 'boys' ? 'Boys team' : 'Girls team'}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* Date of Birth - athletes only on sign up */}
-        {isSignUp && role === 'athlete' && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Date of birth</Text>
-            <View style={styles.row}>
-              <TextInput
-                style={[styles.input, styles.thirdInput]}
-                placeholder="MM"
-                placeholderTextColor={NEUTRAL.muted}
-                value={birthMonth}
-                onChangeText={setBirthMonth}
-                keyboardType="numeric"
-                maxLength={2}
-              />
-              <TextInput
-                style={[styles.input, styles.thirdInput]}
-                placeholder="DD"
-                placeholderTextColor={NEUTRAL.muted}
-                value={birthDay}
-                onChangeText={setBirthDay}
-                keyboardType="numeric"
-                maxLength={2}
-              />
-              <TextInput
-                style={[styles.input, styles.thirdInput]}
-                placeholder="YYYY"
-                placeholderTextColor={NEUTRAL.muted}
-                value={birthYear}
-                onChangeText={setBirthYear}
-                keyboardType="numeric"
-                maxLength={4}
-              />
-            </View>
-            {age !== null && age < 18 && (
-              <View style={styles.minorNotice}>
-                <Text style={styles.minorNoticeText}>
-                  Parental consent required for athletes under 18
-                </Text>
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* Parent email - minors only */}
-        {showParentEmail && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Parent or guardian email</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="parent@email.com"
-              placeholderTextColor={NEUTRAL.muted}
-              value={parentEmail}
-              onChangeText={setParentEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-            <Text style={styles.helperText}>
-              Your parent will receive a consent email before you can access team features.
-            </Text>
-          </View>
-        )}
-
-        {/* Sign In / Sign Up button */}
-        <Button
-          label={isSignUp ? 'Create Account' : 'Sign In'}
+        {/* Primary CTA */}
+        <TouchableOpacity
+          style={[styles.primaryBtn, loading && styles.primaryBtnDisabled]}
           onPress={handleEmailAuth}
-          loading={loading}
-          size="lg"
-          style={{ marginTop: SPACE.sm }}
-        />
+          disabled={loading}
+          activeOpacity={0.9}
+        >
+          <Text style={styles.primaryBtnText}>
+            {loading ? 'Please wait…' : (isSignUp ? 'Create account' : 'Sign in')}
+          </Text>
+        </TouchableOpacity>
 
         {/* Face ID button */}
         {biometricAvailable && !isSignUp && (
-          <Button
-            label="Sign in with Face ID / Fingerprint"
-            variant="secondary"
+          <TouchableOpacity
+            style={styles.secondaryBtn}
             onPress={handleBiometricLogin}
-            size="lg"
-            style={{ marginTop: SPACE.md }}
-          />
+            activeOpacity={0.9}
+          >
+            <Ionicons name="finger-print-outline" size={18} color={SIGNAL.color.inkSoft} />
+            <Text style={styles.secondaryBtnText}>Sign in with Face ID / Fingerprint</Text>
+          </TouchableOpacity>
         )}
 
         {/* Toggle sign in / sign up */}
@@ -430,65 +495,326 @@ export default function LoginScreen({ onAuthSuccess }) {
 }
 
 const styles = StyleSheet.create({
-  container:        { flex: 1, backgroundColor: NEUTRAL.bg },
-  scrollContent:    { padding: SPACE['2xl'], paddingBottom: SPACE['4xl'] },
-  header:           { alignItems: 'center', marginBottom: SPACE['3xl'], marginTop: SPACE['4xl'] },
-  title:            { fontSize: FONT_SIZE['3xl'], fontWeight: FONT_WEIGHT.bold, color: BRAND },
-  subtitle:         { fontSize: FONT_SIZE.md, color: NEUTRAL.body, marginTop: SPACE.sm },
-  section:          { width: '100%', marginBottom: SPACE.sm },
-  sectionLabel:     { fontSize: FONT_SIZE.base, color: BRAND_DARK, fontWeight: FONT_WEIGHT.semibold, marginBottom: SPACE.md },
-  row:              { flexDirection: 'row', gap: SPACE.md },
-  input: {
-    width: '100%', backgroundColor: NEUTRAL.card, borderRadius: RADIUS.md,
-    padding: SPACE.lg, fontSize: FONT_SIZE.md, marginBottom: SPACE.md,
-    borderWidth: 1, borderColor: NEUTRAL.input, color: BRAND_DARK,
+  container: {
+    flex: 1,
+    backgroundColor: SIGNAL.color.paper2,
   },
-  halfInput:        { flex: 1, width: undefined },
-  thirdInput:       { flex: 1, width: undefined },
+  scrollContent: {
+    paddingHorizontal: SIGNAL.space.screen,
+    paddingTop: Platform.OS === 'ios' ? 68 : 44,
+    paddingBottom: SIGNAL.space[8] * 2,
+  },
+
+  // ── Brand header ──
+  header: {
+    alignItems: 'center',
+    marginBottom: SIGNAL.space[8],
+  },
+  brandMark: {
+    width: 60,
+    height: 60,
+    borderRadius: SIGNAL.radius.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SIGNAL.space[5],
+  },
+  brandMarkText: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '700',
+    letterSpacing: -0.5,
+  },
+  brandTitle: {
+    fontFamily: SIGNAL.font.display,
+    fontSize: 29,
+    lineHeight: 32,
+    color: SIGNAL.color.indigo,
+    letterSpacing: -0.58,
+  },
+  brandTagline: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 13.5,
+    color: SIGNAL.color.mute,
+    marginTop: 6,
+  },
+
+  // ── Segmented Sign in / Sign up toggle ──
+  segment: {
+    flexDirection: 'row',
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.chip,
+    padding: 4,
+    marginBottom: SIGNAL.space[6],
+    ...SIGNAL.border.hairline,
+  },
+  segmentPill: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: SIGNAL.radius.chip,
+    alignItems: 'center',
+  },
+  segmentPillActive: {
+    backgroundColor: SIGNAL.color.indigo,
+  },
+  segmentText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 14,
+    color: SIGNAL.color.mute,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  segmentTextActive: {
+    color: '#fff',
+  },
+
+  // ── Sections / eyebrows ──
+  section: {
+    marginBottom: SIGNAL.space[6],
+  },
+  subSection: {
+    marginTop: SIGNAL.space[5],
+  },
+  eyebrow: {
+    ...SIGNAL.style.eyebrow,
+    marginBottom: SIGNAL.space[3],
+  },
+
+  // ── Role cards ──
   roleCard: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: NEUTRAL.card,
-    borderRadius: RADIUS.md, padding: SPACE.lg - 2, marginBottom: SPACE.md,
-    borderWidth: 2, borderColor: NEUTRAL.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SIGNAL.space[4],
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.button,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    borderWidth: 1.5,
+    borderColor: SIGNAL.color.line,
   },
-  roleCardActive:      { borderColor: BRAND, backgroundColor: BRAND_LIGHT },
-  roleCardInner:       { flex: 1 },
-  roleCardTitle:       { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.semibold, color: BRAND_DARK },
-  roleCardTitleActive: { color: BRAND },
-  roleCardDesc:        { fontSize: FONT_SIZE.sm, color: NEUTRAL.muted, marginTop: 2 },
-  roleCardDescActive:  { color: BRAND_ACCENT },
+  roleCardActive: {
+    borderColor: SIGNAL.color.indigo,
+    borderWidth: 2,
+    backgroundColor: SIGNAL.color.indigo + SIGNAL.tint.wash,
+    paddingVertical: 12.5,
+    paddingHorizontal: 13.5,
+  },
+  roleIconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  roleCardInner: {
+    flex: 1,
+  },
+  roleCardTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 14.5,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  roleCardTitleActive: {
+    color: SIGNAL.color.indigo,
+  },
+  roleCardDesc: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 11.5,
+    color: SIGNAL.color.mute,
+    marginTop: 1,
+  },
   radioCircle: {
-    width: 22, height: 22, borderRadius: 11,
-    borderWidth: 2, borderColor: NEUTRAL.input,
-    alignItems: 'center', justifyContent: 'center',
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: SIGNAL.color.line,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  radioCircleActive:   { borderColor: BRAND },
-  radioInner:          { width: 12, height: 12, borderRadius: 6, backgroundColor: BRAND },
-  genderCard: {
-    flex: 1, alignItems: 'center', backgroundColor: NEUTRAL.card,
-    borderRadius: RADIUS.md, padding: SPACE.lg - 2,
-    borderWidth: 2, borderColor: NEUTRAL.border,
+  radioCircleActive: {
+    borderColor: SIGNAL.color.indigo,
   },
-  genderCardActive:    { backgroundColor: BRAND, borderColor: BRAND },
-  genderText:          { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold, color: NEUTRAL.label },
-  genderTextActive:    { color: '#fff' },
-  minorNotice: {
-    backgroundColor: STATUS.warningBg, borderRadius: RADIUS.sm, padding: SPACE.md,
-    borderLeftWidth: 4, borderLeftColor: STATUS.warning, marginTop: SPACE.xs, marginBottom: SPACE.sm,
+  radioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: SIGNAL.color.indigo,
   },
-  minorNoticeText:     { color: '#92400e', fontSize: FONT_SIZE.sm },
+
+  // ── Form card ──
+  formCard: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    padding: SIGNAL.space[5],
+    marginBottom: SIGNAL.space[5],
+    ...SIGNAL.border.hairline,
+  },
+  row: {
+    flexDirection: 'row',
+    gap: SIGNAL.space[3],
+  },
+  input: {
+    width: '100%',
+    backgroundColor: SIGNAL.color.paper2,
+    borderRadius: SIGNAL.radius.control + 1,
+    paddingVertical: 13,
+    paddingHorizontal: 15,
+    fontFamily: SIGNAL.font.body,
+    fontSize: 15,
+    color: SIGNAL.color.ink,
+    marginBottom: SIGNAL.space[3],
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+  },
+  inputFocused: {
+    borderColor: SIGNAL.color.indigo,
+    borderWidth: 1.5,
+    backgroundColor: SIGNAL.color.white,
+  },
+  halfInput: { flex: 1, width: undefined },
+  thirdInput: { flex: 1, width: undefined, textAlign: 'center' },
+
+  // ── Password row ──
   passwordRow: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: NEUTRAL.card,
-    borderRadius: RADIUS.md, borderWidth: 1, borderColor: NEUTRAL.input, marginBottom: SPACE.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: SIGNAL.color.paper2,
+    borderRadius: SIGNAL.radius.control + 1,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    marginBottom: SIGNAL.space[3],
   },
-  passwordInput:       { flex: 1, padding: SPACE.lg - 2, fontSize: FONT_SIZE.md, color: BRAND_DARK },
-  eyeBtn:              { paddingHorizontal: SPACE.lg, paddingVertical: SPACE.lg - 2 },
-  forgotBtn:           { alignSelf: 'flex-end', marginTop: -SPACE.sm, marginBottom: SPACE.md },
-  forgotText:          { color: BRAND, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold },
-  helperText:          { fontSize: FONT_SIZE.xs, color: NEUTRAL.body, marginTop: SPACE.xs, marginBottom: SPACE.sm },
-  toggleButton:        { marginTop: SPACE.xl, alignItems: 'center' },
-  toggleText:          { color: BRAND, fontSize: FONT_SIZE.base },
+  passwordInput: {
+    flex: 1,
+    paddingVertical: 13,
+    paddingHorizontal: 15,
+    fontFamily: SIGNAL.font.body,
+    fontSize: 15,
+    color: SIGNAL.color.ink,
+  },
+  eyeBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+  },
+
+  // ── Forgot password ──
+  forgotBtn: {
+    alignSelf: 'flex-end',
+    marginTop: 2,
+    marginBottom: 2,
+  },
+  forgotText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.indigo,
+    fontSize: 13,
+  },
+
+  // ── Gender ──
+  genderCard: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: SIGNAL.color.paper2,
+    borderRadius: SIGNAL.radius.control + 1,
+    paddingVertical: 13,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+  },
+  genderCardActive: {
+    backgroundColor: SIGNAL.color.indigo,
+    borderColor: SIGNAL.color.indigo,
+  },
+  genderText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 13.5,
+    color: SIGNAL.color.inkSoft,
+  },
+  genderTextActive: {
+    color: '#fff',
+  },
+
+  // ── Minor notice ──
+  minorNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: SIGNAL.color.amber + SIGNAL.tint.chip,
+    borderRadius: SIGNAL.radius.control,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: SIGNAL.space[2],
+  },
+  minorNoticeText: {
+    flex: 1,
+    fontFamily: SIGNAL.font.body,
+    color: SIGNAL.color.inkSoft,
+    fontSize: 12,
+  },
+
+  helperText: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 11.5,
+    color: SIGNAL.color.mute,
+    marginTop: SIGNAL.space[1],
+  },
+
+  // ── Primary CTA ──
+  primaryBtn: {
+    width: '100%',
+    backgroundColor: SIGNAL.color.indigo,
+    borderRadius: SIGNAL.radius.button,
+    paddingVertical: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryBtnDisabled: {
+    opacity: 0.6,
+  },
+  primaryBtnText: {
+    fontFamily: SIGNAL.font.bodyBold,
+    color: '#fff',
+    fontSize: 16,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+
+  // ── Secondary CTA (Face ID) ──
+  secondaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    width: '100%',
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.button,
+    paddingVertical: 13,
+    marginTop: SIGNAL.space[3],
+    borderWidth: 1.5,
+    borderColor: SIGNAL.color.line,
+  },
+  secondaryBtnText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.inkSoft,
+    fontSize: 14,
+  },
+
+  // ── Toggle ──
+  toggleButton: {
+    marginTop: SIGNAL.space[6],
+    alignItems: 'center',
+  },
+  toggleText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.indigo,
+    fontSize: 13.5,
+  },
+
+  // ── Privacy ──
   privacyText: {
-    fontSize: FONT_SIZE.xs, color: NEUTRAL.muted, textAlign: 'center',
-    marginTop: SPACE.xl, lineHeight: 16,
+    fontFamily: SIGNAL.font.body,
+    fontSize: 11.5,
+    color: SIGNAL.color.mute,
+    textAlign: 'center',
+    marginTop: SIGNAL.space[6],
+    lineHeight: 16,
+    paddingHorizontal: SIGNAL.space[4],
   },
 });
