@@ -19,6 +19,7 @@
       }
     },
     "android": {
+      "package": "com.mikedbatt.XCTracker",
       "adaptiveIcon": {
         "backgroundColor": "#213f96",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
