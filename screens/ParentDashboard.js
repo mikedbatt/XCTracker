@@ -275,7 +275,7 @@ export default function ParentDashboard({ userData }) {
                       const d = r.date?.toDate ? r.date.toDate() : new Date(r.date);
                       return d >= weekStart;
                     });
-                    const weekMiles = weekRuns.reduce((sum, r) => sum + (Number(r.distance) || 0), 0);
+                    const weekMiles = weekRuns.reduce((sum, r) => sum + (Number(r.miles) || 0), 0);
                     const easyRuns = weekRuns.filter(r => (r.effort || 0) <= 4).length;
                     const easyPct = weekRuns.length > 0 ? Math.round((easyRuns / weekRuns.length) * 100) : 0;
                     const lastRun = athleteRuns[0];
