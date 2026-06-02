@@ -26,15 +26,15 @@ import AthleteDashboardSignal from '../screens/AthleteDashboardSignal';
 // Lets you A/B compare during the redesign without re-routing or rebuilding.
 const USE_SIGNAL_DASHBOARD = true;
 const AthleteDashboard = USE_SIGNAL_DASHBOARD ? AthleteDashboardSignal : AthleteDashboardLegacy;
-import AthleteJoinScreen from '../screens/AthleteJoinScreen';
+import AthleteJoinScreen from '../screens/AthleteJoinScreenSignal';
 import CoachDashboardLegacy from '../screens/CoachDashboard';
 import CoachDashboardSignal from '../screens/CoachDashboardSignal';
 // Flip this to false to fall back to the legacy (pre-Signal) coach dashboard.
 const USE_SIGNAL_COACH_DASHBOARD = true;
 const CoachDashboard = USE_SIGNAL_COACH_DASHBOARD ? CoachDashboardSignal : CoachDashboardLegacy;
 import CoachSetupScreen from '../screens/CoachSetupScreen';
-import LoginScreen from '../screens/LoginScreen';
-import ParentDashboard from '../screens/ParentDashboard';
+import LoginScreen from '../screens/LoginScreenSignal';
+import ParentDashboard from '../screens/ParentDashboardSignal';
 import ParentLinkScreen from '../screens/ParentLinkScreen';
 
 // Register for push notifications and save token to Firestore
