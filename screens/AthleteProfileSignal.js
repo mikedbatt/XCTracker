@@ -25,7 +25,7 @@ import {
 import { calcVDOT, getTrainingPaces, formatPace, parseTimeToSeconds, RACE_DISTANCES } from '../utils/vdotUtils';
 import StravaConnect from './StravaConnect';
 
-export default function AthleteProfileSignal({ userData, school, coachDisabledHR = false, onClose, onUpdated, refreshUser, goToJoinScreen }) {
+export default function AthleteProfileSignal({ userData, school, onClose, onUpdated, refreshUser, goToJoinScreen }) {
   const [firstName,     setFirstName]     = useState(userData.firstName || '');
   const [lastName,      setLastName]      = useState(userData.lastName  || '');
   const [email,         setEmail]         = useState(userData.email     || '');
@@ -36,8 +36,6 @@ export default function AthleteProfileSignal({ userData, school, coachDisabledHR
   const [stravaVisible, setStravaVisible] = useState(false);
   const [stravaLinked,  setStravaLinked]  = useState(false);
   const [activeSection, setActiveSection] = useState('profile');
-  const [showHRZones,   setShowHRZones]   = useState(userData.showHRZones !== false);
-  const [hrZoneLoaded,  setHrZoneLoaded]  = useState(false);
   const [avatarColor,   setAvatarColor]   = useState(userData.avatarColor || SIGNAL.color.indigo);
   const [linkedParents, setLinkedParents] = useState([]);
   // Tracks which connected parent IDs the athlete has already acknowledged.
@@ -54,20 +52,8 @@ export default function AthleteProfileSignal({ userData, school, coachDisabledHR
   useEffect(() => {
     loadMessages();
     checkStrava();
-    loadHRZonePref();
     loadLinkedParents();
   }, []);
-
-  const loadHRZonePref = async () => {
-    try {
-      const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
-      if (userDoc.exists()) {
-        const val = userDoc.data().showHRZones;
-        setShowHRZones(val !== false);
-      }
-      setHrZoneLoaded(true);
-    } catch (e) { console.warn('Failed to load HR zone pref:', e); setHrZoneLoaded(true); }
-  };
 
   const checkStrava = async () => {
     try {
@@ -138,13 +124,6 @@ export default function AthleteProfileSignal({ userData, school, coachDisabledHR
       Alert.alert('Error', 'Could not save. Please try again.');
     }
     setSaving(false);
-  };
-
-  const handleToggleHRZones = async (value) => {
-    setShowHRZones(value);
-    try {
-      await updateDoc(doc(db, 'users', auth.currentUser.uid), { showHRZones: value });
-    } catch (e) { console.warn('Failed to save HR zone preference:', e); }
   };
 
   const handleVdotCalculate = () => {
@@ -480,35 +459,6 @@ export default function AthleteProfileSignal({ userData, school, coachDisabledHR
                   ? <ActivityIndicator color="#fff" />
                   : <Text style={styles.primaryBtnText}>Save changes</Text>}
               </TouchableOpacity>
-            </View>
-
-            {/* Training preferences */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Training preferences</Text>
-              {coachDisabledHR ? (
-                <View style={styles.coachDisabledRow}>
-                  <Ionicons name="information-circle-outline" size={18} color={SIGNAL.color.mute} />
-                  <Text style={styles.coachDisabledText}>Heart rate zones are turned off by your coach</Text>
-                </View>
-              ) : (
-                <View style={styles.toggleRow}>
-                  <View style={styles.toggleInfo}>
-                    <Text style={styles.toggleLabel}>Show heart rate zones</Text>
-                    <Text style={styles.toggleHint}>Turn off if you train by feel or don't use an HR monitor.</Text>
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => hrZoneLoaded && handleToggleHRZones(!showHRZones)}
-                    activeOpacity={0.8}
-                    disabled={!hrZoneLoaded}
-                    style={[
-                      styles.switchTrack,
-                      { backgroundColor: showHRZones ? SIGNAL.color.indigo : SIGNAL.color.line },
-                    ]}
-                  >
-                    <View style={[styles.switchKnob, { left: showHRZones ? 21 : 3 }]} />
-                  </TouchableOpacity>
-                </View>
-              )}
             </View>
 
             {/* VDOT paces */}
