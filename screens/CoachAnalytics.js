@@ -488,7 +488,7 @@ export default function CoachAnalytics({
                   activeOpacity={0.85}
                 >
                   <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
-                    {chip.label} · {chip.count}
+                    {chip.label} ({chip.count})
                   </Text>
                 </TouchableOpacity>
               );
