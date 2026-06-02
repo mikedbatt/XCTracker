@@ -142,6 +142,16 @@ export default function AthleteAnalyticsSignal({ userData, school, myGroup, athl
     if (targetMiles > 0) compliance30 = Math.round((recentMiles / targetMiles) * 100);
   }
 
+  // Last 4 weeks of per-week mileage compliance for the trend dots row.
+  // Pads with nulls on the left when fewer than 4 weeks of data exist (e.g.
+  // brand-new season). Each value = actual / target × 100, rounded.
+  const volumeTrend = (() => {
+    const valid = volumeWeeks.filter(w => w.target > 0 && w.actual != null);
+    const last4 = valid.slice(-4);
+    const padded = [...Array(Math.max(0, 4 - last4.length)).fill(null), ...last4];
+    return padded.map(w => w == null ? null : Math.round((w.actual / w.target) * 100));
+  })();
+
   // ── Feature 2: Race Performance data ──
   const myResults = raceResults.map(res => {
     const race = races.find(r => r.id === res.raceId);
@@ -511,41 +521,35 @@ export default function AthleteAnalyticsSignal({ userData, school, myGroup, athl
 
           {volumeWeeks.length > 0 ? (
             <View style={styles.cardBody}>
-              {/* Phase strip */}
-              {phaseInfo.phases && phaseInfo.phases.length > 0 && (
-                <View style={styles.phaseStrip}>
-                  {phaseInfo.phases.map((p, i) => {
-                    const isActive = p.name === phaseInfo.name;
-                    return (
-                      <View
-                        key={i}
-                        style={[
-                          styles.phaseChip,
-                          isActive && { backgroundColor: SIGNAL.color.indigo, borderColor: SIGNAL.color.indigo },
-                        ]}
-                      >
-                        <Text style={[styles.phaseChipText, isActive && { color: '#fff' }]}>
-                          {p.name.replace('Pre-Season ', 'Pre-')}
-                        </Text>
-                      </View>
-                    );
-                  })}
-                </View>
+              {/* Hero gauge — gradient indigo→violet card (mirrors Easy-Hard Balance) */}
+              {compliance30 != null && (
+                <LinearGradient
+                  colors={[SIGNAL.color.indigo, SIGNAL.color.violet]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.heroCard}
+                >
+                  <Text style={styles.heroGaugeNum}>{compliance30}%</Text>
+                  <Text style={styles.heroGaugeSub}>Of weekly target</Text>
+                </LinearGradient>
               )}
 
-              {/* 30-day mileage compliance indicator */}
-              {compliance30 != null && (() => {
-                const color = compliance30 >= 90 && compliance30 <= 110
-                  ? SIGNAL.color.emerald
-                  : compliance30 < 90 ? SIGNAL.color.amber : SIGNAL.color.coral;
-                return (
-                  <View style={styles.complianceRow}>
-                    <Text style={styles.complianceLabel}>Last 30 days</Text>
-                    <Text style={[styles.complianceNum, { color }]}>{compliance30}%</Text>
-                    <Text style={styles.complianceSub}>of weekly target</Text>
+              {/* 4-week trend dots */}
+              <View style={styles.trendRow}>
+                {volumeTrend.map((pct, i) => (
+                  <View key={i} style={styles.trendItem}>
+                    <View style={[styles.trendDot, {
+                      backgroundColor: pct == null
+                        ? SIGNAL.color.line
+                        : pct >= 90 && pct <= 110 ? SIGNAL.color.emerald
+                        : pct < 90 ? SIGNAL.color.amber
+                        : SIGNAL.color.coral,
+                    }]} />
+                    <Text style={styles.trendLabel}>{pct != null ? `${pct}%` : '—'}</Text>
                   </View>
-                );
-              })()}
+                ))}
+                <Text style={styles.trendArrow}>← 4wk</Text>
+              </View>
             </View>
           ) : (
             <View style={styles.cardBody}>
@@ -1161,46 +1165,8 @@ const styles = StyleSheet.create({
   },
 
   // ── 1. Mileage Volume ──
-  phaseStrip: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 14,
-  },
-  phaseChip: {
-    paddingHorizontal: 11,
-    paddingVertical: 4,
-    borderRadius: SIGNAL.radius.chip,
-    backgroundColor: SIGNAL.color.paper,
-    borderWidth: 1,
-    borderColor: SIGNAL.color.line,
-  },
-  phaseChipText: {
-    fontFamily: SIGNAL.font.bodySemi,
-    fontSize: 11,
-    color: SIGNAL.color.mute,
-  },
-  // 30-day mileage compliance pill (collapsed Mileage Volume view)
-  complianceRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 8,
-    marginTop: 6,
-  },
-  complianceLabel: {
-    ...SIGNAL.style.eyebrow,
-    fontSize: 10,
-  },
-  complianceNum: {
-    fontFamily: SIGNAL.font.bodySemi,
-    fontSize: 26,
-    letterSpacing: SIGNAL.letter.titleTight,
-  },
-  complianceSub: {
-    fontFamily: SIGNAL.font.body,
-    fontSize: 11.5,
-    color: SIGNAL.color.mute,
-  },
+  // (Collapsed view reuses Easy-Hard heroCard + trendRow styles for visual
+  // parity; only the dropdown chart has its own bar-specific styles below.)
 
   // Volume bar parts (used by the expanded dropdown chart)
   volumeBarCurrent: {
