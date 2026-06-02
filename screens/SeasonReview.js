@@ -647,16 +647,16 @@ const styles = StyleSheet.create({
     color: SIGNAL.color.mute2,
     letterSpacing: SIGNAL.letter.eyebrow,
     textTransform: 'uppercase',
-    marginTop: SIGNAL.space.7,
+    marginTop: SIGNAL.space[7],
   },
 
   // ── Hero gradient card (indigo → violet) ──────────────────────────────────
   heroCard: {
     borderRadius: SIGNAL.radius.card,
-    padding: SIGNAL.space.8,
+    padding: SIGNAL.space[8],
     paddingVertical: 32,
     alignItems: 'center',
-    marginBottom: SIGNAL.space.6,
+    marginBottom: SIGNAL.space[6],
   },
   heroEyebrow: {
     fontSize: SIGNAL.size.eyebrow,
@@ -664,7 +664,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     color: 'rgba(255,255,255,0.78)',
     fontFamily: SIGNAL.font.bodyMedium,
-    marginBottom: SIGNAL.space.3,
+    marginBottom: SIGNAL.space[3],
   },
   heroSeason: {
     fontSize: SIGNAL.size.display,
@@ -677,7 +677,7 @@ const styles = StyleSheet.create({
     fontSize: SIGNAL.size.bodyLg,
     fontFamily: SIGNAL.font.bodySemi,
     color: SIGNAL.color.white,
-    marginTop: SIGNAL.space.2,
+    marginTop: SIGNAL.space[2],
     letterSpacing: SIGNAL.letter.bodyTight,
   },
   heroSchool: {
@@ -691,7 +691,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 1,
     backgroundColor: 'rgba(255,255,255,0.35)',
-    marginVertical: SIGNAL.space.4,
+    marginVertical: SIGNAL.space[4],
   },
   heroDate: {
     fontSize: SIGNAL.size.label,
@@ -704,8 +704,8 @@ const styles = StyleSheet.create({
   statHeroCard: {
     borderRadius: SIGNAL.radius.card,
     paddingVertical: 26,
-    paddingHorizontal: SIGNAL.space.6,
-    marginBottom: SIGNAL.space.6,
+    paddingHorizontal: SIGNAL.space[6],
+    marginBottom: SIGNAL.space[6],
   },
   statHeroEyebrow: {
     fontSize: SIGNAL.size.eyebrow,
@@ -714,7 +714,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.85)',
     fontFamily: SIGNAL.font.bodyMedium,
     textAlign: 'center',
-    marginBottom: SIGNAL.space.4,
+    marginBottom: SIGNAL.space[4],
   },
   statHeroRow: {
     flexDirection: 'row',
@@ -749,8 +749,8 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: SIGNAL.color.white,
     borderRadius: SIGNAL.radius.card,
-    padding: SIGNAL.space.6,
-    marginBottom: SIGNAL.space.4,
+    padding: SIGNAL.space[6],
+    marginBottom: SIGNAL.space[4],
     borderWidth: 1,
     borderColor: SIGNAL.color.line,
   },
@@ -769,7 +769,7 @@ const styles = StyleSheet.create({
     letterSpacing: SIGNAL.letter.bodyTight,
   },
   cardBody: {
-    marginTop: SIGNAL.space.4,
+    marginTop: SIGNAL.space[4],
   },
 
   // ── Stat rows ─────────────────────────────────────────────────────────────
@@ -777,7 +777,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: SIGNAL.space.3,
+    paddingVertical: SIGNAL.space[3],
     borderBottomWidth: 1,
     borderBottomColor: SIGNAL.color.line,
   },
@@ -795,7 +795,7 @@ const styles = StyleSheet.create({
     letterSpacing: SIGNAL.letter.bodyTight,
     flexShrink: 1,
     textAlign: 'right',
-    marginLeft: SIGNAL.space.4,
+    marginLeft: SIGNAL.space[4],
   },
   statValueMono: {
     fontFamily: SIGNAL.font.mono,
@@ -809,9 +809,9 @@ const styles = StyleSheet.create({
     gap: 8,
     backgroundColor: `${SIGNAL.color.emerald}${SIGNAL.tint.chip}`,
     borderRadius: SIGNAL.radius.control,
-    paddingVertical: SIGNAL.space.4,
-    paddingHorizontal: SIGNAL.space.5,
-    marginTop: SIGNAL.space.4,
+    paddingVertical: SIGNAL.space[4],
+    paddingHorizontal: SIGNAL.space[5],
+    marginTop: SIGNAL.space[4],
   },
   improvementText: {
     fontSize: SIGNAL.size.body,
@@ -823,7 +823,7 @@ const styles = StyleSheet.create({
   // ── Balance block (centered big stat in white card) ───────────────────────
   balanceWrap: {
     alignItems: 'center',
-    marginBottom: SIGNAL.space.3,
+    marginBottom: SIGNAL.space[3],
   },
   balanceNum: {
     fontSize: SIGNAL.size.displayLg,
@@ -852,7 +852,7 @@ const styles = StyleSheet.create({
     fontFamily: SIGNAL.font.body,
     color: SIGNAL.color.mute,
     textAlign: 'center',
-    padding: SIGNAL.space.8,
+    padding: SIGNAL.space[8],
     letterSpacing: SIGNAL.letter.bodyTight,
   },
 
@@ -863,8 +863,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     marginHorizontal: SIGNAL.space.screen,
-    marginTop: SIGNAL.space.4,
-    marginBottom: SIGNAL.space.6,
+    marginTop: SIGNAL.space[4],
+    marginBottom: SIGNAL.space[6],
     backgroundColor: SIGNAL.color.indigo,
     borderRadius: SIGNAL.radius.button,
     paddingVertical: 14,

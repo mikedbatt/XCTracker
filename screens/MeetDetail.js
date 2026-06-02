@@ -358,7 +358,7 @@ export default function MeetDetail({ meet, schoolId, school, athletes, groups, o
               <Text style={styles.emptyDesc}>
                 Add individual races for this meet (Varsity Boys, Girls, JV, etc.)
               </Text>
-              <TouchableOpacity style={[styles.saveBtn, { marginTop: SIGNAL.space.6, alignSelf: 'stretch' }]} onPress={() => setShowAddRace(true)}>
+              <TouchableOpacity style={[styles.saveBtn, { marginTop: SIGNAL.space[6], alignSelf: 'stretch' }]} onPress={() => setShowAddRace(true)}>
                 <Text style={styles.saveBtnText}>+ Add First Race</Text>
               </TouchableOpacity>
             </View>
@@ -411,11 +411,11 @@ export default function MeetDetail({ meet, schoolId, school, athletes, groups, o
                   <TouchableOpacity
                     onPress={() => handleDeleteRace(race)}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    style={{ marginLeft: SIGNAL.space.3 }}
+                    style={{ marginLeft: SIGNAL.space[3] }}
                   >
                     <Ionicons name="trash-outline" size={15} color={SIGNAL.color.mute2} />
                   </TouchableOpacity>
-                  <Ionicons name="chevron-forward" size={16} color={SIGNAL.color.mute2} style={{ marginLeft: SIGNAL.space.2 }} />
+                  <Ionicons name="chevron-forward" size={16} color={SIGNAL.color.mute2} style={{ marginLeft: SIGNAL.space[2] }} />
                 </View>
               </TouchableOpacity>
             );
@@ -434,11 +434,11 @@ const styles = StyleSheet.create({
   header:           {
     backgroundColor: SIGNAL.color.white,
     paddingTop: Platform.OS === 'ios' ? 68 : 44,
-    paddingBottom: SIGNAL.space.4,
-    paddingHorizontal: SIGNAL.space.6,
+    paddingBottom: SIGNAL.space[4],
+    paddingHorizontal: SIGNAL.space[6],
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SIGNAL.space.2,
+    gap: SIGNAL.space[2],
   },
   backBtn:          { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, minWidth: 60 },
   backText:         { color: SIGNAL.color.inkSoft, fontSize: 14, fontFamily: SIGNAL.font.bodySemi, fontWeight: '600' },
@@ -470,8 +470,8 @@ const styles = StyleSheet.create({
   // Meet info bar
   meetInfoBar:      {
     backgroundColor: SIGNAL.color.white,
-    paddingHorizontal: SIGNAL.space.6,
-    paddingBottom: SIGNAL.space.5,
+    paddingHorizontal: SIGNAL.space[6],
+    paddingBottom: SIGNAL.space[5],
     borderBottomWidth: 1,
     borderBottomColor: SIGNAL.color.line,
   },
@@ -498,8 +498,8 @@ const styles = StyleSheet.create({
     color: SIGNAL.color.mute,
     fontFamily: SIGNAL.font.bodyMedium,
     fontWeight: '500',
-    marginTop: SIGNAL.space.6,
-    marginBottom: SIGNAL.space.3,
+    marginTop: SIGNAL.space[6],
+    marginBottom: SIGNAL.space[3],
     marginHorizontal: SIGNAL.space.screen + 4,
   },
 
@@ -511,11 +511,11 @@ const styles = StyleSheet.create({
     borderRadius: SIGNAL.radius.card,
     borderWidth: 1,
     borderColor: SIGNAL.color.line,
-    paddingVertical: SIGNAL.space.5,
-    paddingHorizontal: SIGNAL.space.6,
+    paddingVertical: SIGNAL.space[5],
+    paddingHorizontal: SIGNAL.space[6],
     marginHorizontal: SIGNAL.space.screen,
-    marginTop: SIGNAL.space.2,
-    gap: SIGNAL.space.3,
+    marginTop: SIGNAL.space[2],
+    gap: SIGNAL.space[3],
   },
   raceInfo:         { flex: 1, minWidth: 0 },
   raceName:         {
@@ -527,7 +527,7 @@ const styles = StyleSheet.create({
   },
   raceChips:        { flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap' },
   miniChip:         {
-    paddingHorizontal: SIGNAL.space.2,
+    paddingHorizontal: SIGNAL.space[2],
     paddingVertical: 2,
     borderRadius: SIGNAL.radius.chip,
   },
@@ -543,7 +543,7 @@ const styles = StyleSheet.create({
   },
   raceRight:        { flexDirection: 'row', alignItems: 'center' },
   statusBadge:      {
-    paddingHorizontal: SIGNAL.space.3,
+    paddingHorizontal: SIGNAL.space[3],
     paddingVertical: 4,
     borderRadius: SIGNAL.radius.chip,
   },
@@ -556,19 +556,19 @@ const styles = StyleSheet.create({
   // Form
   formCard:         {
     marginHorizontal: SIGNAL.space.screen,
-    marginTop: SIGNAL.space.6,
+    marginTop: SIGNAL.space[6],
     backgroundColor: SIGNAL.color.white,
     borderRadius: SIGNAL.radius.card,
     borderWidth: 1,
     borderColor: SIGNAL.color.line,
-    padding: SIGNAL.space.6,
+    padding: SIGNAL.space[6],
   },
   formTitle:        {
     fontSize: SIGNAL.size.heading,
     fontFamily: SIGNAL.font.bodySemi,
     fontWeight: '600',
     color: SIGNAL.color.indigo,
-    marginBottom: SIGNAL.space.5,
+    marginBottom: SIGNAL.space[5],
     letterSpacing: SIGNAL.letter.bodyTight,
   },
   formLabel:        {
@@ -578,28 +578,28 @@ const styles = StyleSheet.create({
     color: SIGNAL.color.mute,
     fontFamily: SIGNAL.font.bodyMedium,
     fontWeight: '500',
-    marginBottom: SIGNAL.space.2,
-    marginTop: SIGNAL.space.4,
+    marginBottom: SIGNAL.space[2],
+    marginTop: SIGNAL.space[4],
   },
   input:            {
     backgroundColor: SIGNAL.color.paper,
     borderRadius: SIGNAL.radius.control,
-    paddingHorizontal: SIGNAL.space.4,
-    paddingVertical: SIGNAL.space.4,
+    paddingHorizontal: SIGNAL.space[4],
+    paddingVertical: SIGNAL.space[4],
     fontSize: SIGNAL.size.body,
     fontFamily: SIGNAL.font.body,
     color: SIGNAL.color.ink,
     borderWidth: 1,
     borderColor: SIGNAL.color.line,
   },
-  chipRow:          { flexDirection: 'row', flexWrap: 'wrap', gap: SIGNAL.space.2 },
+  chipRow:          { flexDirection: 'row', flexWrap: 'wrap', gap: SIGNAL.space[2] },
   chip:             {
     borderRadius: SIGNAL.radius.chip,
     borderWidth: 1,
     borderColor: SIGNAL.color.line,
     backgroundColor: SIGNAL.color.white,
-    paddingHorizontal: SIGNAL.space.4,
-    paddingVertical: SIGNAL.space.2,
+    paddingHorizontal: SIGNAL.space[4],
+    paddingVertical: SIGNAL.space[2],
   },
   chipText:         {
     fontSize: 12.5,
@@ -618,10 +618,10 @@ const styles = StyleSheet.create({
     color: SIGNAL.color.indigo,
     fontFamily: SIGNAL.font.bodyMedium,
     fontWeight: '500',
-    marginTop: SIGNAL.space.5,
-    marginBottom: SIGNAL.space.2,
+    marginTop: SIGNAL.space[5],
+    marginBottom: SIGNAL.space[2],
   },
-  formBtns:         { flexDirection: 'row', gap: SIGNAL.space.4, marginTop: SIGNAL.space.5 },
+  formBtns:         { flexDirection: 'row', gap: SIGNAL.space[4], marginTop: SIGNAL.space[5] },
   cancelBtn:        {
     flex: 1,
     borderRadius: SIGNAL.radius.button,
@@ -654,13 +654,13 @@ const styles = StyleSheet.create({
   // Empty
   emptyCard:        {
     marginHorizontal: SIGNAL.space.screen,
-    marginTop: SIGNAL.space.6,
+    marginTop: SIGNAL.space[6],
     backgroundColor: SIGNAL.color.white,
     borderRadius: SIGNAL.radius.card,
     borderWidth: 1,
     borderColor: SIGNAL.color.line,
-    paddingVertical: SIGNAL.space.8 + 6,
-    paddingHorizontal: SIGNAL.space.6,
+    paddingVertical: SIGNAL.space[8] + 6,
+    paddingHorizontal: SIGNAL.space[6],
     alignItems: 'center',
   },
   emptyTitle:       {
@@ -668,7 +668,7 @@ const styles = StyleSheet.create({
     fontFamily: SIGNAL.font.bodySemi,
     fontWeight: '600',
     color: SIGNAL.color.indigo,
-    marginBottom: SIGNAL.space.2,
+    marginBottom: SIGNAL.space[2],
     letterSpacing: SIGNAL.letter.bodyTight,
   },
   emptyDesc:        {
@@ -691,9 +691,9 @@ const styles = StyleSheet.create({
   entryAthleteRow:  {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SIGNAL.space.4,
-    paddingHorizontal: SIGNAL.space.5,
-    paddingVertical: SIGNAL.space.4,
+    gap: SIGNAL.space[4],
+    paddingHorizontal: SIGNAL.space[5],
+    paddingVertical: SIGNAL.space[4],
   },
   entryAthleteRowDivider: {
     borderBottomWidth: 1,
