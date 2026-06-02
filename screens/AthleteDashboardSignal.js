@@ -52,7 +52,7 @@ import DatePickerField from './DatePickerField';
 import RunDetailModal from './RunDetailModalSignal';
 import { getActiveSeason, getCompletedSeasons } from './SeasonPlanner';
 import SeasonReview from './SeasonReviewSignal';
-import StravaConnect from './StravaConnect';
+import StravaConnect from './StravaConnectSignal';
 import ChannelList from './ChannelList';
 import TeammateProfile from './TeammateProfileSignal';
 import TimeframePicker, { TIMEFRAMES, getDateRange } from './TimeframePicker';

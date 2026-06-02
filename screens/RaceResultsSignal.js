@@ -13,7 +13,7 @@ import {
 } from '../constants/design';
 import { db } from '../firebaseConfig';
 import { calcPackAnalysis, formatTime, formatPace, calcPace } from '../utils/raceUtils';
-import RaceResultsEntry from './RaceResultsEntry';
+import RaceResultsEntry from './RaceResultsEntrySignal';
 
 export default function RaceResultsSignal({ race, meet, schoolId, school, athletes, onClose }) {
   const [results, setResults] = useState([]);

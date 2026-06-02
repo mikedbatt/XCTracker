@@ -23,7 +23,7 @@ import {
   FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SIGNAL, SPACE, STATUS, STRAVA_ORANGE,
 } from '../constants/design';
 import { calcVDOT, getTrainingPaces, formatPace, parseTimeToSeconds, RACE_DISTANCES } from '../utils/vdotUtils';
-import StravaConnect from './StravaConnect';
+import StravaConnect from './StravaConnectSignal';
 
 export default function AthleteProfileSignal({ userData, school, onClose, onUpdated, refreshUser, goToJoinScreen }) {
   const [firstName,     setFirstName]     = useState(userData.firstName || '');
