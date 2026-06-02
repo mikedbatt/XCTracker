@@ -182,30 +182,37 @@ export default function CoachAnalytics({
       const athleteIllnessMap = {};
       const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
 
-      allCheckins.forEach(c => {
+      // Sort oldest-first so the most-recent check-in's per-location severity
+      // ends up as the final state for each location. The old "worst severity
+      // wins" rule was producing stuck severity (e.g. knee=severe two days
+      // ago, milder today still rendered as severe).
+      const sortedCheckins = [...allCheckins].sort((a, b) => {
+        const da = a.date?.toDate?.() || (a.date instanceof Date ? a.date : new Date(0));
+        const db = b.date?.toDate?.() || (b.date instanceof Date ? b.date : new Date(0));
+        return da - db;
+      });
+
+      sortedCheckins.forEach(c => {
         const d = c.date?.toDate?.() || (c.date instanceof Date ? c.date : null);
         if (c.injury?.locations?.length > 0) {
           if (!athleteInjuryMap[c.userId]) athleteInjuryMap[c.userId] = { days: 0, locations: new Set(), locationSeverity: {}, lastDate: null, severity: 'mild' };
           const entry = athleteInjuryMap[c.userId];
           entry.days++;
-          // Use perLocation detail when available, fall back to uniform severity
+          // Per-location data (newer schema) — always overwrite so most-recent wins.
           if (c.injury.perLocation) {
             c.injury.perLocation.forEach(p => {
               entry.locations.add(p.location);
-              const prev = entry.locationSeverity[p.location];
-              if (!prev || p.severity === 'severe' || (p.severity === 'moderate' && prev !== 'severe')) {
-                entry.locationSeverity[p.location] = p.severity;
-              }
+              entry.locationSeverity[p.location] = p.severity;
             });
           } else {
+            // Legacy fallback: apply check-in's aggregate severity to all locations.
             c.injury.locations.forEach(loc => {
               entry.locations.add(loc);
-              if (!entry.locationSeverity[loc] || c.injury.severity === 'severe' || (c.injury.severity === 'moderate' && entry.locationSeverity[loc] !== 'severe')) {
-                entry.locationSeverity[loc] = c.injury.severity;
-              }
+              entry.locationSeverity[loc] = c.injury.severity;
             });
           }
           if (d && (!entry.lastDate || d > entry.lastDate)) entry.lastDate = d;
+          // Aggregate severity keeps "worst" semantics (used for chip color, etc.)
           if (c.injury.severity === 'severe' || (c.injury.severity === 'moderate' && entry.severity !== 'severe')) entry.severity = c.injury.severity;
         }
         if (c.illness?.symptoms?.length > 0) {
@@ -460,7 +467,7 @@ export default function CoachAnalytics({
             <Text style={styles.sectionNum}>2</Text>
             <View style={{ flex: 1 }}>
               <Text style={styles.sectionTitle}>Easy-Hard Balance</Text>
-              <Text style={styles.sectionSub}>Is the team running easy enough?</Text>
+              <Text style={styles.sectionSub}>Last 30 days · is the team running easy enough?</Text>
             </View>
             <Ionicons name={expandedSection === 'intensity' ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.muted} />
           </View>
