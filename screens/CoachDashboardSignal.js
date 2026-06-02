@@ -44,7 +44,7 @@ import ManageRoster from '../screens/ManageRosterSignal';
 import ManageSeasons from '../screens/ManageSeasons';
 import RaceManager from '../screens/RaceManagerSignal';
 import { getActiveSeason, getPhaseForSeason, getCompletedSeasons } from '../screens/SeasonPlanner';
-import SeasonReview from '../screens/SeasonReview';
+import SeasonReview from '../screens/SeasonReviewSignal';
 import WeeklyPlanner from '../screens/WeeklyPlannerSignal';
 import ChannelList from '../screens/ChannelList';
 import TimeframePicker, { TIMEFRAMES, getDateRange } from '../screens/TimeframePicker';

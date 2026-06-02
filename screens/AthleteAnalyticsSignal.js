@@ -19,7 +19,7 @@ import {
 } from '../constants/design';
 import { SIGNAL_TYPE_COLORS } from '../constants/training';
 import { getActiveSeason, getPhaseForSeason, getCompletedSeasons, generateVolumeCurve } from './SeasonPlanner';
-import SeasonReview from './SeasonReview';
+import SeasonReview from './SeasonReviewSignal';
 import { formatTime, calcPace, formatPace } from '../utils/raceUtils';
 import {
   calcMaxHR, calcZoneBreakdownFromStream, calcZoneBreakdownFromRuns,

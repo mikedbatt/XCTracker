@@ -20,7 +20,7 @@ import { SIGNAL_TYPE_COLORS } from '../constants/training';
 import { calcPackAnalysis, formatTime, formatPace } from '../utils/raceUtils';
 import { getAthleteWeeklyTarget, getWeekStatus, computeVolumeCompliance } from '../utils/complianceUtils';
 import { getCompletedSeasons } from './SeasonPlanner';
-import SeasonReview from './SeasonReview';
+import SeasonReview from './SeasonReviewSignal';
 
 export default function CoachAnalyticsSignal({
   athletes, athleteWeeklyMiles, athlete3WeekAvg, athleteWeeklyBreakdown = {},

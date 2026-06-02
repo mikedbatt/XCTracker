@@ -21,7 +21,7 @@ import { BRAND, BRAND_DARK, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SIGNAL, SPA
 import { CATEGORIES, SIGNAL_TYPE_COLORS, TYPE_COLORS, WORKOUT_PACE_ZONE } from '../constants/training';
 import { formatPace } from '../utils/vdotUtils';
 import DatePickerField from './DatePickerField';
-import RunDetailModal from './RunDetailModal';
+import RunDetailModal from './RunDetailModalSignal';
 import WorkoutDetailModal from './WorkoutDetailModal';
 
 // Re-export so existing imports from CalendarScreen keep working

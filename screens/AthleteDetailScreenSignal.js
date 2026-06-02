@@ -25,7 +25,7 @@ import {
 import { getActiveSeason, getPhaseForSeason, generateVolumeCurve } from './SeasonPlanner';
 import { formatTime, calcPace, formatPace } from '../utils/raceUtils';
 import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
-import RunDetailModal from './RunDetailModal';
+import RunDetailModal from './RunDetailModalSignal';
 import { getMondayISO, getRunDate, groupRunsByWeek } from '../utils/dateUtils';
 
 
