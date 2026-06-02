@@ -290,8 +290,10 @@ export default function CoachAnalytics({
       counts[k] = (counts[k] || 0) + 1;
     });
     const chips = [{ key: 'all', label: 'All', count: athletes.length }];
+    // Show every configured group, even empty ones — the coach set them up
+    // intentionally and a 0-count chip is informative ("no one in JV Girls yet").
     for (const g of (groups || [])) {
-      if (counts[g.id]) chips.push({ key: g.id, label: g.name, count: counts[g.id] });
+      chips.push({ key: g.id, label: g.name, count: counts[g.id] || 0 });
     }
     if (counts.ungrouped) chips.push({ key: 'ungrouped', label: 'Ungrouped', count: counts.ungrouped });
     return chips;
