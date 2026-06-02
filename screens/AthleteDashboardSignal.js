@@ -46,7 +46,7 @@ import { batchDocsByIds } from '../utils/batchDocsByIds';
 import { useStaleRefresh } from '../hooks/useStaleRefresh';
 import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020, formatPace } from '../utils/vdotUtils';
 import AthleteProfile from './AthleteProfileSignal';
-import CalendarScreen from './CalendarScreen';
+import CalendarScreen from './CalendarScreenSignal';
 import { SIGNAL_TYPE_COLORS, TYPE_COLORS, WORKOUT_PACE_ZONE } from '../constants/training';
 import DatePickerField from './DatePickerField';
 import RunDetailModal from './RunDetailModal';

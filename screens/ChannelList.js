@@ -12,7 +12,7 @@ import {
   BRAND, BRAND_DARK, BRAND_LIGHT,
   FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE, STATUS,
 } from '../constants/design';
-import TeamFeed from './TeamFeed';
+import TeamFeed from './TeamFeedSignal';
 
 const CHANNEL_META = {
   whole_team: { name: 'Whole Team', icon: 'people', color: BRAND },

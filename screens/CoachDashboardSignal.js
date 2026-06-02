@@ -36,8 +36,8 @@ import {
 import AthleteDetailScreen from '../screens/AthleteDetailScreen';
 import AttendanceScreen from '../screens/AttendanceScreen';
 import CoachAnalytics from '../screens/CoachAnalytics';
-import CoachProfile from '../screens/CoachProfile';
-import CalendarScreen from '../screens/CalendarScreen';
+import CoachProfile from '../screens/CoachProfileSignal';
+import CalendarScreen from '../screens/CalendarScreenSignal';
 import { TYPE_COLORS, SIGNAL_TYPE_COLORS } from '../constants/training';
 import ManageGroups from '../screens/ManageGroups';
 import ManageRoster from '../screens/ManageRoster';
