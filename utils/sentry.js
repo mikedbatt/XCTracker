@@ -39,6 +39,13 @@ export function initSentry() {
     // Capture unhandled promise rejections in addition to thrown errors.
     enableAutoPerformanceTracing: true,
   });
+
+  // Expose on window for in-browser smoke testing. Newer @sentry/react-native
+  // versions don't auto-expose anymore; without this you can't call
+  // captureException from the DevTools console. Web-only; native ignores.
+  if (typeof window !== 'undefined') {
+    window.Sentry = Sentry;
+  }
 }
 
 // Re-export so call sites can do explicit Sentry.captureException(e) inside
