@@ -8,6 +8,7 @@ import {
   ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { db } from '../firebaseConfig';
+import { confirmDestructive } from '../utils/confirmDialog';
 import { SIGNAL } from '../constants/design';
 
 // Coach-facing roster management. Lists every athlete currently associated
@@ -72,9 +73,11 @@ export default function ManageRoster({ schoolId, groups = [], onClose, onPending
 
   const handleDeny = (athlete) => {
     const fullName = `${athlete.firstName || ''} ${athlete.lastName || ''}`.trim() || 'this athlete';
-    Alert.alert('Deny request?', `Deny ${fullName}'s request to join the team?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Deny', style: 'destructive', onPress: async () => {
+    confirmDestructive({
+      title: 'Deny request?',
+      message: `Deny ${fullName}'s request to join the team?`,
+      confirmLabel: 'Deny',
+      onConfirm: async () => {
         setRemoving(athlete.id);
         try {
           await updateDoc(doc(db, 'users', athlete.id), { status: 'denied', schoolId: null });
@@ -89,8 +92,8 @@ export default function ManageRoster({ schoolId, groups = [], onClose, onPending
           Alert.alert('Could not deny', 'Something went wrong. Please try again.');
         }
         setRemoving(null);
-      }},
-    ]);
+      },
+    });
   };
 
   const handleRemove = (athlete) => {

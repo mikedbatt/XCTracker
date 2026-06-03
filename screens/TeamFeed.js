@@ -14,15 +14,11 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
-import * as MediaLibrary from 'expo-media-library';
-// SDK 54 moved the function-based file API (downloadAsync, cacheDirectory,
-// deleteAsync) to a /legacy subpath; the top-level export is now the new
-// class-based File/Paths API. We use the legacy API here.
-import * as FileSystem from 'expo-file-system/legacy';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from '../firebaseConfig';
 import { BRAND, SIGNAL } from '../constants/design';
+import { confirmDestructive } from '../utils/confirmDialog';
+import { pickImageCrossPlatform, saveImageCrossPlatform } from '../utils/imageHelpers';
 
 export default function TeamFeed({ userData, school, onClose, channel, channelName }) {
   const [posts,       setPosts]       = useState([]);
@@ -106,18 +102,16 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
   };
 
   const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Allow photo access to attach images.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.7,
-      allowsEditing: true,
-    });
-    if (!result.canceled && result.assets?.[0]?.uri) {
-      setImageUri(result.assets[0].uri);
+    try {
+      const picked = await pickImageCrossPlatform();
+      if (picked) setImageUri(picked.uri);
+    } catch (e) {
+      if (e.code === 'PERMISSION_DENIED') {
+        Alert.alert('Permission needed', 'Allow photo access to attach images.');
+      } else {
+        console.warn('Pick image failed:', e);
+        Alert.alert('Error', 'Could not pick image.');
+      }
     }
   };
 
@@ -165,30 +159,19 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
   const handleSaveImage = async (imageUrl) => {
     if (!imageUrl) return;
     try {
-      // Request permission first; bail with a friendly message if denied
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      if (status !== 'granted') {
+      await saveImageCrossPlatform(imageUrl);
+      if (Platform.OS !== 'web') {
+        Alert.alert('Saved', 'Image saved to your camera roll.');
+      }
+      // On web the browser shows the download — no extra alert needed.
+    } catch (e) {
+      if (e.code === 'PERMISSION_DENIED') {
         Alert.alert(
           'Permission needed',
           'TeamBase needs photo library access to save images. You can enable it in Settings → TeamBase → Photos.'
         );
         return;
       }
-
-      // Download the remote image to a local temp file, then save to camera roll
-      const filename = `teambase_${Date.now()}.jpg`;
-      const localPath = FileSystem.cacheDirectory + filename;
-      const download = await FileSystem.downloadAsync(imageUrl, localPath);
-      if (download.status !== 200) throw new Error(`HTTP ${download.status}`);
-
-      await MediaLibrary.saveToLibraryAsync(download.uri);
-
-      // Best-effort cleanup of the temp file
-      try { await FileSystem.deleteAsync(download.uri, { idempotent: true }); }
-      catch (e) { console.warn('Temp file cleanup:', e); }
-
-      Alert.alert('Saved', 'Image saved to your camera roll.');
-    } catch (e) {
       console.warn('Save image failed:', e);
       Alert.alert('Could not save', 'Something went wrong saving this image. Please try again.');
     }
@@ -196,22 +179,20 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
 
   const handleDelete = (post) => {
     const isOwn = post.authorId === myUid;
-    Alert.alert(
-      'Delete post?',
-      isOwn
+    confirmDestructive({
+      title: 'Delete post?',
+      message: isOwn
         ? 'Remove your message from the team feed?'
         : `Remove ${post.authorName}'s message from the feed?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: async () => {
-          try {
-            await deleteDoc(doc(db, 'teamPosts', post.id));
-          } catch {
-            Alert.alert('Error', 'Could not delete post.');
-          }
-        }},
-      ]
-    );
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
+        try {
+          await deleteDoc(doc(db, 'teamPosts', post.id));
+        } catch {
+          Alert.alert('Error', 'Could not delete post.');
+        }
+      },
+    });
   };
 
   const formatTime = (ts) => {

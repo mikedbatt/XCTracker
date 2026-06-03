@@ -8,6 +8,8 @@ import {
   limit,
   orderBy,
   query,
+  serverTimestamp,
+  setDoc,
   updateDoc,
   where,
 } from 'firebase/firestore';
@@ -52,6 +54,15 @@ import ChannelList from './ChannelList';
 import TeammateProfile from './TeammateProfile';
 import TimeframePicker, { TIMEFRAMES, getDateRange } from './TimeframePicker';
 import WellnessCheckIn from './WellnessCheckIn';
+import WeeklyCheckIn from './WeeklyCheckIn';
+import WeeklyCheckinHistory from './WeeklyCheckinHistory';
+import { confirmDestructive } from '../utils/confirmDialog';
+import {
+  getLatestWeeklyCheckin,
+  getWeekAnchor,
+  getWeeklyCheckinDocId,
+  isInWeeklyWindow,
+} from '../utils/weeklyCheckinUtils';
 import WorkoutDetailModal from './WorkoutDetailModal';
 import AthleteAnalytics from './AthleteAnalytics';
 
@@ -182,6 +193,10 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
   const [wellnessCardDismissed, setWellnessCardDismissed] = useState(false);
   const [zoneExpanded, setZoneExpanded] = useState(false);
   const [dailyWellnessVisible, setDailyWellnessVisible] = useState(false);
+  const [weeklyCheckinVisible, setWeeklyCheckinVisible] = useState(false);
+  const [latestWeeklyCheckin,  setLatestWeeklyCheckin]  = useState(null);
+  const [weeklyCardDismissed,  setWeeklyCardDismissed]  = useState(false);
+  const [weeklyHistoryVisible, setWeeklyHistoryVisible] = useState(false);
   const progressAnim = useRef(new Animated.Value(0)).current;
   const [athleteAge,           setAthleteAge]           = useState(16);
   const [teamZoneSettings,     setTeamZoneSettings]     = useState(null);
@@ -235,6 +250,9 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
 
   const triggerAutoSync = async () => {
     try {
+      // Strava sync is native-only for v1 — Strava OAuth on web needs a
+      // separate Strava dev app, deferred until web hits production.
+      if (Platform.OS === 'web') return;
       const user = auth.currentUser;
       if (!user) return;
       const userDoc = await getDoc(doc(db, 'users', user.uid));
@@ -386,6 +404,16 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
       } catch (e) {
         console.warn('Check-in query failed:', e);
         setTodayCheckinDone(false);
+      }
+
+      // Latest weekly check-in (drives both the "send this week" prompt and the
+      // "coach replied" card on the home screen).
+      try {
+        const latest = await getLatestWeeklyCheckin(user.uid);
+        setLatestWeeklyCheckin(latest);
+      } catch (e) {
+        console.warn('Weekly check-in query failed:', e);
+        setLatestWeeklyCheckin(null);
       }
 
       if (userData.schoolId) {
@@ -540,9 +568,11 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
   };
 
   const handleDeleteRun = (run) => {
-    Alert.alert('Delete run?', 'Delete your ' + run.miles + ' mile run? This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
+    confirmDestructive({
+      title: 'Delete run?',
+      message: 'Delete your ' + run.miles + ' mile run? This cannot be undone.',
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
         try {
           const { deleteDoc, doc: firestoreDoc } = await import('firebase/firestore');
           await deleteDoc(firestoreDoc(db, 'runs', run.id));
@@ -550,12 +580,17 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
           Alert.alert('Deleted', 'Run removed.');
           setRunDetailVisible(false); setSelectedRun(null); loadDashboard();
         } catch { Alert.alert('Error', 'Could not delete run.'); }
-      }},
-    ]);
+      },
+    });
   };
 
   const handleSignOut = () => {
-    Alert.alert('Sign out', 'Are you sure?', [{ text: 'Cancel', style: 'cancel' }, { text: 'Sign out', style: 'destructive', onPress: () => signOut(auth) }]);
+    confirmDestructive({
+      title: 'Sign out',
+      message: 'Are you sure?',
+      confirmLabel: 'Sign out',
+      onConfirm: () => signOut(auth),
+    });
   };
 
   if (loading) return <View style={styles.loading}><ActivityIndicator size="large" color={SIGNAL.color.indigo} /></View>;
@@ -911,6 +946,72 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
           </View>
         )}
 
+        {/* ── Weekly check-in: "coach replied" card (persistent until viewed) ── */}
+        {latestWeeklyCheckin?.coachReply && !latestWeeklyCheckin?.athleteViewedReplyAt && (
+          <View style={[styles.cardSpacer]}>
+            <View style={styles.weeklyReplyCard}>
+              <View style={styles.weeklyReplyTop}>
+                <View style={styles.weeklyReplyIcon}>
+                  <Ionicons name="chatbubble-ellipses" size={18} color={SIGNAL.color.indigo} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.weeklyReplyEyebrow}>Coach replied</Text>
+                  <Text style={styles.weeklyReplyPreview} numberOfLines={2}>
+                    {latestWeeklyCheckin.coachReply.text}
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.weeklyReplyBtn}
+                onPress={() => setWeeklyCheckinVisible(true)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.weeklyReplyBtnText}>Read coach&apos;s message</Text>
+                <Ionicons name="arrow-forward" size={14} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* ── Weekly check-in: "send weekly check-in" prompt (Sat noon → Mon noon) ── */}
+        {(() => {
+          const tz = school?.timezone || 'America/New_York';
+          if (!isInWeeklyWindow(new Date(), tz)) return null;
+          if (weeklyCardDismissed) return null;
+          const anchor = getWeekAnchor(new Date(), tz);
+          // Already submitted this week? The latest checkin's weekStartISO matches anchor.
+          if (latestWeeklyCheckin?.weekStartISO === anchor) return null;
+          return (
+            <View style={[styles.cardSpacer]}>
+              <LinearGradient
+                colors={[SIGNAL.color.indigo, SIGNAL.color.violet]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.checkinCard}
+              >
+                <TouchableOpacity
+                  onPress={() => setWeeklyCardDismissed(true)}
+                  style={styles.checkinClose}
+                  hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+                >
+                  <Ionicons name="close" size={16} color="rgba(255,255,255,0.85)" />
+                </TouchableOpacity>
+                <Text style={styles.checkinEyebrow}>Weekly check-in</Text>
+                <Text style={styles.checkinTitle}>How was your week?</Text>
+                <Text style={styles.checkinDesc}>Send your coach a quick update — training, school, anything.</Text>
+                <TouchableOpacity
+                  style={styles.checkinBtn}
+                  onPress={() => setWeeklyCheckinVisible(true)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.checkinBtnText}>Share with coach</Text>
+                  <Ionicons name="arrow-forward" size={14} color={SIGNAL.color.indigo} />
+                </TouchableOpacity>
+              </LinearGradient>
+            </View>
+          );
+        })()}
+
         {/* ── VDOT setup prompt ── */}
         {!userData.trainingPaces && (
           <View style={[styles.cardSpacer]}>
@@ -969,7 +1070,8 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
         )}
 
         {/* ── Strava connect prompt (compact row per design ref) ── */}
-        {!stravaLinked && !stravaDismissed && (
+        {/* Hidden on web for v1 — Strava OAuth requires a separate Strava dev app for web. */}
+        {Platform.OS !== 'web' && !stravaLinked && !stravaDismissed && (
           <View style={[styles.cardSpacer]}>
             <View style={styles.stravaRow}>
               <View style={styles.stravaLogo}>
@@ -996,6 +1098,18 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
             </View>
           </View>
         )}
+
+        {/* ── Coach messages quick link (always-on, low-footprint) ── */}
+        <TouchableOpacity
+          style={styles.coachMsgsLink}
+          onPress={() => setWeeklyHistoryVisible(true)}
+          activeOpacity={0.7}
+          hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
+        >
+          <Ionicons name="chatbubble-outline" size={12} color={SIGNAL.color.mute} />
+          <Text style={styles.coachMsgsLinkText}>Coach messages</Text>
+          <Ionicons name="chevron-forward" size={11} color={SIGNAL.color.mute2} />
+        </TouchableOpacity>
 
         {/* ── Upcoming workouts ── */}
         {isApproved && upcomingWorkouts.length > 0 && (
@@ -1299,6 +1413,60 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
           Alert.alert('Check-in not saved', `Could not save your check-in: ${e.message || e}. Please try again.`);
         }
       }} onSkip={() => { setDailyWellnessVisible(false); setTodayCheckinDone(true); }} onClose={() => setDailyWellnessVisible(false)} />
+
+      {/* ── Weekly check-in modal ── */}
+      <WeeklyCheckIn
+        visible={weeklyCheckinVisible}
+        existingCheckin={latestWeeklyCheckin}
+        onSubmit={async (messageText) => {
+          try {
+            const tz = school?.timezone || 'America/New_York';
+            const anchor = getWeekAnchor(new Date(), tz);
+            const docId = getWeeklyCheckinDocId(auth.currentUser.uid, anchor);
+            const isEdit = latestWeeklyCheckin?.weekStartISO === anchor;
+            if (isEdit) {
+              await updateDoc(doc(db, 'weeklyCheckins', docId), {
+                message: messageText,
+                submittedAt: serverTimestamp(),
+              });
+            } else {
+              await setDoc(doc(db, 'weeklyCheckins', docId), {
+                userId: auth.currentUser.uid,
+                schoolId: userData.schoolId || null,
+                weekStartISO: anchor,
+                message: messageText,
+                submittedAt: serverTimestamp(),
+                createdAt: serverTimestamp(),
+              });
+            }
+            setWeeklyCheckinVisible(false);
+            loadDashboard();
+          } catch (e) {
+            console.warn('Weekly check-in save failed:', e);
+            Alert.alert('Check-in not saved', `Could not send your message: ${e.message || e}. Please try again.`);
+          }
+        }}
+        onMarkReplyRead={async () => {
+          if (!latestWeeklyCheckin?.id) return;
+          try {
+            await updateDoc(doc(db, 'weeklyCheckins', latestWeeklyCheckin.id), {
+              athleteViewedReplyAt: serverTimestamp(),
+            });
+            loadDashboard();
+          } catch (e) {
+            console.warn('Mark weekly reply read failed:', e);
+          }
+        }}
+        onViewHistory={() => setWeeklyHistoryVisible(true)}
+        onClose={() => setWeeklyCheckinVisible(false)}
+      />
+
+      <WeeklyCheckinHistory
+        visible={weeklyHistoryVisible}
+        athleteId={auth.currentUser?.uid}
+        athleteName="Your check-ins"
+        onClose={() => setWeeklyHistoryVisible(false)}
+      />
 
       <WorkoutDetailModal
         item={selectedWorkout}
@@ -1675,6 +1843,60 @@ const styles = StyleSheet.create({
   },
   checkinBtnText: {
     fontFamily: SIGNAL.font.bodySemi, fontSize: 14, color: SIGNAL.color.indigo,
+  },
+
+  // ── Weekly check-in: "coach replied" card (indigo accent, persistent) ──────
+  weeklyReplyCard: {
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.card,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: `${SIGNAL.color.indigo}40`,
+    borderLeftWidth: 3,
+    borderLeftColor: SIGNAL.color.indigo,
+  },
+  weeklyReplyTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  weeklyReplyIcon: {
+    width: 34, height: 34, borderRadius: 10,
+    backgroundColor: `${SIGNAL.color.indigo}15`,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  weeklyReplyEyebrow: {
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: 10.5, letterSpacing: 1.36,
+    textTransform: 'uppercase', color: SIGNAL.color.indigo,
+    marginBottom: 4,
+  },
+  weeklyReplyPreview: {
+    fontFamily: SIGNAL.font.body, fontSize: 13,
+    color: SIGNAL.color.ink, lineHeight: 18,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  weeklyReplyBtn: {
+    marginTop: 12, backgroundColor: SIGNAL.color.indigo,
+    paddingVertical: 11, borderRadius: 11,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+  },
+  weeklyReplyBtnText: {
+    fontFamily: SIGNAL.font.bodySemi, fontSize: 13.5, color: '#fff',
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+
+  // Small "Coach messages" link — opens weekly check-in history (always visible)
+  coachMsgsLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginTop: 6,
+  },
+  coachMsgsLinkText: {
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: 11.5,
+    color: SIGNAL.color.mute,
+    letterSpacing: SIGNAL.letter.bodyTight,
   },
 
   // ── Prompt card (VDOT / season review / etc.) ──────────────────────────────

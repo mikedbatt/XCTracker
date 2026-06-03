@@ -1,8 +1,9 @@
 import { initializeApp } from 'firebase/app';
-import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
+import { browserLocalPersistence, getReactNativePersistence, initializeAuth } from 'firebase/auth';
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
+import { Platform } from 'react-native';
 
 const firebaseConfig = {
   apiKey:            process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -14,8 +15,14 @@ const firebaseConfig = {
 };
 
 export const app = initializeApp(firebaseConfig);
-export const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(ReactNativeAsyncStorage),
-});
+
+// Auth persistence is platform-specific: AsyncStorage on native, browser
+// localStorage on web. Without this branch, web would crash at boot because
+// getReactNativePersistence has no DOM backing.
+const persistence = Platform.OS === 'web'
+  ? browserLocalPersistence
+  : getReactNativePersistence(ReactNativeAsyncStorage);
+export const auth = initializeAuth(app, { persistence });
+
 export const db = getFirestore(app);
 export const storage = getStorage(app);

@@ -51,6 +51,16 @@
       "fields": [
         { "fieldPath": "schoolId", "order": "ASCENDING" },
         { "fieldPath": "order",    "order": "ASCENDING" }
+      ] },
+    { "collectionGroup": "weeklyCheckins", "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId",       "order": "ASCENDING" },
+        { "fieldPath": "weekStartISO", "order": "DESCENDING" }
+      ] },
+    { "collectionGroup": "weeklyCheckins", "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "schoolId",     "order": "ASCENDING" },
+        { "fieldPath": "weekStartISO", "order": "ASCENDING" }
       ] }
   ],
   "fieldOverrides": []

@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { SIGNAL } from '../constants/design';
 import { db } from '../firebaseConfig';
+import { confirmDestructive } from '../utils/confirmDialog';
 import DatePickerField from './DatePickerField';
 
 // ── Sport definitions (3 sports) ─────────────────────────────────────────────
@@ -416,17 +417,19 @@ export default function SeasonPlanner({ school, schoolId, onClose, onSaved }) {
   };
 
   const handleDelete = (idx) => {
-    Alert.alert('Delete season?', `Remove ${seasons[idx].name}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
+    confirmDestructive({
+      title: 'Delete season?',
+      message: `Remove ${seasons[idx].name}?`,
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
         const updated = seasons.filter((_, i) => i !== idx);
         setSeasons(updated);
         try {
           await updateDoc(doc(db, 'schools', schoolId), { seasons: updated });
           onSaved && onSaved({ seasons: updated });
         } catch { Alert.alert('Error', 'Could not delete. Please try again.'); }
-      }},
-    ]);
+      },
+    });
   };
 
   const activeSeason = getActiveSeason({ seasons });

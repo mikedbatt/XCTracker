@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { db } from '../firebaseConfig';
 import { SIGNAL } from '../constants/design';
+import { confirmDestructive } from '../utils/confirmDialog';
 import DatePickerField from './DatePickerField';
 import { generateVolumeCurve, getActiveSeason, getPhaseForSeason, SPORTS } from './SeasonPlanner';
 
@@ -176,9 +177,11 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
   };
 
   const handleDelete = (idx) => {
-    Alert.alert('Delete season?', `Remove ${seasons[idx].name}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
+    confirmDestructive({
+      title: 'Delete season?',
+      message: `Remove ${seasons[idx].name}?`,
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
         const updated = seasons.filter((_, i) => i !== idx);
         setSeasons(updated);
         if (expandedIdx === idx) setExpandedIdx(null);
@@ -186,8 +189,8 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
           await updateDoc(doc(db, 'schools', schoolId), { seasons: updated });
           onSaved && onSaved({ seasons: updated });
         } catch { Alert.alert('Error', 'Could not delete. Please try again.'); }
-      }},
-    ]);
+      },
+    });
   };
 
   // ── Peak mileage & volume curve ────────────────────────────────────────────

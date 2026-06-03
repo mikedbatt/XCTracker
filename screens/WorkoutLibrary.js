@@ -21,6 +21,7 @@ import {
     View
 } from 'react-native';
 import { db } from '../firebaseConfig';
+import { confirmDestructive } from '../utils/confirmDialog';
 import { SIGNAL } from '../constants/design';
 import { SIGNAL_TYPE_COLORS } from '../constants/training';
 
@@ -121,15 +122,17 @@ export default function WorkoutLibrary({ school, schoolId, userData, onClose, on
   };
 
   const handleDeleteSaved = (workout) => {
-    Alert.alert('Remove workout?', `Remove "${workout.name}" from your library?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: async () => {
+    confirmDestructive({
+      title: 'Remove workout?',
+      message: `Remove "${workout.name}" from your library?`,
+      confirmLabel: 'Remove',
+      onConfirm: async () => {
         try {
           await deleteDoc(doc(db, 'workoutLibrary', workout.id));
           setSavedWorkouts(prev => prev.filter(w => w.id !== workout.id));
         } catch { Alert.alert('Error', 'Could not remove workout.'); }
-      }},
-    ]);
+      },
+    });
   };
 
   const openDetail = (workout) => {

@@ -7,6 +7,26 @@ admin.initializeApp();
 const db = admin.firestore();
 const expo = new Expo();
 
+// ── FCM web push helper ──────────────────────────────────────────────────────
+// Parallel to expo.sendPushNotificationsAsync but for web users whose token
+// comes from Firebase Cloud Messaging (stored on user doc as webPushToken).
+// Errors per token are logged but don't throw so a single stale token won't
+// kill the whole batch.
+async function sendWebPushNotifications(messages) {
+  if (!messages || messages.length === 0) return;
+  await Promise.all(messages.map(m =>
+    admin.messaging().send({
+      token: m.token,
+      notification: { title: m.title, body: m.body },
+      ...(m.data && {
+        data: Object.fromEntries(
+          Object.entries(m.data).map(([k, v]) => [k, String(v)])
+        ),
+      }),
+    }).catch(e => console.warn('FCM web send error:', e.message))
+  ));
+}
+
 // ── Strava Token Exchange ────────────────────────────────────────────────────
 // Moves client_secret server-side so it never ships in the app bundle.
 
@@ -128,8 +148,8 @@ exports.onNewTeamPost = functions.firestore
       const recipients = allUsers.filter(user => {
         // Never notify the author
         if (user.id === authorId) return false;
-        // Must have a push token
-        if (!user.expoPushToken) return false;
+        // Must have a push token (either native Expo OR web FCM)
+        if (!user.expoPushToken && !user.webPushToken) return false;
 
         const role = user.role;
         const isCoach = role === 'admin_coach' || role === 'assistant_coach';
@@ -157,24 +177,25 @@ exports.onNewTeamPost = functions.firestore
 
       if (recipients.length === 0) return;
 
-      // Build push messages
+      // Build push messages — native Expo and web FCM in parallel arrays.
+      const title = authorName || 'New message';
+      const body = text.length > 100 ? text.slice(0, 97) + '...' : text;
+      const data = { channel: channelKey, postId: context.params.postId };
+
       const messages = [];
+      const webMessages = [];
       for (const user of recipients) {
-        if (!Expo.isExpoPushToken(user.expoPushToken)) continue;
-
-        // Compute unread count for badge
-        const lastSeen = user.lastSeenChannels?.[channelKey];
-        // Simple badge: just set 1 for now (computing full unread count per user is expensive)
-        // A more sophisticated approach would query all unread posts per user
-
-        messages.push({
-          to: user.expoPushToken,
-          sound: 'default',
-          title: authorName || 'New message',
-          body: text.length > 100 ? text.slice(0, 97) + '...' : text,
-          data: { channel: channelKey, postId: context.params.postId },
-          badge: 1,
-        });
+        if (user.expoPushToken && Expo.isExpoPushToken(user.expoPushToken)) {
+          messages.push({
+            to: user.expoPushToken,
+            sound: 'default',
+            title, body, data,
+            badge: 1,
+          });
+        }
+        if (user.webPushToken) {
+          webMessages.push({ token: user.webPushToken, title, body, data });
+        }
       }
 
       // Send in chunks (Expo limit: 100 per batch)
@@ -186,8 +207,9 @@ exports.onNewTeamPost = functions.firestore
           console.error('Push send error:', error);
         }
       }
+      await sendWebPushNotifications(webMessages);
 
-      console.log(`Sent ${messages.length} push notifications for post in ${channelKey}`);
+      console.log(`Sent ${messages.length} native + ${webMessages.length} web push notifications for post in ${channelKey}`);
     } catch (error) {
       console.error('onNewTeamPost error:', error);
     }
@@ -221,22 +243,22 @@ exports.dailyCheckinReminder = functions.pubsub
         checkinsSnap.docs.map(d => d.data().userId).filter(Boolean)
       );
 
+      const title = 'Daily Check-In';
+      const body = 'How are you feeling? A quick check-in helps your coach keep you healthy.';
+      const data = { type: 'checkin_reminder' };
+
       const messages = [];
+      const webMessages = [];
       athletesSnap.docs.forEach(doc => {
         const athlete = doc.data();
         if (checkedInUserIds.has(doc.id)) return;
-        if (!athlete.expoPushToken || !Expo.isExpoPushToken(athlete.expoPushToken)) return;
-
-        messages.push({
-          to: athlete.expoPushToken,
-          sound: 'default',
-          title: 'Daily Check-In',
-          body: 'How are you feeling? A quick check-in helps your coach keep you healthy.',
-          data: { type: 'checkin_reminder' },
-        });
+        if (athlete.expoPushToken && Expo.isExpoPushToken(athlete.expoPushToken)) {
+          messages.push({ to: athlete.expoPushToken, sound: 'default', title, body, data });
+        }
+        if (athlete.webPushToken) {
+          webMessages.push({ token: athlete.webPushToken, title, body, data });
+        }
       });
-
-      if (messages.length === 0) return;
 
       const chunks = expo.chunkPushNotifications(messages);
       for (const chunk of chunks) {
@@ -246,9 +268,154 @@ exports.dailyCheckinReminder = functions.pubsub
           console.error('Checkin reminder push error:', error);
         }
       }
+      await sendWebPushNotifications(webMessages);
 
-      console.log(`Sent ${messages.length} check-in reminders`);
+      console.log(`Sent ${messages.length} native + ${webMessages.length} web check-in reminders`);
     } catch (error) {
       console.error('dailyCheckinReminder error:', error);
+    }
+  });
+
+// ── Weekly Check-In Reminder (multi-timezone) ────────────────────────────────
+// Runs every hour on Saturday (UTC). For each school, checks the school's local
+// time and fires pushes only when local hour is 12:00 on Saturday. This means
+// every school gets exactly one push per Saturday at their own noon, regardless
+// of timezone. Athletes who've already submitted this week are skipped.
+//
+// Note: schools in timezones where Saturday-noon-local falls on Friday UTC
+// (UTC+12 and beyond) are NOT supported by this Saturday-only cron. US-only
+// timezones all sit within Saturday UTC so this is fine for current scope.
+
+exports.weeklyCheckinReminder = functions.pubsub
+  .schedule('0 * * * 6')
+  .onRun(async () => {
+    try {
+      const now = new Date();
+      const schoolsSnap = await db.collection('schools').get();
+      if (schoolsSnap.empty) return;
+
+      for (const schoolDoc of schoolsSnap.docs) {
+        const school = schoolDoc.data();
+        const tz = school.timezone || 'America/New_York';
+
+        // Compute the school's local hour + weekday
+        const localFmt = new Intl.DateTimeFormat('en-US', {
+          timeZone: tz,
+          hour: '2-digit', hour12: false, weekday: 'short',
+        });
+        const parts = {};
+        localFmt.formatToParts(now).forEach(p => { parts[p.type] = p.value; });
+        const localHour = parseInt(parts.hour, 10) % 24;
+        if (parts.weekday !== 'Sat' || localHour !== 12) continue;
+
+        // The Saturday-noon date in the school's TZ — anchors weekly checkins
+        const dateFmt = new Intl.DateTimeFormat('en-CA', {
+          timeZone: tz,
+          year: 'numeric', month: '2-digit', day: '2-digit',
+        });
+        const anchor = dateFmt.format(now); // en-CA → YYYY-MM-DD
+
+        const athletesSnap = await db.collection('users')
+          .where('schoolId', '==', schoolDoc.id)
+          .where('role', '==', 'athlete')
+          .where('status', '==', 'approved')
+          .get();
+        if (athletesSnap.empty) continue;
+
+        // Skip athletes who already submitted this week
+        const checkinsSnap = await db.collection('weeklyCheckins')
+          .where('schoolId', '==', schoolDoc.id)
+          .where('weekStartISO', '==', anchor)
+          .get();
+        const submittedUids = new Set(
+          checkinsSnap.docs.map(d => d.data().userId).filter(Boolean)
+        );
+
+        const title = 'Weekly check-in';
+        const body = 'How was your week? Share a quick update with your coach.';
+        const data = { type: 'weekly_checkin_reminder' };
+
+        const messages = [];
+        const webMessages = [];
+        athletesSnap.docs.forEach(d => {
+          const athlete = d.data();
+          if (submittedUids.has(d.id)) return;
+          if (athlete.expoPushToken && Expo.isExpoPushToken(athlete.expoPushToken)) {
+            messages.push({ to: athlete.expoPushToken, sound: 'default', title, body, data });
+          }
+          if (athlete.webPushToken) {
+            webMessages.push({ token: athlete.webPushToken, title, body, data });
+          }
+        });
+
+        const chunks = expo.chunkPushNotifications(messages);
+        for (const chunk of chunks) {
+          try {
+            await expo.sendPushNotificationsAsync(chunk);
+          } catch (e) {
+            console.error('Weekly reminder push error:', e);
+          }
+        }
+        await sendWebPushNotifications(webMessages);
+
+        console.log(`Sent ${messages.length} native + ${webMessages.length} web weekly reminders to ${school.name || schoolDoc.id}`);
+      }
+    } catch (error) {
+      console.error('weeklyCheckinReminder error:', error);
+    }
+  });
+
+// ── Push athlete when coach replies to their weekly check-in ─────────────────
+
+exports.onWeeklyCheckinReply = functions.firestore
+  .document('weeklyCheckins/{docId}')
+  .onUpdate(async (change, context) => {
+    try {
+      const before = change.before.data();
+      const after = change.after.data();
+      if (!after?.coachReply || !after.userId) return;
+
+      // Fire on either a brand-new reply OR a text edit. Skip everything else
+      // (athlete editing their message, athleteViewedReplyAt clearing, etc.).
+      const isNewReply = !before?.coachReply;
+      const isEdited = !isNewReply && before.coachReply.text !== after.coachReply.text;
+      if (!isNewReply && !isEdited) return;
+
+      // On an edit, clear the athlete's "viewed" timestamp so the home-screen
+      // "Coach replied" card resurfaces. Coaches can't write this field via
+      // Firestore rules (intentional), so the Function does it admin-side.
+      // This re-triggers onUpdate but the next pass will short-circuit because
+      // coachReply.text is unchanged.
+      if (isEdited && after.athleteViewedReplyAt) {
+        await change.after.ref.update({
+          athleteViewedReplyAt: admin.firestore.FieldValue.delete(),
+        });
+      }
+
+      const athleteDoc = await db.collection('users').doc(after.userId).get();
+      if (!athleteDoc.exists) return;
+      const athlete = athleteDoc.data();
+
+      const replyText = after.coachReply.text || '';
+      const preview = replyText.length > 100 ? replyText.slice(0, 97) + '...' : replyText;
+      const coachName = after.coachReply.repliedByName || 'Coach';
+      const title = isEdited ? `${coachName} updated their reply` : `${coachName} replied`;
+      const data = { type: 'weekly_checkin_reply', docId: context.params.docId, edited: isEdited };
+
+      const sends = [];
+      if (athlete.expoPushToken && Expo.isExpoPushToken(athlete.expoPushToken)) {
+        sends.push(expo.sendPushNotificationsAsync([{
+          to: athlete.expoPushToken,
+          sound: 'default',
+          title, body: preview, data,
+        }]));
+      }
+      if (athlete.webPushToken) {
+        sends.push(sendWebPushNotifications([{ token: athlete.webPushToken, title, body: preview, data }]));
+      }
+      await Promise.all(sends);
+      console.log(`Sent weekly ${isEdited ? 'edit' : 'reply'} notification to ${after.userId} (native=${!!athlete.expoPushToken}, web=${!!athlete.webPushToken})`);
+    } catch (error) {
+      console.error('onWeeklyCheckinReply error:', error);
     }
   });

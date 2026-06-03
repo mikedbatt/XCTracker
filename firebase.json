@@ -5,5 +5,28 @@
   },
   "functions": {
     "source": "functions"
+  },
+  "hosting": {
+    "public": "dist",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ],
+    "headers": [
+      {
+        "source": "/firebase-messaging-sw.js",
+        "headers": [
+          { "key": "Service-Worker-Allowed", "value": "/" },
+          { "key": "Cache-Control",          "value": "no-cache" }
+        ]
+      }
+    ]
   }
 }

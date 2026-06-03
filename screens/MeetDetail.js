@@ -6,6 +6,7 @@ import {
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { db } from '../firebaseConfig';
+import { confirmDestructive } from '../utils/confirmDialog';
 import { SIGNAL } from '../constants/design';
 import { RACE_DISTANCES, RACE_LEVELS } from '../utils/raceUtils';
 import RaceResults from './RaceResults';
@@ -100,9 +101,11 @@ export default function MeetDetail({ meet, schoolId, school, athletes, groups, o
   };
 
   const handleDeleteRace = (race) => {
-    Alert.alert('Delete race?', `Remove "${race.label}" and all its results?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
+    confirmDestructive({
+      title: 'Delete race?',
+      message: `Remove "${race.label}" and all its results?`,
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
         try {
           // Delete results first
           const resSnap = await getDocs(query(collection(db, 'raceResults'), where('raceId', '==', race.id)));
@@ -110,8 +113,8 @@ export default function MeetDetail({ meet, schoolId, school, athletes, groups, o
           await deleteDoc(doc(db, 'races', race.id));
           await loadRaces();
         } catch { Alert.alert('Error', 'Could not delete race.'); }
-      }},
-    ]);
+      },
+    });
   };
 
   const handleToggleEntry = async (race, athleteId) => {

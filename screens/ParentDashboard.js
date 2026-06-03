@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { SIGNAL } from '../constants/design';
 import { auth, db } from '../firebaseConfig';
+import { confirmDestructive } from '../utils/confirmDialog';
 import AthleteDetailScreen from './AthleteDetailScreen';
 import CalendarScreen from './CalendarScreen';
 import ChannelList from './ChannelList';
@@ -99,14 +100,18 @@ export default function ParentDashboard({ userData }) {
   };
 
   const handleSignOut = () => {
-    Alert.alert('Sign out', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: async () => {
-        await SecureStore.deleteItemAsync('xctracker_email');
-        await SecureStore.deleteItemAsync('xctracker_password');
+    confirmDestructive({
+      title: 'Sign out',
+      message: 'Are you sure?',
+      confirmLabel: 'Sign out',
+      onConfirm: async () => {
+        try {
+          await SecureStore.deleteItemAsync('xctracker_email');
+          await SecureStore.deleteItemAsync('xctracker_password');
+        } catch (e) { /* SecureStore unavailable on web — Firebase persistence handles auth */ }
         signOut(auth);
-      }},
-    ]);
+      },
+    });
   };
 
   const handleSwitchAthlete = (athlete) => {

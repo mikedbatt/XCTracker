@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 import { AVATAR_COLORS, SIGNAL, STRAVA_ORANGE } from '../constants/design';
+import { confirmDestructive } from '../utils/confirmDialog';
 import { calcVDOT, getTrainingPaces, formatPace, parseTimeToSeconds, RACE_DISTANCES } from '../utils/vdotUtils';
 import StravaConnect from './StravaConnect';
 
@@ -272,18 +273,18 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
   };
 
   const handleSignOut = () => {
-    Alert.alert(
-      'Sign out',
-      'Are you sure you want to sign out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Sign out', style: 'destructive', onPress: async () => {
+    confirmDestructive({
+      title: 'Sign out',
+      message: 'Are you sure you want to sign out?',
+      confirmLabel: 'Sign out',
+      onConfirm: async () => {
+        try {
           await SecureStore.deleteItemAsync('xctracker_email');
           await SecureStore.deleteItemAsync('xctracker_password');
-          signOut(auth);
-        }},
-      ]
-    );
+        } catch (e) { /* SecureStore unavailable on web — Firebase persistence handles auth */ }
+        signOut(auth);
+      },
+    });
   };
 
   if (stravaVisible) {
@@ -587,35 +588,39 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
         {/* ── Connections section ── */}
         {activeSection === 'connections' && (
           <>
-            <Text style={[styles.eyebrow, { marginTop: 0, marginBottom: 10, paddingLeft: 4 }]}>Connected apps</Text>
-
-            {/* Strava */}
-            <View style={styles.connectionCard}>
-              <View style={[styles.connectionLogo, { backgroundColor: STRAVA_ORANGE + '1A' }]}>
-                <Text style={[styles.connectionLogoText, { color: STRAVA_ORANGE }]}>S</Text>
-              </View>
-              <View style={styles.connectionInfo}>
-                <Text style={styles.connectionName}>Strava</Text>
-                <Text style={[
-                  styles.connectionStatus,
-                  { color: stravaLinked ? SIGNAL.color.emerald : SIGNAL.color.mute },
-                ]}>
-                  {stravaLinked ? '● Connected · auto-syncing' : 'Not connected'}
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => setStravaVisible(true)}
-                activeOpacity={0.7}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Text style={[
-                  styles.connectionAction,
-                  { color: stravaLinked ? SIGNAL.color.coral : SIGNAL.color.indigo },
-                ]}>
-                  {stravaLinked ? 'Disconnect' : 'Connect'}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            {/* Connected apps — currently just Strava. Hidden on web for v1
+                because Strava OAuth needs a separate Strava dev app for web. */}
+            {Platform.OS !== 'web' && (
+              <>
+                <Text style={[styles.eyebrow, { marginTop: 0, marginBottom: 10, paddingLeft: 4 }]}>Connected apps</Text>
+                <View style={styles.connectionCard}>
+                  <View style={[styles.connectionLogo, { backgroundColor: STRAVA_ORANGE + '1A' }]}>
+                    <Text style={[styles.connectionLogoText, { color: STRAVA_ORANGE }]}>S</Text>
+                  </View>
+                  <View style={styles.connectionInfo}>
+                    <Text style={styles.connectionName}>Strava</Text>
+                    <Text style={[
+                      styles.connectionStatus,
+                      { color: stravaLinked ? SIGNAL.color.emerald : SIGNAL.color.mute },
+                    ]}>
+                      {stravaLinked ? '● Connected · auto-syncing' : 'Not connected'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => setStravaVisible(true)}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={[
+                      styles.connectionAction,
+                      { color: stravaLinked ? SIGNAL.color.coral : SIGNAL.color.indigo },
+                    ]}>
+                      {stravaLinked ? 'Disconnect' : 'Connect'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
 
             {/* Connected parents */}
             <View style={styles.parentsHeader}>

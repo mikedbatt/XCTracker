@@ -44,10 +44,17 @@ export default function LoginScreen({ onAuthSuccess }) {
   }, []);
 
   const checkBiometrics = async () => {
-    const compatible = await LocalAuthentication.hasHardwareAsync();
-    const enrolled = await LocalAuthentication.isEnrolledAsync();
-    const storedEmail = await SecureStore.getItemAsync('xctracker_email');
-    setBiometricAvailable(compatible && enrolled && !!storedEmail);
+    // Biometrics + SecureStore don't exist on web. Skip entirely so the
+    // login screen doesn't crash on mount.
+    if (Platform.OS === 'web') return;
+    try {
+      const compatible = await LocalAuthentication.hasHardwareAsync();
+      const enrolled = await LocalAuthentication.isEnrolledAsync();
+      const storedEmail = await SecureStore.getItemAsync('xctracker_email');
+      setBiometricAvailable(compatible && enrolled && !!storedEmail);
+    } catch (e) {
+      console.warn('Biometric check failed:', e);
+    }
   };
 
   const handleBiometricLogin = async () => {
@@ -159,8 +166,10 @@ export default function LoginScreen({ onAuthSuccess }) {
 
       } else {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
-        await SecureStore.setItemAsync('xctracker_email', email);
-        await SecureStore.setItemAsync('xctracker_password', password);
+        try {
+          await SecureStore.setItemAsync('xctracker_email', email);
+          await SecureStore.setItemAsync('xctracker_password', password);
+        } catch (e) { /* SecureStore unavailable on web — Firebase persistence handles auth */ }
         if (onAuthSuccess) onAuthSuccess({ uid: userCredential.user.uid });
       }
     } catch (error) {

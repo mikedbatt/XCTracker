@@ -30,6 +30,15 @@ service cloud.firestore {
         && (user.role == 'admin_coach' || user.role == 'assistant_coach');
     }
 
+    // Check if user is the HEAD coach (admin_coach only) at the given school.
+    // Used to gate sensitive collections that assistant coaches should not see.
+    function isHeadCoachAtSchool(schoolId) {
+      let user = getUserData();
+      return isSignedIn()
+        && user.schoolId == schoolId
+        && user.role == 'admin_coach';
+    }
+
     // ── Users ─────────────────────────────────────────────────────────────────
     // Any signed-in user can read user docs. Needed for: parent link flow
     // (search by email), assistant coach join, teammate profiles, leaderboard.
@@ -85,6 +94,32 @@ service cloud.firestore {
       allow update: if isSignedIn()
         && resource.data.userId == request.auth.uid;
       allow read: if isSignedIn();
+      allow delete: if false;
+    }
+
+    // ── Weekly check-ins (athlete → head coach freeform thread) ──────────────
+    // Doc ID format: {userId}_{weekStartISO}. Schema includes message,
+    // coachReply, and athleteViewedReplyAt. Privacy: only the athlete and the
+    // HEAD coach at their school can read. Assistant coaches and parents are
+    // excluded by design — these are private athlete→head-coach messages.
+    match /weeklyCheckins/{docId} {
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid;
+      // Athlete: edit own message + mark reply as read. Cannot write coachReply.
+      // Head coach at same school: write/edit coachReply only. Cannot touch
+      // the athlete's message text.
+      allow update: if isSignedIn() && (
+        (resource.data.userId == request.auth.uid
+          && !request.resource.data.diff(resource.data).affectedKeys()
+               .hasAny(['coachReply', 'userId', 'schoolId', 'weekStartISO']))
+        || (isHeadCoachAtSchool(resource.data.schoolId)
+          && !request.resource.data.diff(resource.data).affectedKeys()
+               .hasAny(['userId', 'schoolId', 'weekStartISO', 'message', 'athleteViewedReplyAt']))
+      );
+      allow read: if isSignedIn() && (
+        resource.data.userId == request.auth.uid
+        || isHeadCoachAtSchool(resource.data.schoolId)
+      );
       allow delete: if false;
     }
 

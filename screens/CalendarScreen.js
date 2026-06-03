@@ -19,6 +19,7 @@ import { auth, db } from '../firebaseConfig';
 import { BRAND, SIGNAL } from '../constants/design';
 import { CATEGORIES, SIGNAL_TYPE_COLORS, TYPE_COLORS, WORKOUT_PACE_ZONE } from '../constants/training';
 import { formatPace } from '../utils/vdotUtils';
+import { toLocalISODate } from '../utils/dateUtils';
 import DatePickerField from './DatePickerField';
 import RunDetailModal from './RunDetailModal';
 import WorkoutDetailModal from './WorkoutDetailModal';
@@ -108,13 +109,13 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
           const end = item.endDate?.toDate?.() || d;
           const cur = new Date(d);
           while (cur <= end) {
-            const key = cur.toISOString().split('T')[0];
+            const key = toLocalISODate(cur);
             if (!marks[key]) marks[key] = { dots: [], marked: true };
             if (marks[key].dots.length < 3) marks[key].dots.push({ key: `${item.id}_${key}`, color });
             cur.setDate(cur.getDate() + 1);
           }
         } else {
-          const key = d.toISOString().split('T')[0];
+          const key = toLocalISODate(d);
           if (!marks[key]) marks[key] = { dots: [], marked: true };
           if (marks[key].dots.length < 3) marks[key].dots.push({ key: item.id, color });
         }
@@ -139,7 +140,7 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
           runs.forEach(run => {
             const runDate = run.date?.toDate?.();
             if (!runDate) return;
-            const key = runDate.toISOString().split('T')[0];
+            const key = toLocalISODate(runDate);
             if (!marks[key]) marks[key] = { dots: [], marked: true };
             const alreadyHasRunDot = marks[key].dots.some(dot => dot.key?.startsWith('run_'));
             if (!alreadyHasRunDot && marks[key].dots.length < 3) {
@@ -158,12 +159,12 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
     setSelectedDate(day.dateString);
     setSelectedItems(allItems.filter(item => {
       const d = item.date?.toDate?.();
-      return d && d.toISOString().split('T')[0] === day.dateString;
+      return d && toLocalISODate(d) === day.dateString;
     }));
     // Also find any runs logged on this day (for athletes)
     setSelectedRuns(athleteRuns.filter(run => {
       const d = run.date?.toDate?.();
-      return d && d.toISOString().split('T')[0] === day.dateString;
+      return d && toLocalISODate(d) === day.dateString;
     }));
   };
 

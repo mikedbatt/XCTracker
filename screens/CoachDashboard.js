@@ -10,6 +10,7 @@ import {
   getDocs,
   orderBy,
   query,
+  serverTimestamp,
   setDoc,
   updateDoc,
   where
@@ -43,6 +44,8 @@ import RaceManager from '../screens/RaceManager';
 import { getActiveSeason, getPhaseForSeason, getCompletedSeasons } from '../screens/SeasonPlanner';
 import SeasonReview from '../screens/SeasonReview';
 import WeeklyPlanner from '../screens/WeeklyPlanner';
+import WeeklyCheckinHistory from '../screens/WeeklyCheckinHistory';
+import { confirmDestructive } from '../utils/confirmDialog';
 import ChannelList from '../screens/ChannelList';
 import TimeframePicker, { TIMEFRAMES, getDateRange } from '../screens/TimeframePicker';
 import TrainingHub from '../screens/TrainingHub';
@@ -53,7 +56,8 @@ import { batchDocsByIds } from '../utils/batchDocsByIds';
 import { computeVolumeCompliance, getCurrentWeekPace, getAthleteWeeklyTarget } from '../utils/complianceUtils';
 import { calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
 import { useStaleRefresh } from '../hooks/useStaleRefresh';
-import { getRunDate } from '../utils/dateUtils';
+import { getRunDate, toLocalISODate } from '../utils/dateUtils';
+import { getWeekAnchor } from '../utils/weeklyCheckinUtils';
 import {
   DEFAULT_ZONE_BOUNDARIES,
   calcMaxHR,
@@ -341,6 +345,12 @@ export default function CoachDashboard({ userData }) {
   const [paceComplianceExpanded, setPaceComplianceExpanded] = useState(false);
   const [acwrExpanded,        setAcwrExpanded]        = useState(false);
   const [paceComplianceData, setPaceComplianceData] = useState({ runningEasy: [], tooHard: [], noPaces: 0, noPacesAthletes: [] });
+  const [weeklyCheckins,      setWeeklyCheckins]      = useState({}); // athleteId → checkin doc (this week only)
+  const [weeklyCardExpanded,  setWeeklyCardExpanded]  = useState(false);
+  const [weeklyReplyAthleteId, setWeeklyReplyAthleteId] = useState(null); // athlete whose row is expanded for reply
+  const [weeklyReplyText,     setWeeklyReplyText]     = useState('');
+  const [weeklySendingReply,  setWeeklySendingReply]  = useState(false);
+  const [weeklyHistoryAthlete, setWeeklyHistoryAthlete] = useState(null); // athlete object whose history is open
 
   // Load reviewed seasons from Firestore on mount
   useEffect(() => {
@@ -382,6 +392,7 @@ export default function CoachDashboard({ userData }) {
         tipDoc,
         checkinSnap,
         attendanceSnap,
+        weeklyCheckinsSnap,
       ] = await Promise.all([
         getDoc(doc(db, 'schools', userData.schoolId)),
         getDoc(doc(db, 'teamZoneSettings', userData.schoolId))
@@ -430,11 +441,34 @@ export default function CoachDashboard({ userData }) {
           where('schoolId', '==', userData.schoolId),
           where('date', '>=', thirtyDaysAgoKey)
         )).catch(e => { console.warn('Attendance query failed:', e); return null; }),
+        // Weekly check-ins are head-coach only; assistant coaches skip this query
+        // so they don't hit a permission-denied warning.
+        isAdmin
+          ? getDocs(query(
+              collection(db, 'weeklyCheckins'),
+              where('schoolId', '==', userData.schoolId)
+            )).catch(e => { console.warn('Weekly check-ins query failed:', e); return null; })
+          : Promise.resolve(null),
       ]);
 
       // School + zone + groups
       const schoolData = schoolDoc.exists() ? schoolDoc.data() : null;
       if (schoolData) setSchool(schoolData);
+
+      // Weekly check-ins for the current week (Sat 12:00 → Mon 12:00 in school TZ).
+      // Map athleteId → checkin doc so the triage card can show "received" + "missing" sections.
+      if (weeklyCheckinsSnap) {
+        const tz = schoolData?.timezone || 'America/New_York';
+        const currentAnchor = getWeekAnchor(new Date(), tz);
+        const thisWeek = {};
+        weeklyCheckinsSnap.docs.forEach(d => {
+          const data = d.data();
+          if (data.weekStartISO === currentAnchor && data.userId) {
+            thisWeek[data.userId] = { id: d.id, ...data };
+          }
+        });
+        setWeeklyCheckins(thisWeek);
+      }
 
       let currentZoneSettings = null;
       if (zoneDoc && zoneDoc.exists()) {
@@ -787,25 +821,31 @@ export default function CoachDashboard({ userData }) {
   };
 
   const handleDenyAthlete = async (athlete) => {
-    Alert.alert('Deny?', `Deny ${athlete.firstName}'s request?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Deny', style: 'destructive', onPress: async () => {
+    confirmDestructive({
+      title: 'Deny?',
+      message: `Deny ${athlete.firstName}'s request?`,
+      confirmLabel: 'Deny',
+      onConfirm: async () => {
         await updateDoc(doc(db, 'users', athlete.id), { status: 'denied', schoolId: null });
         await updateDoc(doc(db, 'schools', userData.schoolId), { pendingAthleteIds: arrayRemove(athlete.id) });
         loadDashboard();
-      }},
-    ]);
+      },
+    });
   };
 
   const handleSignOut = () => {
-    Alert.alert('Sign out', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: async () => {
-        await SecureStore.deleteItemAsync('xctracker_email');
-        await SecureStore.deleteItemAsync('xctracker_password');
+    confirmDestructive({
+      title: 'Sign out',
+      message: 'Are you sure?',
+      confirmLabel: 'Sign out',
+      onConfirm: async () => {
+        try {
+          await SecureStore.deleteItemAsync('xctracker_email');
+          await SecureStore.deleteItemAsync('xctracker_password');
+        } catch (e) { /* SecureStore unavailable on web — Firebase persistence handles auth */ }
         signOut(auth);
-      }},
-    ]);
+      },
+    });
   };
 
   const handleOpenTip = (phase) => {
@@ -840,9 +880,9 @@ export default function CoachDashboard({ userData }) {
   const primaryColor  = SIGNAL.color.indigo;
   const isAdmin       = userData.role === 'admin_coach';
   const hasTrainingAccess = isAdmin || userData.trainingAccess === true;
-  const today         = new Date().toISOString().split('T')[0];
-  const todayItems    = trainingItems.filter(item => item.date?.toDate?.()?.toISOString().split('T')[0] === today);
-  const upcomingItems = trainingItems.filter(item => item.date?.toDate?.()?.toISOString().split('T')[0] > today).slice(0, 7);
+  const today         = toLocalISODate(new Date());
+  const todayItems    = trainingItems.filter(item => toLocalISODate(item.date?.toDate?.()) === today);
+  const upcomingItems = trainingItems.filter(item => toLocalISODate(item.date?.toDate?.()) > today).slice(0, 7);
   const activeSeason  = getActiveSeason(school);
   const currentPhase  = activeSeason ? getPhaseForSeason(activeSeason) : getPhaseForSeason(null);
   const alertCount    = Object.values(overtTrainingAlerts).filter(a => a.alert).length;
@@ -1536,6 +1576,183 @@ export default function CoachDashboard({ userData }) {
               </View>
             );
           })()}
+
+          {/* Weekly check-ins (Sat noon → Mon noon). Head coach only — private
+              athlete-to-head-coach thread, intentionally hidden from assistants. */}
+          {userData.role === 'admin_coach' && athletes.length > 0 && (() => {
+            const submitted = athletes.filter(a => weeklyCheckins[a.id]);
+            const missing   = athletes.filter(a => !weeklyCheckins[a.id]);
+            const pct = athletes.length > 0 ? Math.round((submitted.length / athletes.length) * 100) : 0;
+            const status = pct >= 90 ? 'ok' : pct >= 50 ? 'warn' : 'alert';
+            const gradient = status === 'ok'
+              ? [SIGNAL.color.emerald, SIGNAL.color.cyan]
+              : status === 'warn'
+              ? [SIGNAL.color.amber, SIGNAL.color.coral]
+              : [SIGNAL.color.coral, '#b91c1c'];
+            const accent = status === 'ok' ? SIGNAL.color.emerald
+              : status === 'warn' ? SIGNAL.color.amber : SIGNAL.color.coral;
+
+            const handleSendReply = async (athleteId, docId) => {
+              const text = weeklyReplyText.trim();
+              if (!text || !docId) return;
+              setWeeklySendingReply(true);
+              try {
+                const coachName = [userData.firstName, userData.lastName].filter(Boolean).join(' ').trim() || 'Coach';
+                await updateDoc(doc(db, 'weeklyCheckins', docId), {
+                  coachReply: {
+                    text,
+                    repliedByUid: auth.currentUser.uid,
+                    repliedByName: coachName,
+                    repliedAt: serverTimestamp(),
+                  },
+                });
+                setWeeklyReplyAthleteId(null);
+                setWeeklyReplyText('');
+                loadDashboard();
+              } catch (e) {
+                console.warn('Send weekly reply failed:', e);
+                Alert.alert('Reply not sent', `Could not send your reply: ${e.message || e}.`);
+              } finally {
+                setWeeklySendingReply(false);
+              }
+            };
+
+            return (
+              <View style={styles.triageCard}>
+                <TouchableOpacity
+                  style={styles.triageHeader}
+                  onPress={() => setWeeklyCardExpanded(prev => !prev)}
+                  activeOpacity={0.85}
+                >
+                  <View style={[styles.triageIcon, { backgroundColor: `${SIGNAL.color.indigo}1A` }]}>
+                    <Ionicons name="chatbubbles" size={16} color={SIGNAL.color.indigo} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.triageTitle}>Weekly check-ins</Text>
+                    <Text style={styles.triageSummary} numberOfLines={1}>
+                      <Text style={{ color: SIGNAL.color.emerald, fontFamily: SIGNAL.font.bodySemi }}>{submitted.length} received</Text>
+                      {missing.length > 0 ? (
+                        <Text>, <Text style={{ color: SIGNAL.color.coral, fontFamily: SIGNAL.font.bodySemi }}>{missing.length} missing</Text></Text>
+                      ) : null}
+                    </Text>
+                  </View>
+                  <Ionicons name={weeklyCardExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={SIGNAL.color.mute2} />
+                </TouchableOpacity>
+
+                {weeklyCardExpanded && (
+                  <View style={styles.triageBody}>
+                    <LinearGradient
+                      colors={gradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.heroPill}
+                    >
+                      <Text style={styles.heroPillNum}>{pct}%</Text>
+                      <Text style={styles.heroPillSub}>{submitted.length} of {athletes.length} submitted</Text>
+                    </LinearGradient>
+
+                    {/* Received */}
+                    {submitted.length > 0 && (
+                      <>
+                        <Text style={styles.weeklySectionHead}>Received ({submitted.length})</Text>
+                        {submitted.map(athlete => {
+                          const checkin = weeklyCheckins[athlete.id];
+                          const isExpanded = weeklyReplyAthleteId === athlete.id;
+                          const needsReply = !checkin.coachReply;
+                          return (
+                            <View key={athlete.id} style={styles.weeklyRow}>
+                              <TouchableOpacity
+                                style={styles.weeklyRowHead}
+                                onPress={() => {
+                                  if (isExpanded) {
+                                    setWeeklyReplyAthleteId(null);
+                                    setWeeklyReplyText('');
+                                  } else {
+                                    setWeeklyReplyAthleteId(athlete.id);
+                                    setWeeklyReplyText(checkin.coachReply?.text || '');
+                                  }
+                                }}
+                                activeOpacity={0.85}
+                              >
+                                <View style={[styles.injuryAvatar, { backgroundColor: athlete.avatarColor || SIGNAL.color.indigo }]}>
+                                  <Text style={styles.injuryAvatarText}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
+                                </View>
+                                <View style={{ flex: 1, minWidth: 0 }}>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                    <Text style={styles.injuryName}>{athlete.firstName} {athlete.lastName}</Text>
+                                    {needsReply && <View style={styles.weeklyUnreadDot} />}
+                                  </View>
+                                  <Text style={styles.weeklyPreview} numberOfLines={isExpanded ? 0 : 2}>
+                                    {checkin.message}
+                                  </Text>
+                                </View>
+                                <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={14} color={SIGNAL.color.mute} />
+                              </TouchableOpacity>
+
+                              {isExpanded && (
+                                <View style={styles.weeklyReplyArea}>
+                                  <TextInput
+                                    style={styles.weeklyReplyInput}
+                                    value={weeklyReplyText}
+                                    onChangeText={setWeeklyReplyText}
+                                    placeholder="Write a reply…"
+                                    placeholderTextColor={SIGNAL.color.mute2}
+                                    multiline
+                                    maxLength={500}
+                                  />
+                                  <TouchableOpacity
+                                    style={[styles.weeklyReplySendBtn, (!weeklyReplyText.trim() || weeklySendingReply) && styles.weeklyReplySendBtnDisabled]}
+                                    onPress={() => handleSendReply(athlete.id, checkin.id)}
+                                    disabled={!weeklyReplyText.trim() || weeklySendingReply}
+                                    activeOpacity={0.85}
+                                  >
+                                    <Text style={styles.weeklyReplySendText}>
+                                      {weeklySendingReply ? 'Sending…' : (checkin.coachReply ? 'Update reply' : 'Send reply')}
+                                    </Text>
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    style={styles.weeklyHistoryLink}
+                                    onPress={() => setWeeklyHistoryAthlete(athlete)}
+                                  >
+                                    <Ionicons name="time-outline" size={12} color={SIGNAL.color.indigo} />
+                                    <Text style={styles.weeklyHistoryLinkText}>View past check-ins</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              )}
+                            </View>
+                          );
+                        })}
+                      </>
+                    )}
+
+                    {/* Missing */}
+                    {missing.length > 0 && (
+                      <>
+                        <Text style={styles.weeklySectionHead}>Not yet ({missing.length})</Text>
+                        <View style={styles.weeklyMissingGrid}>
+                          {missing.map(athlete => (
+                            <TouchableOpacity
+                              key={athlete.id}
+                              style={styles.weeklyMissingChip}
+                              onPress={() => setWeeklyHistoryAthlete(athlete)}
+                              activeOpacity={0.85}
+                            >
+                              <View style={[styles.weeklyMissingAvatar, { backgroundColor: athlete.avatarColor || SIGNAL.color.indigo }]}>
+                                <Text style={styles.weeklyMissingAvatarText}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
+                              </View>
+                              <Text style={styles.weeklyMissingName} numberOfLines={1}>
+                                {athlete.firstName} {athlete.lastName?.[0]}.
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </>
+                    )}
+                  </View>
+                )}
+              </View>
+            );
+          })()}
         </View>
 
         {/* ── Team roster ── */}
@@ -1971,6 +2188,15 @@ export default function CoachDashboard({ userData }) {
         </KeyboardAvoidingView>
       </Modal>
 
+      <WeeklyCheckinHistory
+        visible={!!weeklyHistoryAthlete}
+        athleteId={weeklyHistoryAthlete?.id}
+        athleteName={weeklyHistoryAthlete
+          ? `${weeklyHistoryAthlete.firstName || ''} ${weeklyHistoryAthlete.lastName || ''}`.trim()
+          : ''}
+        onClose={() => setWeeklyHistoryAthlete(null)}
+      />
+
     </View>
   );
 }
@@ -2369,6 +2595,123 @@ const styles = StyleSheet.create({
     fontFamily: SIGNAL.font.bodySemi,
     fontSize: 11,
     marginTop: 3,
+  },
+
+  // ── Weekly check-in card ───────────────────────────────────────────────────
+  weeklySectionHead: {
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: 10.5,
+    letterSpacing: 1.36,
+    textTransform: 'uppercase',
+    color: SIGNAL.color.mute,
+    marginTop: 14,
+    marginBottom: 8,
+  },
+  weeklyRow: {
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  weeklyRowHead: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    paddingVertical: 10,
+  },
+  weeklyPreview: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 12.5,
+    color: SIGNAL.color.inkSoft,
+    marginTop: 3,
+    lineHeight: 17,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  weeklyUnreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: SIGNAL.color.indigo,
+  },
+  weeklyReplyArea: {
+    paddingTop: 4,
+    paddingBottom: 12,
+  },
+  weeklyReplyInput: {
+    minHeight: 70,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: SIGNAL.color.paper2,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    fontFamily: SIGNAL.font.body,
+    fontSize: 13,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+    textAlignVertical: 'top',
+  },
+  weeklyReplySendBtn: {
+    marginTop: 8,
+    backgroundColor: SIGNAL.color.indigo,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  weeklyReplySendBtnDisabled: {
+    backgroundColor: SIGNAL.color.line,
+  },
+  weeklyReplySendText: {
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 13,
+    color: '#fff',
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  weeklyHistoryLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingTop: 10,
+  },
+  weeklyHistoryLinkText: {
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: 12,
+    color: SIGNAL.color.indigo,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  weeklyMissingGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  weeklyMissingChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingRight: 12,
+    borderRadius: 999,
+    backgroundColor: SIGNAL.color.paper2,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+  },
+  weeklyMissingAvatar: {
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  weeklyMissingAvatarText: {
+    color: '#fff',
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 9.5,
+  },
+  weeklyMissingName: {
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: 12,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+    maxWidth: 110,
   },
 
   // ── Section titles ─────────────────────────────────────────────────────────

@@ -27,6 +27,23 @@ const SCHOOL_COLORS = [
   { name: 'Custom', primary: null, secondary: null },
 ];
 
+const COMMON_TIMEZONES = [
+  { value: 'America/New_York',    label: 'Eastern' },
+  { value: 'America/Chicago',     label: 'Central' },
+  { value: 'America/Denver',      label: 'Mountain' },
+  { value: 'America/Los_Angeles', label: 'Pacific' },
+  { value: 'America/Anchorage',   label: 'Alaska' },
+  { value: 'Pacific/Honolulu',    label: 'Hawaii' },
+];
+
+function detectDefaultTimezone() {
+  try {
+    const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (COMMON_TIMEZONES.some(tz => tz.value === detected)) return detected;
+  } catch (e) { /* fall through */ }
+  return 'America/New_York';
+}
+
 export default function CoachSetupScreen({ onSetupComplete }) {
   const [schoolName, setSchoolName] = useState('');
   const [mascot, setMascot] = useState('');
@@ -36,6 +53,7 @@ export default function CoachSetupScreen({ onSetupComplete }) {
   const [selectedColors, setSelectedColors] = useState(null);
   const [customPrimary, setCustomPrimary] = useState('');
   const [customSecondary, setCustomSecondary] = useState('');
+  const [timezone, setTimezone] = useState(detectDefaultTimezone());
   const [loading, setLoading] = useState(false);
   const [focusedField, setFocusedField] = useState(null);
 
@@ -64,6 +82,7 @@ export default function CoachSetupScreen({ onSetupComplete }) {
         mascot,
         city,
         state,
+        timezone,
         primaryColor,
         secondaryColor,
         adminCoachId: user.uid,
@@ -179,6 +198,28 @@ export default function CoachSetupScreen({ onSetupComplete }) {
               onBlur={() => setFocusedField(null)}
             />
           </View>
+        </View>
+
+        <Text style={styles.label}>Timezone</Text>
+        <Text style={styles.helperText}>
+          Used to schedule weekly check-in reminders at noon Saturday in your local time.
+        </Text>
+        <View style={styles.tzGrid}>
+          {COMMON_TIMEZONES.map(tz => {
+            const active = timezone === tz.value;
+            return (
+              <TouchableOpacity
+                key={tz.value}
+                style={[styles.tzChip, active && styles.tzChipActive]}
+                onPress={() => setTimezone(tz.value)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.tzChipText, active && styles.tzChipTextActive]}>
+                  {tz.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </View>
 
@@ -422,6 +463,37 @@ const styles = StyleSheet.create({
 
   customColors: {
     marginTop: SIGNAL.space[3],
+  },
+
+  // Timezone chips
+  tzGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SIGNAL.space[2],
+    marginTop: SIGNAL.space[1],
+    marginBottom: SIGNAL.space[2],
+  },
+  tzChip: {
+    paddingHorizontal: SIGNAL.space[3],
+    paddingVertical: SIGNAL.space[2],
+    borderRadius: 999,
+    backgroundColor: SIGNAL.color.paper2,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+  },
+  tzChipActive: {
+    backgroundColor: SIGNAL.color.indigo,
+    borderColor: SIGNAL.color.indigo,
+  },
+  tzChipText: {
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: 12.5,
+    color: SIGNAL.color.inkSoft,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  tzChipTextActive: {
+    color: '#fff',
+    fontFamily: SIGNAL.font.bodyBold,
   },
 
   // Info box

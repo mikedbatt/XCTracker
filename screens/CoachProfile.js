@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 import { AVATAR_COLORS, SIGNAL } from '../constants/design';
+import { confirmDestructive } from '../utils/confirmDialog';
 
 const SCHOOL_COLORS = [
   { name: 'Navy & Gold', primary: '#1a237e', secondary: '#ffd600' },
@@ -26,6 +27,15 @@ const SCHOOL_COLORS = [
   { name: 'Blue & White', primary: '#1565c0', secondary: '#ffffff' },
   { name: 'Maroon & Gold', primary: '#880e4f', secondary: '#ffd600' },
   { name: 'Custom', primary: null, secondary: null },
+];
+
+const COMMON_TIMEZONES = [
+  { value: 'America/New_York',    label: 'Eastern' },
+  { value: 'America/Chicago',     label: 'Central' },
+  { value: 'America/Denver',      label: 'Mountain' },
+  { value: 'America/Los_Angeles', label: 'Pacific' },
+  { value: 'America/Anchorage',   label: 'Alaska' },
+  { value: 'Pacific/Honolulu',    label: 'Hawaii' },
 ];
 
 export default function CoachProfile({ userData, school, pendingAthletes = [], onApproveAthlete, onDenyAthlete, onClose, onUpdated }) {
@@ -45,6 +55,7 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
   });
   const [customPrimary, setCustomPrimary]   = useState(school?.primaryColor || '');
   const [customSecondary, setCustomSecondary] = useState(school?.secondaryColor || '');
+  const [timezone, setTimezone]             = useState(school?.timezone || 'America/New_York');
   const [savingSchool, setSavingSchool]     = useState(false);
   const [editingSchool, setEditingSchool]   = useState(false);
 
@@ -99,9 +110,11 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
   };
 
   const handleDenyCoach = (coach) => {
-    Alert.alert('Deny request?', `Remove ${coach.firstName} ${coach.lastName}'s request to join?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Deny', style: 'destructive', onPress: async () => {
+    confirmDestructive({
+      title: 'Deny request?',
+      message: `Remove ${coach.firstName} ${coach.lastName}'s request to join?`,
+      confirmLabel: 'Deny',
+      onConfirm: async () => {
         try {
           await updateDoc(doc(db, 'schools', userData.schoolId), {
             pendingCoachIds: arrayRemove(coach.id),
@@ -109,8 +122,8 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
           await updateDoc(doc(db, 'users', coach.id), { schoolId: null, status: 'pending' });
           loadAssistantCoaches();
         } catch { Alert.alert('Error', 'Could not deny coach.'); }
-      }},
-    ]);
+      },
+    });
   };
 
   const handleToggleTraining = async (coach, value) => {
@@ -121,9 +134,11 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
   };
 
   const handleRemoveCoach = (coach) => {
-    Alert.alert('Remove assistant?', `Remove ${coach.firstName} ${coach.lastName} from your coaching staff?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: async () => {
+    confirmDestructive({
+      title: 'Remove assistant?',
+      message: `Remove ${coach.firstName} ${coach.lastName} from your coaching staff?`,
+      confirmLabel: 'Remove',
+      onConfirm: async () => {
         try {
           await updateDoc(doc(db, 'schools', userData.schoolId), {
             coachIds: arrayRemove(coach.id),
@@ -131,8 +146,8 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
           await updateDoc(doc(db, 'users', coach.id), { schoolId: null, coachRole: null, trainingAccess: null, status: 'pending' });
           loadAssistantCoaches();
         } catch { Alert.alert('Error', 'Could not remove coach.'); }
-      }},
-    ]);
+      },
+    });
   };
 
   const handleSave = async () => {
@@ -187,6 +202,7 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
       await updateDoc(doc(db, 'schools', userData.schoolId), {
         name: schoolName.trim(),
         mascot: mascot.trim(),
+        timezone,
         ...(primaryColor && { primaryColor }),
         ...(secondaryColor && { secondaryColor }),
       });
@@ -200,14 +216,12 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
   };
 
   const handleSignOut = () => {
-    Alert.alert(
-      'Sign out',
-      'Are you sure you want to sign out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Sign out', style: 'destructive', onPress: () => signOut(auth) },
-      ]
-    );
+    confirmDestructive({
+      title: 'Sign out',
+      message: 'Are you sure you want to sign out?',
+      confirmLabel: 'Sign out',
+      onConfirm: () => signOut(auth),
+    });
   };
 
   return (
@@ -339,6 +353,28 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
                 placeholderTextColor={SIGNAL.color.mute2}
                 autoCapitalize="words"
               />
+
+              <Text style={[styles.eyebrow, { marginTop: 14 }]}>Timezone</Text>
+              <Text style={styles.tzHelper}>
+                Used to schedule weekly check-in reminders at noon Saturday in your local time.
+              </Text>
+              <View style={styles.tzGrid}>
+                {COMMON_TIMEZONES.map(tz => {
+                  const active = timezone === tz.value;
+                  return (
+                    <TouchableOpacity
+                      key={tz.value}
+                      style={[styles.tzChip, active && styles.tzChipActive]}
+                      onPress={() => setTimezone(tz.value)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.tzChipText, active && styles.tzChipTextActive]}>
+                        {tz.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
 
               <Text style={[styles.eyebrow, { marginTop: 14 }]}>Team colors</Text>
               <View style={styles.colorsGrid}>
@@ -859,6 +895,44 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     marginTop: 14,
+  },
+
+  // Timezone picker
+  tzHelper: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 11.5,
+    color: SIGNAL.color.mute,
+    lineHeight: 15,
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  tzGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 4,
+  },
+  tzChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: SIGNAL.color.paper2,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+  },
+  tzChipActive: {
+    backgroundColor: SIGNAL.color.indigo,
+    borderColor: SIGNAL.color.indigo,
+  },
+  tzChipText: {
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: 12.5,
+    color: SIGNAL.color.inkSoft,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  tzChipTextActive: {
+    color: '#fff',
+    fontFamily: SIGNAL.font.bodyBold,
   },
 
   // ── Pending rows (athletes + coaches) ───────────────────────────────────

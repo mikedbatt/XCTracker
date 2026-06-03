@@ -9,6 +9,9 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 import { BRAND, NEUTRAL } from '../constants/design';
+import { confirmDestructive } from '../utils/confirmDialog';
+import WebMaxWidth from '../components/WebMaxWidth';
+import { registerWebPush } from '../utils/webPush';
 
 // Configure how notifications appear when app is in foreground
 Notifications.setNotificationHandler({
@@ -28,8 +31,14 @@ import LoginScreen from '../screens/LoginScreen';
 import ParentDashboard from '../screens/ParentDashboard';
 import ParentLinkScreen from '../screens/ParentLinkScreen';
 
-// Register for push notifications and save token to Firestore
+// Register for push notifications and save token to Firestore.
+// On native: expo-notifications → expoPushToken.
+// On web:    FCM web SDK → webPushToken (handled by registerWebPush).
 async function registerForPushNotifications(uid) {
+  if (Platform.OS === 'web') {
+    return registerWebPush(uid);
+  }
+
   try {
     if (!Device.isDevice) return; // Push only works on physical devices
 
@@ -236,14 +245,18 @@ export default function AppNavigator() {
           <Text style={styles.refreshBtnText}>Check Status</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.signOutLink} onPress={() => {
-          Alert.alert('Sign out', 'Are you sure?', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Sign out', style: 'destructive', onPress: async () => {
-              await SecureStore.deleteItemAsync('xctracker_email');
-              await SecureStore.deleteItemAsync('xctracker_password');
+          confirmDestructive({
+            title: 'Sign out',
+            message: 'Are you sure?',
+            confirmLabel: 'Sign out',
+            onConfirm: async () => {
+              try {
+                await SecureStore.deleteItemAsync('xctracker_email');
+                await SecureStore.deleteItemAsync('xctracker_password');
+              } catch (e) { /* SecureStore unavailable on web — Firebase persistence handles auth */ }
               signOut(auth);
-            }},
-          ]);
+            },
+          });
         }}>
           <Text style={styles.signOutLinkText}>Sign out</Text>
         </TouchableOpacity>
@@ -264,12 +277,12 @@ export default function AppNavigator() {
   // back in the right onboarding flow without having to sign out and in.
   const role = userData?.role;
   if (role === 'admin_coach' || role === 'assistant_coach') {
-    return <CoachDashboard userData={userData} refreshUser={handleOnboardingComplete} />;
+    return <WebMaxWidth><CoachDashboard userData={userData} refreshUser={handleOnboardingComplete} /></WebMaxWidth>;
   }
   if (role === 'parent') {
-    return <ParentDashboard userData={userData} refreshUser={handleOnboardingComplete} />;
+    return <WebMaxWidth><ParentDashboard userData={userData} refreshUser={handleOnboardingComplete} /></WebMaxWidth>;
   }
-  return <AthleteDashboard userData={userData} refreshUser={handleOnboardingComplete} goToJoinScreen={handleGoToJoinScreen} />;
+  return <WebMaxWidth><AthleteDashboard userData={userData} refreshUser={handleOnboardingComplete} goToJoinScreen={handleGoToJoinScreen} /></WebMaxWidth>;
 }
 
 const styles = StyleSheet.create({
