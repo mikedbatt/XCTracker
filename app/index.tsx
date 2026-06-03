@@ -19,6 +19,11 @@ import { Platform } from 'react-native';
 // @ts-ignore — Metro resolves this asset as a URL string on web.
 import iconFont from '@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf';
 import AppNavigator from '../screens/AppNavigator';
+import { initSentry } from '../utils/sentry';
+
+// Initialize crash + error monitoring as early as possible so any startup
+// errors get captured. No-op when EXPO_PUBLIC_SENTRY_DSN isn't set.
+initSentry();
 
 // One-shot @font-face injection on web. Runs at module load, before React mounts.
 // The TTF asset import may come back as either a direct URL string or as an
