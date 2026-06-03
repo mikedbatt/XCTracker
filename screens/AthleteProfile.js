@@ -20,6 +20,7 @@ import {
 import { auth, db } from '../firebaseConfig';
 import { AVATAR_COLORS, SIGNAL, STRAVA_ORANGE } from '../constants/design';
 import { confirmDestructive } from '../utils/confirmDialog';
+import LegalLinks from '../components/LegalLinks';
 import { calcVDOT, getTrainingPaces, formatPace, parseTimeToSeconds, RACE_DISTANCES } from '../utils/vdotUtils';
 import StravaConnect from './StravaConnect';
 
@@ -690,6 +691,8 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
                   </Text>
                 </>
               )}
+
+              <LegalLinks />
 
               {/* Sign out — destructive, always shown */}
               <TouchableOpacity

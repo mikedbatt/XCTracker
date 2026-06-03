@@ -17,6 +17,7 @@ import {
 import { auth, db } from '../firebaseConfig';
 import { AVATAR_COLORS, SIGNAL } from '../constants/design';
 import { confirmDestructive } from '../utils/confirmDialog';
+import LegalLinks from '../components/LegalLinks';
 
 const SCHOOL_COLORS = [
   { name: 'Navy & Gold', primary: '#1a237e', secondary: '#ffd600' },
@@ -592,6 +593,8 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
             ))}
           </View>
         )}
+
+        <LegalLinks />
 
         {/* Account actions */}
         <View style={styles.accountActions}>

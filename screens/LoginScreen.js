@@ -6,7 +6,7 @@ import { createUserWithEmailAndPassword, sendPasswordResetEmail, signInWithEmail
 import { doc, setDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
-  Alert, KeyboardAvoidingView, Platform,
+  Alert, KeyboardAvoidingView, Linking, Platform,
   ScrollView,
   StyleSheet,
   Text, TextInput, TouchableOpacity,
@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 import { SIGNAL } from '../constants/design';
+import { PRIVACY_URL, TERMS_URL } from '../constants/legal';
 
 const ROLES = [
   { key: 'admin_coach',     label: 'Head Coach',      description: 'Set up and manage your program',     icon: 'shield-checkmark-outline', color: SIGNAL.color.indigo },
@@ -467,6 +468,21 @@ export default function LoginScreen({ onAuthSuccess }) {
           </Text>
         </TouchableOpacity>
 
+        {/* Legal consent footer — required by App Store / Play Store reviewers + COPPA. */}
+        {isSignUp && (
+          <Text style={styles.legalFooter}>
+            By creating an account, you agree to our{' '}
+            <Text style={styles.legalLink} onPress={() => Linking.openURL(TERMS_URL).catch(() => {})}>
+              Terms of Service
+            </Text>
+            {' '}and{' '}
+            <Text style={styles.legalLink} onPress={() => Linking.openURL(PRIVACY_URL).catch(() => {})}>
+              Privacy Policy
+            </Text>
+            .
+          </Text>
+        )}
+
         {/* Face ID button */}
         {biometricAvailable && !isSignUp && (
           <TouchableOpacity
@@ -779,6 +795,22 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     letterSpacing: SIGNAL.letter.bodyTight,
+  },
+
+  // ── Legal consent footer (signup only) ──
+  legalFooter: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 12,
+    color: SIGNAL.color.mute,
+    letterSpacing: SIGNAL.letter.bodyTight,
+    lineHeight: 17,
+    textAlign: 'center',
+    marginTop: 14,
+    paddingHorizontal: 12,
+  },
+  legalLink: {
+    color: SIGNAL.color.indigo,
+    fontFamily: SIGNAL.font.bodyMedium,
   },
 
   // ── Secondary CTA (Face ID) ──

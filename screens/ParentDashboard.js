@@ -15,6 +15,7 @@ import {
 import { SIGNAL } from '../constants/design';
 import { auth, db } from '../firebaseConfig';
 import { confirmDestructive } from '../utils/confirmDialog';
+import LegalLinks from '../components/LegalLinks';
 import AthleteDetailScreen from './AthleteDetailScreen';
 import CalendarScreen from './CalendarScreen';
 import ChannelList from './ChannelList';
@@ -233,6 +234,8 @@ export default function ParentDashboard({ userData }) {
                 <Ionicons name="add-circle-outline" size={18} color={SIGNAL.color.indigo} />
                 <Text style={styles.addAthleteBtnText}>Link another athlete</Text>
               </TouchableOpacity>
+
+              <LegalLinks />
 
               <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
                 <Ionicons name="log-out-outline" size={18} color={SIGNAL.color.coral} />
