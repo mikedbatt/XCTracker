@@ -39,6 +39,10 @@ export default function LoginScreen({ onAuthSuccess }) {
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [focusedField, setFocusedField] = useState(null);
+  // Inline form error shown above the primary CTA. Replaces Alert.alert for
+  // auth failures since Alert is unreliable on web (silently no-ops in some
+  // mobile browsers, race-conditions with the React #418 hydration recovery).
+  const [formError, setFormError] = useState(null);
 
   useEffect(() => {
     checkBiometrics();
@@ -107,8 +111,9 @@ export default function LoginScreen({ onAuthSuccess }) {
   };
 
   const handleEmailAuth = async () => {
+    setFormError(null);
     if (!email || !password) {
-      Alert.alert('Missing info', 'Please enter your email and password.');
+      setFormError('Please enter your email and password.');
       return;
     }
 
@@ -117,14 +122,14 @@ export default function LoginScreen({ onAuthSuccess }) {
     try {
       if (isSignUp) {
         if (!firstName || !lastName) {
-          Alert.alert('Missing info', 'Please enter your first and last name.');
+          setFormError('Please enter your first and last name.');
           setLoading(false);
           return;
         }
 
         const ageCheck = validateAge();
         if (!ageCheck.valid) {
-          Alert.alert('Age Verification', ageCheck.message);
+          setFormError(ageCheck.message);
           setLoading(false);
           return;
         }
@@ -175,12 +180,17 @@ export default function LoginScreen({ onAuthSuccess }) {
       }
     } catch (error) {
       let message = 'Something went wrong. Please try again.';
-      if (error.code === 'auth/invalid-email') message = 'Please enter a valid email address.';
-      if (error.code === 'auth/wrong-password') message = 'Incorrect password. Please try again.';
-      if (error.code === 'auth/user-not-found') message = 'No account found with that email.';
-      if (error.code === 'auth/email-already-in-use') message = 'An account with this email already exists.';
-      if (error.code === 'auth/weak-password') message = 'Password should be at least 6 characters.';
-      Alert.alert('Error', message);
+      if (error.code === 'auth/invalid-email')         message = 'Please enter a valid email address.';
+      if (error.code === 'auth/wrong-password')        message = 'Incorrect email or password.';
+      if (error.code === 'auth/user-not-found')        message = 'Incorrect email or password.';
+      // Newer Firebase merges wrong-password + user-not-found into invalid-credential
+      // (intentional — prevents account enumeration).
+      if (error.code === 'auth/invalid-credential')    message = 'Incorrect email or password.';
+      if (error.code === 'auth/email-already-in-use')  message = 'An account with this email already exists.';
+      if (error.code === 'auth/weak-password')         message = 'Password should be at least 6 characters.';
+      if (error.code === 'auth/too-many-requests')     message = 'Too many failed attempts. Try again in a few minutes or reset your password.';
+      if (error.code === 'auth/network-request-failed') message = 'Network error. Check your connection and try again.';
+      setFormError(message);
     }
 
     setLoading(false);
@@ -245,14 +255,14 @@ export default function LoginScreen({ onAuthSuccess }) {
         <View style={styles.segment}>
           <TouchableOpacity
             style={[styles.segmentPill, !isSignUp && styles.segmentPillActive]}
-            onPress={() => setIsSignUp(false)}
+            onPress={() => { setIsSignUp(false); setFormError(null); }}
             activeOpacity={0.8}
           >
             <Text style={[styles.segmentText, !isSignUp && styles.segmentTextActive]}>Sign in</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.segmentPill, isSignUp && styles.segmentPillActive]}
-            onPress={() => setIsSignUp(true)}
+            onPress={() => { setIsSignUp(true); setFormError(null); }}
             activeOpacity={0.8}
           >
             <Text style={[styles.segmentText, isSignUp && styles.segmentTextActive]}>Sign up</Text>
@@ -323,7 +333,7 @@ export default function LoginScreen({ onAuthSuccess }) {
             placeholder="Email address"
             placeholderTextColor={SIGNAL.color.mute2}
             value={email}
-            onChangeText={setEmail}
+            onChangeText={(v) => { setEmail(v); if (formError) setFormError(null); }}
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
@@ -338,7 +348,7 @@ export default function LoginScreen({ onAuthSuccess }) {
               placeholder="Password"
               placeholderTextColor={SIGNAL.color.mute2}
               value={password}
-              onChangeText={setPassword}
+              onChangeText={(v) => { setPassword(v); if (formError) setFormError(null); }}
               secureTextEntry={!showPassword}
               autoCapitalize="none"
               autoCorrect={false}
@@ -455,6 +465,16 @@ export default function LoginScreen({ onAuthSuccess }) {
             </View>
           )}
         </View>
+
+        {/* Inline form error — appears above the primary CTA when auth or
+            validation fails. Auto-clears when user edits email/password or
+            switches between Sign in / Sign up. */}
+        {formError && (
+          <View style={styles.formErrorBox}>
+            <Ionicons name="alert-circle" size={16} color={SIGNAL.color.coral} />
+            <Text style={styles.formErrorText}>{formError}</Text>
+          </View>
+        )}
 
         {/* Primary CTA */}
         <TouchableOpacity
@@ -795,6 +815,28 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     letterSpacing: SIGNAL.letter.bodyTight,
+  },
+
+  // ── Inline form error (auth failures, validation) ──
+  formErrorBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+    borderRadius: 10,
+    backgroundColor: `${SIGNAL.color.coral}10`,
+    borderWidth: 1,
+    borderColor: `${SIGNAL.color.coral}40`,
+  },
+  formErrorText: {
+    flex: 1,
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: 13.5,
+    color: SIGNAL.color.coral,
+    letterSpacing: SIGNAL.letter.bodyTight,
+    lineHeight: 18,
   },
 
   // ── Legal consent footer (signup only) ──
