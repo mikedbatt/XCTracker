@@ -44,7 +44,7 @@ export const SPORT_PHASES = {
     { name: 'Pre-Season Base',color: SIGNAL.color.lime, icon: '🏗️', pct: [0.20, 0.40], weeks: '7–10',       focus: 'Official practice — build the aerobic pyramid',
       guidance: ['High volume, low intensity — stay in Zone 1–2', 'Never increase weekly mileage more than 10%', '"When in doubt, do less" — Coach Jay Johnson', 'Post-run strength and mobility every practice', 'Team time trials: assess where everyone is starting'] },
     { name: 'Build',          color: SIGNAL.color.amber, icon: '⚡',  pct: [0.40, 0.62], weeks: '11–14',      focus: 'Introduce quality and speed',
-      guidance: ['Add one tempo run per week — stay in Zone 3', 'Mileage holds steady, intensity increases', 'Begin tracking lactate threshold pace', 'Group training becomes more competitive', 'Monitor HR — easy days must stay easy'] },
+      guidance: ['Add one tempo run per week — stay in Zone 3', 'Mileage holds steady, intensity increases', 'Begin tracking lactate threshold pace', 'Group training becomes more competitive', 'Keep easy days truly easy'] },
     { name: 'Competition',    color: SIGNAL.color.coral, icon: '🏁',  pct: [0.62, 0.80], weeks: '15–17',      focus: 'Race-specific prep — pack work is everything',
       guidance: ['Volume drops 20–30% from peak', 'Pack work is the #1 priority', 'Monitor 1–5 compression weekly', 'Use early races as training efforts', 'Championship mindset begins now'] },
     { name: 'Peak',           color: SIGNAL.color.violet, icon: '🎯',  pct: [0.80, 0.94], weeks: '18–19',      focus: 'Sharpen for championships',

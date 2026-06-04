@@ -31,17 +31,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { auth, db } from '../firebaseConfig';
 import { autoSyncStrava } from '../stravaConfig';
 import { BRAND, EFFORT_COLORS as DESIGN_EFFORT_COLORS, EFFORT_LABELS as DESIGN_EFFORT_LABELS, SIGNAL } from '../constants/design';
-import {
-  DEFAULT_ZONE_BOUNDARIES, ZONE_META,
-  calc8020,
-  calcMaxHR,
-  calcZoneBreakdownFromRuns, calcZoneBreakdownFromStream,
-  formatMinutes,
-  parseBirthdate,
-} from '../zoneConfig';
 import { batchDocsByIds } from '../utils/batchDocsByIds';
 import { useStaleRefresh } from '../hooks/useStaleRefresh';
-import { PACE_ZONES, calcPaceZoneBreakdown, calcPaceZoneSecondsForRun, calcPace8020, formatPace } from '../utils/vdotUtils';
+import { PACE_ZONES, calcPaceZoneBreakdown, calcPaceZoneSecondsForRun, calcPace8020, formatPace, formatMinutes } from '../utils/vdotUtils';
 import AthleteProfile from './AthleteProfile';
 import CalendarScreen from './CalendarScreen';
 import { SIGNAL_TYPE_COLORS, TYPE_COLORS, WORKOUT_PACE_ZONE } from '../constants/training';
@@ -77,21 +69,6 @@ const MemoCalendarScreen   = memo(CalendarScreen);
 const MemoAthleteAnalytics = memo(AthleteAnalytics);
 const MemoChannelList      = memo(ChannelList);
 
-function calcWeeklyTarget(recentRuns) {
-  if (!recentRuns || recentRuns.length === 0) return 20;
-  const now = new Date();
-  const oneWeekAgo  = new Date(now - 7  * 86400000);
-  const twoWeeksAgo = new Date(now - 14 * 86400000);
-  const lastWeekMiles = recentRuns
-    .filter(r => { const d = r.date?.toDate?.(); return d >= oneWeekAgo; })
-    .reduce((s, r) => s + (r.miles || 0), 0);
-  const prevWeekMiles = recentRuns
-    .filter(r => { const d = r.date?.toDate?.(); return d >= twoWeeksAgo && d < oneWeekAgo; })
-    .reduce((s, r) => s + (r.miles || 0), 0);
-  const baseline = lastWeekMiles || prevWeekMiles || 15;
-  return Math.round(baseline * 1.10 * 10) / 10;
-}
-
 function getWeekStart() {
   const now  = new Date();
   const day  = now.getDay();
@@ -100,44 +77,6 @@ function getWeekStart() {
   monday.setDate(now.getDate() + diff);
   monday.setHours(0, 0, 0, 0);
   return monday;
-}
-
-function buildZoneBreakdown(runs, maxHR, boundaries, athleteAge, customMaxHR) {
-  const combined = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
-  let hasAnyStreamData = false;
-
-  runs.forEach(run => {
-    if (run.rawHRStream?.length > 0) {
-      const bd = calcZoneBreakdownFromStream(run.rawHRStream, maxHR, boundaries);
-      if (bd) {
-        bd.forEach(z => { combined['z' + z.zone] = (combined['z' + z.zone] || 0) + z.seconds; });
-        hasAnyStreamData = true;
-      }
-    } else if (run.hasStreamData && run.zoneSeconds) {
-      Object.entries(run.zoneSeconds).forEach(([k, v]) => {
-        if (combined[k] !== undefined) combined[k] += v;
-      });
-      hasAnyStreamData = true;
-    } else if (run.heartRate && run.duration) {
-      const bd = calcZoneBreakdownFromRuns([run], athleteAge, customMaxHR, boundaries);
-      if (bd) {
-        bd.forEach(z => { combined['z' + z.zone] = (combined['z' + z.zone] || 0) + z.seconds; });
-      }
-    }
-  });
-
-  const totalSecs = Object.values(combined).reduce((s, v) => s + v, 0);
-  if (totalSecs === 0) return null;
-
-  const breakdown = Object.entries(combined)
-    .filter(([, s]) => s > 0)
-    .map(([key, secs]) => {
-      const zone = parseInt(key.replace('z', ''));
-      return { zone, seconds: secs, minutes: Math.round(secs / 60), pct: Math.round((secs / totalSecs) * 100), ...ZONE_META[zone] };
-    })
-    .sort((a, b) => a.zone - b.zone);
-
-  return { breakdown, hasStreamData: hasAnyStreamData };
 }
 
 export default function AthleteDashboard({ userData: userDataProp, refreshUser, goToJoinScreen }) {
@@ -149,7 +88,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
   const [upcomingWorkouts,     setUpcomingWorkouts]     = useState([]);
   const [teamAthletes,         setTeamAthletes]         = useState([]);
   const [weeklyMiles,          setWeeklyMiles]          = useState(0);
-  const [weeklyTarget,         setWeeklyTarget]         = useState(20);
+  const [weeklyTarget,         setWeeklyTarget]         = useState(null);
   const [totalMiles,           setTotalMiles]           = useState(0);
   const [teamMiles,            setTeamMiles]            = useState({});
   const [pendingParents,       setPendingParents]       = useState([]);
@@ -198,17 +137,13 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
   const [weeklyCardDismissed,  setWeeklyCardDismissed]  = useState(false);
   const [weeklyHistoryVisible, setWeeklyHistoryVisible] = useState(false);
   const progressAnim = useRef(new Animated.Value(0)).current;
-  const [athleteAge,           setAthleteAge]           = useState(16);
-  const [teamZoneSettings,     setTeamZoneSettings]     = useState(null);
   const [miles,        setMiles]        = useState('');
   const [duration,     setDuration]     = useState('');
-  const [heartRate,    setHeartRate]    = useState('');
   const [effort,       setEffort]       = useState(5);
   const [notes,        setNotes]        = useState('');
   const [runDate,      setRunDate]      = useState(new Date());
   const [savingRun,    setSavingRun]    = useState(false);
   const [editingRunId, setEditingRunId] = useState(null);
-  const [hrZonePref,   setHrZonePref]   = useState(userData.showHRZones);
   const [myGroup,      setMyGroup]      = useState(null);
   const [leaderboardFilter, setLeaderboardFilter] = useState('all');
   // Bottom nav height is measured at runtime so the sub-screen overlay sits
@@ -258,7 +193,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       if (!userDoc.exists() || !userDoc.data().stravaAccessToken) return;
       setAutoSyncing(true);
-      const result = await autoSyncStrava(user.uid, userData, teamZoneSettings);
+      const result = await autoSyncStrava(user.uid, userData);
       if (result?.imported > 0) {
         await loadDashboard();
       }
@@ -273,25 +208,13 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
     try {
       const user = auth.currentUser;
 
-      if (userData.birthdate) {
-        const birth = parseBirthdate(userData.birthdate);
-        setAthleteAge(Math.floor((new Date() - birth) / (365.25 * 86400000)));
-      }
-
-      // Phase 1: parallelize the user doc with team-related docs (none depend on each other).
-      // teamZoneSettings is optional — inline catch keeps Promise.all from failing-fast on it.
-      const [userDoc, teamZoneDoc, schoolDoc] = await Promise.all([
+      // Phase 1: parallelize the user doc with the school doc (neither depends on the other).
+      const [userDoc, schoolDoc] = await Promise.all([
         getDoc(doc(db, 'users', user.uid)),
-        userData.schoolId
-          ? getDoc(doc(db, 'teamZoneSettings', userData.schoolId))
-              .catch(e => { console.warn('Failed to load team zone settings, using defaults:', e); return null; })
-          : Promise.resolve(null),
         userData.schoolId
           ? getDoc(doc(db, 'schools', userData.schoolId))
           : Promise.resolve(null),
       ]);
-
-      if (teamZoneDoc?.exists()) setTeamZoneSettings(teamZoneDoc.data());
 
       let currentSchool = school;
       if (schoolDoc?.exists()) { currentSchool = schoolDoc.data(); setSchool(currentSchool); }
@@ -315,10 +238,13 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
               mon.setDate(now.getDate() - (d === 0 ? 6 : d - 1));
               const mondayISO = mon.toISOString().split('T')[0];
               const weekTarget = loadedGroup.weeklyPlan?.[mondayISO] ?? loadedGroup.weeklyMilesTarget;
-              if (weekTarget) setWeeklyTarget(weekTarget);
+              // null = coach hasn't set a target; hero card shows a clean
+              // "no target" state rather than a fabricated goal.
+              setWeeklyTarget(weekTarget ?? null);
             }
           } else {
             setMyGroup(null);
+            setWeeklyTarget(null);
           }
         } catch (e) { console.warn('Failed to load athlete group:', e); }
       }
@@ -360,13 +286,6 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
         setWeekRuns(wFiltered);
         const wMiles = wFiltered.reduce((s, r) => s + (r.miles || 0), 0);
         setWeeklyMiles(Math.round(wMiles * 10) / 10);
-      }
-
-      // Only use 110% fallback target if athlete isn't in a group with a target
-      if (!loadedGroup?.weeklyMilesTarget) {
-        const fourWeeksAgo = new Date(Date.now() - 28 * 86400000);
-        const recentForTarget = await getDocs(query(collection(db, 'runs'), where('userId', '==', user.uid), where('date', '>=', fourWeeksAgo), orderBy('date', 'desc')));
-        setWeeklyTarget(calcWeeklyTarget(recentForTarget.docs.map(d => d.data())));
       }
 
       // Reuse the user doc already fetched in Phase 1 — avoids a duplicate Firestore read.
@@ -550,18 +469,18 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
         const { doc: fsDoc, updateDoc: fsUpdate, getDoc: fsGet } = await import('firebase/firestore');
         const oldSnap = await fsGet(fsDoc(db, 'runs', editingRunId));
         const oldMiles = oldSnap.data()?.miles || 0;
-        await fsUpdate(fsDoc(db, 'runs', editingRunId), { miles: milesFloat, duration: duration || null, heartRate: heartRate ? parseInt(heartRate) : null, effort, notes: notes || null, date: runDate });
+        await fsUpdate(fsDoc(db, 'runs', editingRunId), { miles: milesFloat, duration: duration || null, effort, notes: notes || null, date: runDate });
         await updateDoc(doc(db, 'users', user.uid), { totalMiles: Math.max(0, Math.round(((totalMiles || 0) - oldMiles + milesFloat) * 10) / 10) });
         Alert.alert('Updated! ✅', 'Your run has been updated.');
         setEditingRunId(null);
       } else {
         // Wellness check-ins are now handled via the daily card, not per-run
-        await addDoc(collection(db, 'runs'), { userId: user.uid, schoolId: userData.schoolId || null, miles: milesFloat, duration: duration || null, heartRate: heartRate ? parseInt(heartRate) : null, effort, notes: notes || null, source: 'manual', date: runDate });
+        await addDoc(collection(db, 'runs'), { userId: user.uid, schoolId: userData.schoolId || null, miles: milesFloat, duration: duration || null, effort, notes: notes || null, source: 'manual', date: runDate });
         await updateDoc(doc(db, 'users', user.uid), { totalMiles: Math.round(((totalMiles || 0) + milesFloat) * 10) / 10 });
         Alert.alert('Run logged! 🏃', miles + ' miles saved. Great work!');
       }
       setLogModalVisible(false); setPendingWellness(null);
-      setMiles(''); setDuration(''); setHeartRate(''); setEffort(5); setNotes(''); setRunDate(new Date());
+      setMiles(''); setDuration(''); setEffort(5); setNotes(''); setRunDate(new Date());
       loadDashboard();
     } catch (error) { console.error(error); Alert.alert('Error', 'Could not save run. Please try again.'); }
     setSavingRun(false);
@@ -603,22 +522,16 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
   const hasSchool  = !!userData.schoolId;
   const isPending  = hasSchool && userData.status === 'pending';
   const isApproved = hasSchool && userData.status === 'approved';
-  const targetPct = weeklyTarget > 0 ? Math.min(weeklyMiles / weeklyTarget, 1) : 0;
-  const rawPct = weeklyTarget > 0 ? weeklyMiles / weeklyTarget : 0;
+  // weeklyTarget is null until a coach sets a group/weekly target. With no
+  // target we show miles only — no ring, no over/under hints (no fabricated goal).
+  const hasTarget = weeklyTarget > 0;
+  const targetPct = hasTarget ? Math.min(weeklyMiles / weeklyTarget, 1) : 0;
+  const rawPct = hasTarget ? weeklyMiles / weeklyTarget : 0;
   const overPct = rawPct > 1 ? Math.round((rawPct - 1) * 100) : 0;
-  const isOverWarning = rawPct > 1.1;   // >110% — red warning
-  const isOverBuffer = rawPct > 1 && rawPct <= 1.1;  // 100-110% — gentle note
+  const isOverWarning = hasTarget && rawPct > 1.1;   // >110% — red warning
+  const isOverBuffer = hasTarget && rawPct > 1 && rawPct <= 1.1;  // 100-110% — gentle note
   const sortedTeam = [...teamAthletes].sort((a, b) => (teamMiles[b.id] || 0) - (teamMiles[a.id] || 0));
   const myRank = sortedTeam.findIndex(a => a.id === auth.currentUser?.uid) + 1;
-
-  const boundaries = teamZoneSettings?.boundaries || DEFAULT_ZONE_BOUNDARIES;
-  const customMaxHR = teamZoneSettings?.customMaxHR || null;
-  const maxHR = calcMaxHR(athleteAge, customMaxHR);
-  const zoneResult = buildZoneBreakdown(recentRuns, maxHR, boundaries, athleteAge, customMaxHR);
-  const breakdown = zoneResult?.breakdown || null;
-  const hasStreamData = zoneResult?.hasStreamData || false;
-  const analysis = breakdown ? calc8020(breakdown) : null;
-  const totalZoneMins = breakdown ? breakdown.reduce((s, z) => s + z.minutes, 0) : 0;
 
   // Pace zones — compute from runs that have rawPaceStream data
   const trainingPaces = userData.trainingPaces || null;
@@ -650,10 +563,6 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
   const { breakdown: weekPaceBreakdown, analysis: weekPaceAnalysis } = computePaceBreakdown(weekRuns);
   // Leaderboard: selected timeframe pace data
   const { breakdown: paceBreakdown, analysis: paceAnalysis } = computePaceBreakdown(recentRuns);
-
-  // Show HR zones if explicitly enabled, or auto-show when preference not yet set and HR data exists
-  const coachDisabledHR = teamZoneSettings?.hrZonesDisabled === true;
-  const showHRZones = !coachDisabledHR && !paceBreakdown && (hrZonePref === true || (hrZonePref !== false && breakdown !== null));
 
   // Check if VDOT paces are stale (>30 days since last update)
   const vdotStale = (() => {
@@ -772,7 +681,9 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
             <View style={styles.heroBody}>
               <View style={styles.heroTopRow}>
                 <Text style={styles.eyebrow}>This week</Text>
-                {isOverWarning ? (
+                {!hasTarget ? (
+                  <Text style={[styles.heroHint, { color: SIGNAL.color.mute }]}>No target set</Text>
+                ) : isOverWarning ? (
                   <View style={styles.heroOverRow}>
                     <Ionicons name="warning-outline" size={12} color={SIGNAL.color.coral} />
                     <Text style={[styles.heroHint, { color: SIGNAL.color.coral }]}>{overPct}% over</Text>
@@ -791,25 +702,34 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
                 <Text style={[styles.heroMilesNum, isOverWarning && { color: SIGNAL.color.coral }]}>
                   {weeklyMiles}
                 </Text>
-                <Text style={styles.heroMilesOf}>/ {weeklyTarget} mi</Text>
-                <View style={{ flex: 1 }} />
-                <View style={styles.heroProgressBg}>
-                  <Animated.View style={[styles.heroProgressFill, {
-                    width: progressAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'], extrapolate: 'clamp' }),
-                  }]}>
-                    <LinearGradient
-                      colors={isOverWarning
-                        ? [SIGNAL.color.coral, SIGNAL.color.coral]
-                        : isOverBuffer
-                          ? [SIGNAL.color.amber, SIGNAL.color.amber]
-                          : [SIGNAL.color.indigo, SIGNAL.color.cyan]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={StyleSheet.absoluteFill}
-                    />
-                  </Animated.View>
-                </View>
+                {hasTarget ? (
+                  <>
+                    <Text style={styles.heroMilesOf}>/ {weeklyTarget} mi</Text>
+                    <View style={{ flex: 1 }} />
+                    <View style={styles.heroProgressBg}>
+                      <Animated.View style={[styles.heroProgressFill, {
+                        width: progressAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'], extrapolate: 'clamp' }),
+                      }]}>
+                        <LinearGradient
+                          colors={isOverWarning
+                            ? [SIGNAL.color.coral, SIGNAL.color.coral]
+                            : isOverBuffer
+                              ? [SIGNAL.color.amber, SIGNAL.color.amber]
+                              : [SIGNAL.color.indigo, SIGNAL.color.cyan]}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                          style={StyleSheet.absoluteFill}
+                        />
+                      </Animated.View>
+                    </View>
+                  </>
+                ) : (
+                  <Text style={styles.heroMilesOf}>mi this week</Text>
+                )}
               </View>
+              {!hasTarget && (
+                <Text style={styles.heroNoTargetNote}>Coach hasn't set a weekly target yet.</Text>
+              )}
             </View>
 
             {/* Pace zone toggle (always shows this week's data regardless of timeframe picker) */}
@@ -1482,9 +1402,6 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
         run={selectedRun}
         visible={runDetailVisible}
         primaryColor={SIGNAL.color.indigo}
-        athleteAge={athleteAge}
-        zoneSettings={teamZoneSettings}
-        showHRZones={showHRZones}
         trainingPaces={userData.trainingPaces || null}
         onClose={() => { setRunDetailVisible(false); setSelectedRun(null); }}
         onDeleted={() => { setRunDetailVisible(false); setSelectedRun(null); loadDashboard(); }}
@@ -1521,16 +1438,6 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
                 placeholderTextColor={SIGNAL.color.mute2}
                 value={duration}
                 onChangeText={setDuration}
-                returnKeyType="next"
-              />
-              <Text style={styles.logLabel}>Avg heart rate (optional)</Text>
-              <TextInput
-                style={styles.logInput}
-                placeholder="e.g. 155"
-                placeholderTextColor={SIGNAL.color.mute2}
-                value={heartRate}
-                onChangeText={setHeartRate}
-                keyboardType="numeric"
                 returnKeyType="next"
               />
               <Text style={styles.logLabel}>How did it feel? {effort}/10 — {EFFORT_LABELS[effort]}</Text>
@@ -1604,20 +1511,17 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
             userData={userData}
             school={school}
             myGroup={myGroup}
-            athleteAge={athleteAge}
-            teamZoneSettings={teamZoneSettings}
             onClose={handleCloseStats}
           />
         </View>
       )}
       {profileVisible && (
         <View style={[styles.subScreen, { bottom: navHeight }]}>
-          <AthleteProfile userData={userData} school={school} coachDisabledHR={coachDisabledHR} refreshUser={refreshUser} goToJoinScreen={goToJoinScreen} onClose={async () => {
+          <AthleteProfile userData={userData} school={school} refreshUser={refreshUser} goToJoinScreen={goToJoinScreen} onClose={async () => {
             try {
               const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
               if (userDoc.exists()) {
                 const d = userDoc.data();
-                setHrZonePref(d.showHRZones);
                 setLocalAvatarColor(d.avatarColor || BRAND);
                 setUserOverrides(prev => ({
                   ...prev,
@@ -1767,6 +1671,7 @@ const styles = StyleSheet.create({
     letterSpacing: SIGNAL.letter.numTight,
   },
   heroMilesOf: { fontFamily: SIGNAL.font.body, fontSize: 14, color: SIGNAL.color.mute },
+  heroNoTargetNote: { fontFamily: SIGNAL.font.body, fontSize: 12, color: SIGNAL.color.mute2, marginTop: 6 },
   heroProgressBg: {
     flex: 3, height: 8,
     marginLeft: 4,

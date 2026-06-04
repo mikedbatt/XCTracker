@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import { BRAND, SIGNAL } from '../constants/design';
 import { db } from '../firebaseConfig';
-import { DEFAULT_ZONE_BOUNDARIES, ZONE_META, calcMaxHR, calcZoneBreakdownFromRuns, calcZoneBreakdownFromStream, calc8020, parseBirthdate } from '../zoneConfig';
 import { getActiveSeason, getPhaseForSeason, generateVolumeCurve } from './SeasonPlanner';
 import { formatTime, calcPace, formatPace } from '../utils/raceUtils';
 import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
@@ -23,7 +22,7 @@ import { getMondayISO, getRunDate, groupRunsByWeek } from '../utils/dateUtils';
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function AthleteDetailScreen({ athlete, school, teamZoneSettings, groups, onBack, parentMode = false }) {
+export default function AthleteDetailScreen({ athlete, school, groups, onBack, parentMode = false }) {
   const [loading, setLoading] = useState(true);
   const [expandedSection, setExpandedSection] = useState(null);
   const [selectedRun, setSelectedRun] = useState(null);
@@ -39,15 +38,6 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
   const [attendance, setAttendance] = useState([]);
 
   const primaryColor = school?.primaryColor || BRAND;
-
-  // Athlete age for zone calc
-  const athleteAge = athlete.birthdate
-    ? Math.floor((new Date() - parseBirthdate(athlete.birthdate)) / (365.25 * 86400000))
-    : 16;
-
-  const boundaries = teamZoneSettings?.boundaries || DEFAULT_ZONE_BOUNDARIES;
-  const customMaxHR = teamZoneSettings?.customMaxHR || null;
-  const maxHR = calcMaxHR(athleteAge, customMaxHR);
 
   useEffect(() => { loadData(); }, []);
 
@@ -187,62 +177,12 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
   const thirtyDaysAgo = new Date(now - 30 * 86400000);
   const recentRuns = allRuns.filter(r => getRunDate(r) >= thirtyDaysAgo);
 
-  let zoneBreakdown = null;
-  let eighty20 = null;
-  let hasStreamData = false;
-  const rawStreamRuns = recentRuns.filter(r => r.rawHRStream?.length > 0);
-  if (rawStreamRuns.length > 0) {
-    hasStreamData = true;
-    const combined = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
-    rawStreamRuns.forEach(r => {
-      const bd = calcZoneBreakdownFromStream(r.rawHRStream, maxHR, boundaries);
-      if (bd) bd.forEach(z => { combined[`z${z.zone}`] = (combined[`z${z.zone}`] || 0) + z.seconds; });
-    });
-    const total = Object.values(combined).reduce((s, v) => s + v, 0);
-    if (total > 0) {
-      zoneBreakdown = Object.entries(combined).map(([k, v]) => ({
-        zone: parseInt(k.replace('z', '')),
-        pct: Math.round((v / total) * 100),
-        seconds: v,
-      }));
-      eighty20 = calc8020(zoneBreakdown);
-    }
-  }
-  if (!zoneBreakdown) {
-    const bd = calcZoneBreakdownFromRuns(recentRuns, athleteAge, customMaxHR, boundaries);
-    if (bd) { zoneBreakdown = bd; eighty20 = calc8020(bd); }
-  }
-
   // Effort distribution
   const effortDist = Array(11).fill(0);
   recentRuns.forEach(r => { if (r.effort >= 1 && r.effort <= 10) effortDist[r.effort]++; });
   const maxEffortCount = Math.max(...effortDist.slice(1), 1);
 
-  // 4-week 80/20 trend
-  const weekTrend = [];
-  for (let w = 0; w < 4; w++) {
-    const wStart = new Date(now - (w + 1) * 7 * 86400000);
-    const wEnd = new Date(now - w * 7 * 86400000);
-    const wRuns = allRuns.filter(r => { const d = getRunDate(r); return d >= wStart && d < wEnd; });
-    const wStream = wRuns.filter(r => r.rawHRStream?.length > 0);
-    let wPct = null;
-    if (wStream.length > 0) {
-      const comb = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
-      wStream.forEach(r => {
-        const bd = calcZoneBreakdownFromStream(r.rawHRStream, maxHR, boundaries);
-        if (bd) bd.forEach(z => { comb[`z${z.zone}`] = (comb[`z${z.zone}`] || 0) + z.seconds; });
-      });
-      const t = Object.values(comb).reduce((s, v) => s + v, 0);
-      if (t > 0) wPct = Math.round(((comb.z1 + comb.z2) / t) * 100);
-    }
-    if (wPct === null) {
-      const bd = calcZoneBreakdownFromRuns(wRuns, athleteAge, customMaxHR, boundaries);
-      if (bd) wPct = bd.filter(z => z.zone <= 2).reduce((s, z) => s + z.pct, 0);
-    }
-    weekTrend.unshift(wPct);
-  }
-
-  // ── Feature 2b: Pace-based Training Quality (primary when VDOT set) ──
+  // ── Feature 2b: Pace-based Training Quality (shown when VDOT set) ──
   const trainingPaces = athlete.trainingPaces || null;
   let paceZoneBreakdown = null;
   let paceEighty20 = null;
@@ -291,15 +231,17 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
     }
   }
 
-  const usePace = !!paceEighty20;
-  const displayEighty20 = usePace ? paceEighty20 : eighty20;
-  const displayWeekTrend = usePace ? paceWeekTrend : weekTrend;
+  const displayEighty20 = paceEighty20;
+  const displayWeekTrend = paceWeekTrend;
 
   // ── Feature 3: Season Volume Arc ──
   const seasonKey = activeSeason ? `${activeSeason.sport || 'cross_country'}_${activeSeason.seasonStart?.split?.('T')?.[0] || activeSeason.seasonStart}` : null;
+  // Only build a curve from a real coach-set target — never fabricate a default.
   const volumePlan = seasonKey && athleteGroup?.seasonPlans?.[seasonKey]
     ? athleteGroup.seasonPlans[seasonKey]
-    : (activeSeason ? generateVolumeCurve(activeSeason, athleteGroup?.weeklyMilesTarget || 40) : {});
+    : (activeSeason && athleteGroup?.weeklyMilesTarget
+        ? generateVolumeCurve(activeSeason, athleteGroup.weeklyMilesTarget)
+        : {});
   const weeklyRunData = groupRunsByWeek(allRuns);
   const currentMonday = getMondayISO(new Date());
 
@@ -425,15 +367,15 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
               <Text style={styles.headerStatNum}>{allRuns.length}</Text>
               <Text style={styles.headerStatLabel}>Total runs</Text>
             </View>
-            {eighty20 && (
+            {displayEighty20 && (
               <>
                 <View style={styles.headerStatDivider} />
                 <View style={styles.headerStat}>
                   <Text style={[styles.headerStatNum, {
-                    color: eighty20.easyPct >= 78 ? SIGNAL.color.emerald
-                      : eighty20.easyPct >= 70 ? SIGNAL.color.amber
+                    color: displayEighty20.easyPct >= 78 ? SIGNAL.color.emerald
+                      : displayEighty20.easyPct >= 70 ? SIGNAL.color.amber
                       : SIGNAL.color.coral,
-                  }]}>{eighty20.easyPct}%</Text>
+                  }]}>{displayEighty20.easyPct}%</Text>
                   <Text style={styles.headerStatLabel}>Easy 30d</Text>
                 </View>
               </>
@@ -518,7 +460,7 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
                 sub={sub}
                 sectionKey="volume"
                 expanded={expandedSection === 'volume'}
-                hero={hero || (volumeWeeks.length === 0 ? <Text style={styles.noDataText}>No season plan configured for this athlete's group.</Text> : null)}
+                hero={hero || (volumeWeeks.length === 0 ? <Text style={styles.noDataText}>No season or weekly mileage target set for this athlete's group yet.</Text> : null)}
               >
                 {volumeWeeks.length > 0 && (
                   <>
@@ -599,14 +541,11 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
                 style={styles.heroPill}
               >
                 <Text style={styles.heroPillNum}>{easyPct}%</Text>
-                <Text style={styles.heroPillSub}>
-                  {usePace ? 'easy running (pace)' : 'Z1+Z2 easy running'}
-                  {!usePace && hasStreamData ? ' · precise' : ''}
-                </Text>
+                <Text style={styles.heroPillSub}>easy running (pace)</Text>
               </LinearGradient>
             ) : (
               <Text style={styles.noDataText}>
-                {trainingPaces ? 'Not enough pace data yet.' : 'No training paces set. Not enough HR or effort data.'}
+                {trainingPaces ? 'Not enough pace data yet.' : 'No training paces set yet.'}
               </Text>
             );
 
@@ -638,8 +577,8 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
                       <Text style={styles.trendArrow}>← 4 wk ago</Text>
                     </View>
 
-                    {/* Zone breakdown */}
-                    {usePace && paceZoneBreakdown && (
+                    {/* Pace zone breakdown */}
+                    {paceZoneBreakdown && (
                       <View style={styles.zoneSection}>
                         <View style={styles.zoneStackedBar}>
                           {paceZoneBreakdown.map(z => (
@@ -650,23 +589,6 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
                           <View key={z.key} style={styles.zoneRow}>
                             <View style={[styles.zoneDot, { backgroundColor: z.color }]} />
                             <Text style={styles.zoneLabel}>{z.short} {z.name}</Text>
-                            <Text style={styles.zonePct}>{z.pct}%</Text>
-                          </View>
-                        ))}
-                      </View>
-                    )}
-
-                    {!usePace && zoneBreakdown && (
-                      <View style={styles.zoneSection}>
-                        <View style={styles.zoneStackedBar}>
-                          {zoneBreakdown.map(z => (
-                            <View key={z.zone} style={[styles.zoneBarSegment, { flex: z.pct, backgroundColor: ZONE_META[z.zone]?.color || SIGNAL.color.line }]} />
-                          ))}
-                        </View>
-                        {zoneBreakdown.map(z => (
-                          <View key={z.zone} style={styles.zoneRow}>
-                            <View style={[styles.zoneDot, { backgroundColor: ZONE_META[z.zone]?.color }]} />
-                            <Text style={styles.zoneLabel}>{ZONE_META[z.zone]?.name || `Z${z.zone}`}</Text>
                             <Text style={styles.zonePct}>{z.pct}%</Text>
                           </View>
                         ))}
@@ -891,8 +813,8 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
                   </View>
                   {run.effort ? (
                     <Text style={[styles.runEffort, { color: effortColor }]}>Effort {run.effort}/10</Text>
-                  ) : run.hasStreamData ? (
-                    <Text style={[styles.runEffort, { color: SIGNAL.color.indigo }]}>HR zones</Text>
+                  ) : run.hasPaceData ? (
+                    <Text style={[styles.runEffort, { color: SIGNAL.color.indigo }]}>Pace zones</Text>
                   ) : null}
                 </TouchableOpacity>
               );
@@ -963,8 +885,6 @@ export default function AthleteDetailScreen({ athlete, school, teamZoneSettings,
         visible={runDetailVisible}
         onClose={() => { setRunDetailVisible(false); setSelectedRun(null); }}
         primaryColor={primaryColor}
-        athleteAge={athleteAge}
-        zoneSettings={{ boundaries }}
         trainingPaces={athlete.trainingPaces || null}
       />
     </View>

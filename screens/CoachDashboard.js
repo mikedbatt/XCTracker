@@ -50,7 +50,6 @@ import ChannelList from '../screens/ChannelList';
 import TimeframePicker, { TIMEFRAMES, getDateRange } from '../screens/TimeframePicker';
 import TrainingHub from '../screens/TrainingHub';
 import WorkoutDetailModal from '../screens/WorkoutDetailModal';
-import ZoneSettings from '../screens/ZoneSettings';
 import { ACWR_STATUS, calcACWR } from '../utils/acwrUtils';
 import { batchDocsByIds } from '../utils/batchDocsByIds';
 import { computeVolumeCompliance, getCurrentWeekPace, getAthleteWeeklyTarget } from '../utils/complianceUtils';
@@ -58,13 +57,6 @@ import { calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
 import { useStaleRefresh } from '../hooks/useStaleRefresh';
 import { getRunDate, toLocalISODate } from '../utils/dateUtils';
 import { getWeekAnchor } from '../utils/weeklyCheckinUtils';
-import {
-  DEFAULT_ZONE_BOUNDARIES,
-  calcMaxHR,
-  calcZoneBreakdownFromRuns,
-  calcZoneBreakdownFromStream,
-  parseBirthdate,
-} from '../zoneConfig';
 
 // ── Daily message templates by phase (written as coach → athletes) ────────────
 const PHASE_TIPS = {
@@ -87,7 +79,7 @@ const PHASE_TIPS = {
     "You've built the base. Now it's time to teach your body to run fast for longer. Today's tempo is a conversation with your limits — embrace it.",
     "Build phase means the hard days get harder AND the easy days stay easy. No middle-ground running. Discipline on both ends.",
     "Today's quality session is about process, not pace. Consistent splits at threshold effort matter more than hitting a number.",
-    "This is the phase where most runners get hurt by doing too much. Keep your easy days truly easy — check your heart rate.",
+    "This is the phase where most runners get hurt by doing too much. Keep your easy days truly easy — stay in your easy pace zone.",
   ],
   Competition: [
     "Competition phase. Pack work is the priority now. Five of us finishing together beats one of us finishing fast. Run for each other.",
@@ -222,55 +214,7 @@ async function checkOvertraining(athleteId, attendanceStats = null) {
   } catch { return { alert: false, signals: [], todayInjury: null, todayIllness: null, injuryCheckinDate: null }; }
 }
 
-// ── Zone % helper — 3-tier priority: rawHRStream → stored zoneSeconds → avg HR estimate ──
-function calcAthleteZonePct(recentRuns, age, teamZoneSettings) {
-  const boundaries  = teamZoneSettings?.boundaries  || DEFAULT_ZONE_BOUNDARIES;
-  const customMaxHR = teamZoneSettings?.customMaxHR || null;
-  const maxHR       = calcMaxHR(age, customMaxHR);
-
-  // Tier 1 — raw HR stream: recalculate on the fly with current boundaries
-  const rawStreamRuns = recentRuns.filter(r => r.rawHRStream?.length > 0);
-  if (rawStreamRuns.length > 0) {
-    const combined = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
-    rawStreamRuns.forEach(r => {
-      const bd = calcZoneBreakdownFromStream(r.rawHRStream, maxHR, boundaries);
-      if (bd) bd.forEach(z => { combined[`z${z.zone}`] = (combined[`z${z.zone}`] || 0) + z.seconds; });
-    });
-    const total = Object.values(combined).reduce((s, v) => s + v, 0);
-    if (total > 0) {
-      const easyPct = Object.entries(combined)
-        .filter(([key]) => parseInt(key.replace('z', '')) <= 2)
-        .reduce((s, [, v]) => s + v, 0);
-      return Math.round((easyPct / total) * 100);
-    }
-  }
-
-  // Tier 2 — stored zone seconds (reflect boundaries at sync time)
-  const storedZoneRuns = recentRuns.filter(r => r.hasStreamData && r.zoneSeconds);
-  if (storedZoneRuns.length > 0) {
-    const combined = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
-    storedZoneRuns.forEach(r => {
-      Object.entries(r.zoneSeconds).forEach(([k, v]) => {
-        if (combined[k] !== undefined) combined[k] += v;
-      });
-    });
-    const total = Object.values(combined).reduce((s, v) => s + v, 0);
-    if (total > 0) {
-      const easyPct = (combined.z1 + combined.z2);
-      return Math.round((easyPct / total) * 100);
-    }
-  }
-
-  // Tier 3 — avg HR + duration estimate
-  const breakdown = calcZoneBreakdownFromRuns(recentRuns, age, customMaxHR, boundaries);
-  if (breakdown) {
-    return breakdown.filter(z => z.zone <= 2).reduce((s, z) => s + z.pct, 0);
-  }
-
-  return null;
-}
-
-// ── Pace easy % helper — uses VDOT training paces instead of HR zones ────────
+// ── Pace easy % helper — uses VDOT training paces ────────────────────────────
 function calcAthletePaceEasyPct(recentRuns, trainingPaces) {
   if (!trainingPaces) return null;
   const combined = { e: 0, m: 0, t: 0, i: 0, r: 0 };
@@ -299,7 +243,6 @@ export default function CoachDashboard({ userData }) {
   const [athleteWeeklyMiles,  setAthleteWeeklyMiles]  = useState({});
   const [athlete3WeekAvg,     setAthlete3WeekAvg]     = useState({});
   const [athleteWeeklyBreakdown, setAthleteWeeklyBreakdown] = useState({});
-  const [athleteZonePct,      setAthleteZonePct]      = useState({});
   const [athleteACWR,         setAthleteACWR]         = useState({});
   const [athleteAttendance,   setAthleteAttendance]   = useState({});
   const [athletePaceEasyPct,  setAthletePaceEasyPct]  = useState({});
@@ -332,7 +275,6 @@ export default function CoachDashboard({ userData }) {
   const [feedVisible,         setFeedVisible]         = useState(false);
   const [zonesVisible,        setZonesVisible]        = useState(false);
   const [analyticsVisible,    setAnalyticsVisible]    = useState(false);
-  const [teamZoneSettings,    setTeamZoneSettings]    = useState(null);
   const [complianceData,      setComplianceData]      = useState({ onTarget: [], underTarget: [], overTarget: [], volumeData: [] });
   const [athleteLastRunDate,  setAthleteLastRunDate]  = useState({});
   const [athleteWeekPace,     setAthleteWeekPace]     = useState({});
@@ -380,7 +322,6 @@ export default function CoachDashboard({ userData }) {
       // ── Phase 1: All independent top-level queries in parallel ──
       const [
         schoolDoc,
-        zoneDoc,
         groupsSnap,
         approvedSnap,
         pendingSnap,
@@ -395,8 +336,6 @@ export default function CoachDashboard({ userData }) {
         weeklyCheckinsSnap,
       ] = await Promise.all([
         getDoc(doc(db, 'schools', userData.schoolId)),
-        getDoc(doc(db, 'teamZoneSettings', userData.schoolId))
-          .catch(e => { console.warn('Failed to load team zone settings, using defaults:', e); return null; }),
         getDocs(query(collection(db, 'groups'), where('schoolId', '==', userData.schoolId)))
           .catch(e => { console.warn('Failed to load groups:', e); return null; }),
         getDocs(query(
@@ -468,12 +407,6 @@ export default function CoachDashboard({ userData }) {
           }
         });
         setWeeklyCheckins(thisWeek);
-      }
-
-      let currentZoneSettings = null;
-      if (zoneDoc && zoneDoc.exists()) {
-        currentZoneSettings = zoneDoc.data();
-        setTeamZoneSettings(currentZoneSettings);
       }
 
       let loadedGroups = [];
@@ -550,7 +483,6 @@ export default function CoachDashboard({ userData }) {
       const weeklyMilesMap   = {};
       const threeWeekAvgMap  = {};
       const weekBreakdownMap = {};
-      const zonePctMap       = {};
       const paceEasyPctMap   = {};
       const lastRunDateMap   = {};
       const acwrMap          = {};
@@ -611,18 +543,14 @@ export default function CoachDashboard({ userData }) {
           };
 
           try {
-            const age = athlete.birthdate
-              ? Math.floor((new Date() - parseBirthdate(athlete.birthdate)) / (365.25 * 86400000))
-              : 16;
             const thirtyDaysAgo = new Date(now - 30 * 86400000);
             const recentRuns = allRuns.filter(r => {
               const d = getRunDate(r);
               return d && d >= thirtyDaysAgo;
             });
-            zonePctMap[athlete.id] = calcAthleteZonePct(recentRuns, age, currentZoneSettings);
             paceEasyPctMap[athlete.id] = calcAthletePaceEasyPct(recentRuns, athlete.trainingPaces);
             acwrMap[athlete.id] = calcACWR(allRuns, now);
-          } catch (e) { console.warn('Zone pct calc failed for athlete:', e); }
+          } catch (e) { console.warn('Pace easy %% calc failed for athlete:', e); }
 
         } catch (e) {
           console.warn('Athlete data error:', e);
@@ -636,7 +564,6 @@ export default function CoachDashboard({ userData }) {
       setAthleteWeeklyMiles(weeklyMilesMap);
       setAthlete3WeekAvg(threeWeekAvgMap);
       setAthleteWeeklyBreakdown(weekBreakdownMap);
-      setAthleteZonePct(zonePctMap);
       setAthletePaceEasyPct(paceEasyPctMap);
       setAthleteLastRunDate(lastRunDateMap);
       setAthleteACWR(acwrMap);
@@ -801,7 +728,6 @@ export default function CoachDashboard({ userData }) {
     return <AthleteDetailScreen
       athlete={selectedAthlete}
       school={school}
-      teamZoneSettings={teamZoneSettings}
       groups={groups}
       onBack={() => setSelectedAthlete(null)}
     />;
@@ -2030,20 +1956,6 @@ export default function CoachDashboard({ userData }) {
           <ChannelList userData={userData} school={school} groups={groups} athletes={athletes} onClose={() => { setFeedVisible(false); loadDashboard(); }} onUnreadChange={(count) => setUnreadFeedCount(count)} />
         </View>
       )}
-      {zonesVisible && (
-        <View style={[styles.subScreen, { bottom: navHeight }]}>
-          <ZoneSettings
-            school={school}
-            schoolId={userData.schoolId}
-            onClose={() => setZonesVisible(false)}
-            onSaved={(newBoundaries, newHrZonesDisabled) => {
-              setTeamZoneSettings(prev => ({ ...prev, boundaries: newBoundaries, hrZonesDisabled: newHrZonesDisabled }));
-              setZonesVisible(false);
-              loadDashboard();
-            }}
-          />
-        </View>
-      )}
       {profileVisible && (
         <View style={[styles.subScreen, { bottom: navHeight }]}>
           <CoachProfile
@@ -2064,7 +1976,6 @@ export default function CoachDashboard({ userData }) {
             athleteWeeklyMiles={athleteWeeklyMiles}
             athlete3WeekAvg={athlete3WeekAvg}
             athleteWeeklyBreakdown={athleteWeeklyBreakdown}
-            athleteZonePct={athleteZonePct}
             athletePaceEasyPct={athletePaceEasyPct}
             overtTrainingAlerts={overtTrainingAlerts}
             athleteMiles={athleteMiles}

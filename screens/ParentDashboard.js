@@ -26,7 +26,6 @@ export default function ParentDashboard({ userData }) {
   const [athletes, setAthletes] = useState([]);
   const [selectedAthlete, setSelectedAthlete] = useState(null);
   const [school, setSchool] = useState(null);
-  const [teamZoneSettings, setTeamZoneSettings] = useState(null);
   const [groups, setGroups] = useState([]);
   const [athleteRuns, setAthleteRuns] = useState([]);
   const [upcomingMeets, setUpcomingMeets] = useState([]);
@@ -66,15 +65,13 @@ export default function ParentDashboard({ userData }) {
   const loadAthleteData = async (athlete) => {
     try {
       if (athlete.schoolId) {
-        const [schoolDoc, zoneDoc, groupsSnap, meetsSnap] = await Promise.all([
+        const [schoolDoc, groupsSnap, meetsSnap] = await Promise.all([
           getDoc(doc(db, 'schools', athlete.schoolId)),
-          getDoc(doc(db, 'teamZoneSettings', athlete.schoolId)).catch(() => null),
           getDocs(query(collection(db, 'groups'), where('schoolId', '==', athlete.schoolId))).catch(() => ({ docs: [] })),
           getDocs(query(collection(db, 'raceMeets'), where('schoolId', '==', athlete.schoolId))).catch(() => ({ docs: [] })),
         ]);
 
         if (schoolDoc.exists()) setSchool({ id: schoolDoc.id, ...schoolDoc.data() });
-        if (zoneDoc?.exists()) setTeamZoneSettings(zoneDoc.data());
         setGroups(groupsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
         const now = new Date();
@@ -375,7 +372,6 @@ export default function ParentDashboard({ userData }) {
                     key={selectedAthlete.id}
                     athlete={selectedAthlete}
                     school={school}
-                    teamZoneSettings={teamZoneSettings}
                     groups={groups}
                     parentMode
                   />

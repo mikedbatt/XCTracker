@@ -20,7 +20,7 @@ import SeasonReview from './SeasonReview';
 
 export default function CoachAnalytics({
   athletes, athleteWeeklyMiles, athlete3WeekAvg, athleteWeeklyBreakdown = {},
-  athleteZonePct, athletePaceEasyPct = {}, overtTrainingAlerts, athleteMiles, groups, school, schoolId, userData, onClose,
+  athletePaceEasyPct = {}, overtTrainingAlerts, athleteMiles, groups, school, schoolId, userData, onClose,
 }) {
   const [analyticsTab, setAnalyticsTab] = useState('training');
   // Group filter — defaults to 'all'; can be 'ungrouped' or any group.id from `groups`.
@@ -304,7 +304,7 @@ export default function CoachAnalytics({
     filteredAthletes, groups, athlete3WeekAvg, athleteWeeklyBreakdown
   );
 
-  // ── Metric 2: Easy-Hard Balance (pace-only, no HR fallback) ──
+  // ── Metric 2: Easy-Hard Balance (pace-based) ──
   const paceOnTarget = [];
   const paceCaution = [];
   const paceTooHard = [];

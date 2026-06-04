@@ -18,19 +18,13 @@ import {
 import { auth, db } from '../firebaseConfig';
 import { SIGNAL } from '../constants/design';
 import { SIGNAL_TYPE_COLORS } from '../constants/training';
-import {
-  DEFAULT_ZONE_BOUNDARIES, ZONE_META, calcMaxHR,
-  calcZoneBreakdownFromRuns,
-  calcZoneBreakdownFromStream,
-  formatMinutes,
-} from '../zoneConfig';
-import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
+import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020, formatMinutes } from '../utils/vdotUtils';
 import DatePickerField from './DatePickerField';
 
 const EFFORT_LABELS = ['', 'Very Easy', 'Easy', 'Moderate', 'Moderate', 'Medium',
   'Medium Hard', 'Hard', 'Very Hard', 'Max Effort', 'All Out'];
 
-// ── Zone breakdown for a single run (3-tier: rawHRStream → zoneSeconds → avg HR) ──
+// ── Pace zone breakdown for a single run (rawPaceStream → stored paceZoneSeconds) ──
 function RunPaceBreakdown({ run, trainingPaces }) {
   if (!trainingPaces || (!run.rawPaceStream && !run.paceZoneSeconds)) return null;
 
@@ -119,106 +113,9 @@ function RunPaceBreakdown({ run, trainingPaces }) {
   );
 }
 
-function RunZoneBreakdown({ run, athleteAge, zoneSettings, primaryColor }) {
-  // Need at least some HR data to show anything
-  if (!run.heartRate && !run.zoneSeconds && !run.rawHRStream) return null;
-
-  const boundaries  = zoneSettings?.boundaries  || DEFAULT_ZONE_BOUNDARIES;
-  const customMaxHR = zoneSettings?.customMaxHR || null;
-  const maxHR       = calcMaxHR(athleteAge, customMaxHR);
-
-  let breakdown     = null;
-  let hasStreamData = false;
-
-  // Tier 1 — raw HR stream: recalculate with current coach boundaries
-  // This is the most accurate path and ensures zone display always reflects
-  // whatever the coach has currently configured, not sync-time boundaries.
-  if (run.rawHRStream?.length > 0) {
-    const bd = calcZoneBreakdownFromStream(run.rawHRStream, maxHR, boundaries);
-    if (bd && bd.length > 0) {
-      breakdown     = bd;
-      hasStreamData = true;
-    }
-  }
-
-  // Tier 2 — stored zone seconds (calculated at sync time — may reflect old boundaries)
-  if (!breakdown && run.hasStreamData && run.zoneSeconds) {
-    const totalSecs = Object.values(run.zoneSeconds).reduce((s, v) => s + v, 0);
-    if (totalSecs > 0) {
-      breakdown = Object.entries(run.zoneSeconds)
-        .filter(([, s]) => s > 0)
-        .map(([key, secs]) => {
-          const zone = parseInt(key.replace('z', ''));
-          return {
-            zone,
-            seconds: secs,
-            minutes: Math.round(secs / 60),
-            pct: Math.round((secs / totalSecs) * 100),
-            ...ZONE_META[zone],
-          };
-        })
-        .sort((a, b) => a.zone - b.zone);
-      hasStreamData = true;
-    }
-  }
-
-  // Tier 3 — estimate from average HR + duration
-  if (!breakdown && run.heartRate && run.duration) {
-    breakdown = calcZoneBreakdownFromRuns([run], athleteAge, customMaxHR, boundaries);
-  }
-
-  if (!breakdown || breakdown.length === 0) return null;
-
-  const totalMins = breakdown.reduce((s, z) => s + z.minutes, 0);
-
-  return (
-    <View style={styles.card}>
-      <View style={styles.cardPad}>
-        <View style={styles.zoneTitleRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.eyebrow}>Heart rate zones</Text>
-            <Text style={styles.sectionTitle}>Heart rate</Text>
-          </View>
-          {hasStreamData
-            ? (
-              <View style={styles.preciseChip}>
-                <Text style={styles.preciseChipText}>Precise</Text>
-              </View>
-            )
-            : <Text style={styles.estimatedText}>estimated from avg HR</Text>
-          }
-        </View>
-
-        {/* Stacked bar */}
-        <View style={styles.stackedBar}>
-          {breakdown.map(z => (
-            <View key={z.zone} style={[styles.stackedSegment, { flex: z.minutes, backgroundColor: ZONE_META[z.zone].color }]} />
-          ))}
-        </View>
-
-        {/* Zone rows */}
-        {breakdown.map(z => (
-          <View key={z.zone} style={styles.zoneRow}>
-            <View style={[styles.zoneDot, { backgroundColor: ZONE_META[z.zone].color }]} />
-            <Text style={styles.zoneName}>Z{z.zone} {ZONE_META[z.zone].name}</Text>
-            <View style={styles.zoneBarBg}>
-              <View style={[styles.zoneBarFill, { width: z.pct + '%', backgroundColor: ZONE_META[z.zone].color }]} />
-            </View>
-            <Text style={styles.zoneTime}>{formatMinutes(z.minutes)}</Text>
-          </View>
-        ))}
-
-        <Text style={styles.totalTime}>
-          {formatMinutes(totalMins)} total · {hasStreamData ? 'second-by-second HR data' : 'estimated from avg HR'}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
 export default function RunDetailModal({
   run, visible, onClose, onDeleted, onUpdated,
-  primaryColor = SIGNAL.color.indigo, athleteAge = 16, zoneSettings = null, showHRZones = true, trainingPaces = null,
+  primaryColor = SIGNAL.color.indigo, trainingPaces = null,
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [saving,    setSaving]    = useState(false);
@@ -226,7 +123,6 @@ export default function RunDetailModal({
 
   const [editMiles,    setEditMiles]    = useState('');
   const [editDuration, setEditDuration] = useState('');
-  const [editHR,       setEditHR]       = useState('');
   const [editEffort,   setEditEffort]   = useState(5);
   const [editNotes,    setEditNotes]    = useState('');
   const [editDate,     setEditDate]     = useState(new Date());
@@ -261,7 +157,6 @@ export default function RunDetailModal({
   const handleStartEdit = () => {
     setEditMiles(String(run.miles || ''));
     setEditDuration(run.duration || '');
-    setEditHR(run.heartRate ? String(run.heartRate) : '');
     setEditEffort(run.effort || 5);
     setEditNotes(run.notes || '');
     setEditDate(run.date?.toDate?.() || new Date());
@@ -303,7 +198,6 @@ export default function RunDetailModal({
       await updateDoc(doc(db, 'runs', run.id), {
         miles:     newMiles,
         duration:  normalizedDuration || null,
-        heartRate: editHR ? parseInt(editHR) : null,
         effort:    editEffort,
         notes:     editNotes || null,
         date:      editDate,
@@ -381,8 +275,6 @@ export default function RunDetailModal({
               <TextInput style={styles.editInput} value={editMiles} onChangeText={setEditMiles} keyboardType="decimal-pad" placeholder="e.g. 5.2" placeholderTextColor={SIGNAL.color.mute2} />
               <Text style={styles.editLabel}>Duration (optional)</Text>
               <TextInput style={styles.editInput} value={editDuration} onChangeText={setEditDuration} placeholder="e.g. 42:30" placeholderTextColor={SIGNAL.color.mute2} />
-              <Text style={styles.editLabel}>Avg heart rate (optional)</Text>
-              <TextInput style={styles.editInput} value={editHR} onChangeText={setEditHR} keyboardType="numeric" placeholder="e.g. 155" placeholderTextColor={SIGNAL.color.mute2} />
               <Text style={styles.editLabel}>How did it feel? {editEffort}/10 — {EFFORT_LABELS[editEffort]}</Text>
               <View style={styles.effortRow}>
                 {[1,2,3,4,5,6,7,8,9,10].map(n => {
@@ -505,28 +397,12 @@ export default function RunDetailModal({
                       <Text style={styles.statLabel}>Avg pace</Text>
                     </View>
                   )}
-                  {run.heartRate && (
-                    <View style={styles.statBox}>
-                      <Text style={styles.statValueMono}>{run.heartRate}</Text>
-                      <Text style={styles.statLabel}>Avg HR (bpm)</Text>
-                    </View>
-                  )}
                 </View>
               </View>
             </View>
 
             {/* Pace zone breakdown — primary effort display */}
             <RunPaceBreakdown run={run} trainingPaces={trainingPaces} />
-
-            {/* HR zone breakdown — secondary, shown if HR data exists */}
-            {showHRZones && (
-              <RunZoneBreakdown
-                run={run}
-                athleteAge={athleteAge}
-                zoneSettings={zoneSettings}
-                primaryColor={primaryColor}
-              />
-            )}
 
             {/* Data source */}
             <View style={styles.card}>

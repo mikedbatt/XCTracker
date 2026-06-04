@@ -32,15 +32,6 @@ export const STATUS = {
   infoBg:    '#eff6ff',
 };
 
-// ─── Zone Colors (HR zones — keep existing, well-chosen) ────────────────────
-export const ZONE_COLORS = {
-  z1: '#64b5f6',   // Recovery — blue
-  z2: '#4caf50',   // Aerobic Base — green
-  z3: '#ff9800',   // Aerobic Power — orange
-  z4: '#f44336',   // Threshold — red
-  z5: '#9c27b0',   // Anaerobic — purple
-};
-
 // ─── Effort Colors (1-10 scale, green → red) ────────────────────────────────
 export const EFFORT_COLORS = [
   '', '#4caf50', '#4caf50', '#8bc34a', '#8bc34a', '#ffeb3b',

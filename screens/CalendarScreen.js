@@ -454,8 +454,6 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
                         <Text style={styles.runDayMiles}>{run.miles} miles</Text>
                         <Text style={styles.runDayDetail}>
                           {run.duration ? run.duration : ''}
-                          {run.duration && run.heartRate ? ' · ' : ''}
-                          {run.heartRate ? `${run.heartRate} bpm` : ''}
                         </Text>
                       </View>
                       {run.effort != null && (

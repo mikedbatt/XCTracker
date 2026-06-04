@@ -23,13 +23,11 @@ import { BRAND, SIGNAL, STRAVA_ORANGE } from '../constants/design';
 import {
   STRAVA_CONFIG, exchangeStravaCode,
   fetchStravaActivities,
-  fetchStravaHRStream,
+  fetchStravaStreams,
   refreshStravaToken,
   stravaActivityToRun,
 } from '../stravaConfig';
-import {
-  DEFAULT_ZONE_BOUNDARIES, calcMaxHR, calcZoneBreakdownFromStream, parseBirthdate,
-} from '../zoneConfig';
+import { calcPaceZoneBreakdown } from '../utils/vdotUtils';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -210,21 +208,10 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
       let skipped  = 0;
       let totalMilesImported = 0;
 
-      // Load athlete's zone settings for accurate zone calculation
-      let zoneSettings = null;
-      try {
-        const zoneDoc = await getDoc(doc(db, 'zoneSettings', auth.currentUser.uid));
-        if (zoneDoc.exists()) zoneSettings = zoneDoc.data();
-      } catch (e) { console.warn('Failed to load athlete zone settings, using defaults:', e); }
-
-      // Determine age and max HR for zone calculation
+      // Load the athlete doc once — used for pace-zone calculation below.
       const userSnap2 = await getDoc(doc(db, 'users', auth.currentUser.uid));
       const athleteData = userSnap2.data();
-      const age = athleteData?.birthdate
-        ? Math.floor((new Date() - parseBirthdate(athleteData.birthdate)) / (365.25 * 86400000))
-        : 16;
-      const boundaries = zoneSettings?.boundaries || DEFAULT_ZONE_BOUNDARIES;
-      const maxHR = calcMaxHR(age, zoneSettings?.customMaxHR);
+      const trainingPaces = athleteData?.trainingPaces || null;
 
       for (const activity of activities) {
         if (existingStravaIds.has(activity.id.toString())) { skipped++; continue; }
@@ -232,28 +219,22 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
         const run = stravaActivityToRun(activity, auth.currentUser.uid, userData.schoolId);
         if (!run) { skipped++; continue; }
 
-        // Fetch HR stream only to compute zoneSeconds at sync time. We do
-        // NOT persist the raw stream — storing one entry per second of
-        // activity inline on the run doc was OOM-crashing the app for
-        // users with lots of synced runs.
-        let zoneSeconds = null;
-        if (activity.average_heartrate && activity.has_heartrate) {
+        // Fetch the pace stream only to compute paceZoneSeconds at sync time.
+        // We do NOT persist the raw stream — storing one entry per second of
+        // activity inline on the run doc was OOM-crashing the app for users
+        // with lots of synced runs.
+        let paceZoneSeconds = null;
+        if (trainingPaces) {
           try {
-            const stream = await fetchStravaHRStream(token, activity.id);
-            if (stream) {
-              const breakdown = calcZoneBreakdownFromStream(stream, maxHR, boundaries);
-              if (breakdown) {
-                zoneSeconds = {};
-                breakdown.forEach(z => { zoneSeconds[`z${z.zone}`] = z.seconds; });
-              }
-            }
+            const { paceStream } = await fetchStravaStreams(token, activity.id);
+            if (paceStream) paceZoneSeconds = calcPaceZoneBreakdown(paceStream, trainingPaces);
             await new Promise(r => setTimeout(r, 200));
           } catch (e) { console.warn('Stream fetch:', e); }
         }
 
         const runWithZones = {
           ...run,
-          ...(zoneSeconds ? { zoneSeconds, hasStreamData: true } : { hasStreamData: false }),
+          ...(paceZoneSeconds ? { paceZoneSeconds, hasPaceData: true } : { hasPaceData: false }),
         };
 
         // Deterministic doc ID prevents duplicate runs from concurrent syncs.
@@ -410,7 +391,7 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
               {[
                 'Miles (converted from km automatically)',
                 'Duration and calculated pace',
-                'Average heart rate, auto-classified to Zone 1–5',
+                'Pace auto-classified into training zones',
                 'Elevation gain',
                 'Activity name (used as run notes)',
               ].map((item, i) => (
@@ -437,14 +418,14 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
               <Text style={styles.eyebrow}>Why connect</Text>
               <Text style={styles.cardHeading}>Automatic run tracking</Text>
               <Text style={styles.cardBody}>
-                Pull runs, heart rate, and pace directly from Strava so your log stays complete.
+                Pull runs, pace, and mileage directly from Strava so your log stays complete.
               </Text>
 
               <View style={styles.divider} />
 
               {[
                 'Runs sync automatically — no manual entry',
-                'Heart rate zones from real HR data',
+                'Pace zones from real GPS data',
                 'Pace and mileage pulled from GPS',
                 'Keeps your log complete when you forget',
                 'Your coach sees real data, not estimates',

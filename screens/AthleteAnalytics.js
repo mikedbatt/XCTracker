@@ -16,17 +16,13 @@ import { SIGNAL } from '../constants/design';
 import { getActiveSeason, getPhaseForSeason, getCompletedSeasons, generateVolumeCurve } from './SeasonPlanner';
 import SeasonReview from './SeasonReview';
 import { formatTime, calcPace, formatPace } from '../utils/raceUtils';
-import {
-  calcMaxHR, calcZoneBreakdownFromStream, calcZoneBreakdownFromRuns,
-  calc8020, ZONE_META, DEFAULT_ZONE_BOUNDARIES,
-} from '../zoneConfig';
 import { PACE_ZONES, calcPaceZoneBreakdown, calcPaceZoneSecondsForRun, calcPace8020 } from '../utils/vdotUtils';
 import { getMondayISO, getRunDate, groupRunsByWeek } from '../utils/dateUtils';
 
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function AthleteAnalytics({ userData, school, myGroup, athleteAge, teamZoneSettings, onClose }) {
+export default function AthleteAnalytics({ userData, school, myGroup, onClose }) {
   const [loading, setLoading] = useState(true);
   const [expandedSection, setExpandedSection] = useState(null);
   const [seasonReviewSeason, setSeasonReviewSeason] = useState(null);
@@ -76,9 +72,13 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
 
   // ── Feature 1: Season Volume Arc data ──
   const seasonKey = activeSeason ? `${activeSeason.sport || 'cross_country'}_${activeSeason.seasonStart?.split?.('T')?.[0] || activeSeason.seasonStart}` : null;
+  // Only build a curve from a real coach-set target — never fabricate a default.
+  // No season or no group target → empty plan → "not set up yet" empty state.
   const volumePlan = seasonKey && myGroup?.seasonPlans?.[seasonKey]
     ? myGroup.seasonPlans[seasonKey]
-    : (activeSeason ? generateVolumeCurve(activeSeason, myGroup?.weeklyMilesTarget || 40) : {});
+    : (activeSeason && myGroup?.weeklyMilesTarget
+        ? generateVolumeCurve(activeSeason, myGroup.weeklyMilesTarget)
+        : {});
   const weeklyRunData = groupRunsByWeek(allRuns);
   const currentMonday = getMondayISO(new Date());
 
@@ -169,74 +169,19 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
   const primaryDistance = distances.includes('5K') ? '5K' : distances[0] || null;
 
   // ── Feature 3: Training Quality data ──
-  const boundaries = teamZoneSettings?.boundaries || DEFAULT_ZONE_BOUNDARIES;
-  const customMaxHR = teamZoneSettings?.customMaxHR || null;
-  const maxHR = calcMaxHR(athleteAge, customMaxHR);
-
   const now = new Date();
   const thirtyDaysAgo = new Date(now - 30 * 86400000);
   const recentRuns = allRuns.filter(r => getRunDate(r) >= thirtyDaysAgo);
-
-  // Compute zone breakdown for recent runs
-  let zoneBreakdown = null;
-  let eighty20 = null;
-  let hasStreamData = false;
-  const rawStreamRuns = recentRuns.filter(r => r.rawHRStream?.length > 0);
-  if (rawStreamRuns.length > 0) {
-    hasStreamData = true;
-    const combined = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
-    rawStreamRuns.forEach(r => {
-      const bd = calcZoneBreakdownFromStream(r.rawHRStream, maxHR, boundaries);
-      if (bd) bd.forEach(z => { combined[`z${z.zone}`] = (combined[`z${z.zone}`] || 0) + z.seconds; });
-    });
-    const total = Object.values(combined).reduce((s, v) => s + v, 0);
-    if (total > 0) {
-      zoneBreakdown = Object.entries(combined).map(([k, v]) => ({
-        zone: parseInt(k.replace('z', '')),
-        pct: Math.round((v / total) * 100),
-        seconds: v,
-      }));
-      eighty20 = calc8020(zoneBreakdown);
-    }
-  }
-  if (!zoneBreakdown) {
-    const bd = calcZoneBreakdownFromRuns(recentRuns, athleteAge, customMaxHR, boundaries);
-    if (bd) { zoneBreakdown = bd; eighty20 = calc8020(bd); }
-  }
 
   // Effort distribution
   const effortDist = Array(11).fill(0);
   recentRuns.forEach(r => { if (r.effort >= 1 && r.effort <= 10) effortDist[r.effort]++; });
   const maxEffortCount = Math.max(...effortDist.slice(1), 1);
 
-  // 4-week 80/20 trend
-  const weekTrend = [];
-  for (let w = 0; w < 4; w++) {
-    const wStart = new Date(now - (w + 1) * 7 * 86400000);
-    const wEnd = new Date(now - w * 7 * 86400000);
-    const wRuns = allRuns.filter(r => { const d = getRunDate(r); return d >= wStart && d < wEnd; });
-    const wStream = wRuns.filter(r => r.rawHRStream?.length > 0);
-    let wPct = null;
-    if (wStream.length > 0) {
-      const comb = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
-      wStream.forEach(r => {
-        const bd = calcZoneBreakdownFromStream(r.rawHRStream, maxHR, boundaries);
-        if (bd) bd.forEach(z => { comb[`z${z.zone}`] = (comb[`z${z.zone}`] || 0) + z.seconds; });
-      });
-      const t = Object.values(comb).reduce((s, v) => s + v, 0);
-      if (t > 0) wPct = Math.round(((comb.z1 + comb.z2) / t) * 100);
-    }
-    if (wPct === null) {
-      const bd = calcZoneBreakdownFromRuns(wRuns, athleteAge, customMaxHR, boundaries);
-      if (bd) wPct = bd.filter(z => z.zone <= 2).reduce((s, z) => s + z.pct, 0);
-    }
-    weekTrend.unshift(wPct);
-  }
-
-  // ── Feature 3b: Pace-based Training Quality (primary when VDOT set) ──
+  // ── Feature 3b: Pace-based Training Quality (shown when VDOT set) ──
   // Uses calcPaceZoneSecondsForRun which falls back to deriving avg pace from
   // miles + duration on manual runs — so athletes who log manually (no Strava)
-  // still get pace-based 80/20 instead of being kicked back to HR.
+  // still get pace-based 80/20 even without a Strava pace stream.
   const trainingPaces = userData.trainingPaces || null;
   let paceZoneBreakdown = null;
   let paceEighty20 = null;
@@ -277,9 +222,8 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
     }
   }
 
-  const usePace = !!paceEighty20;
-  const displayEighty20 = usePace ? paceEighty20 : eighty20;
-  const displayWeekTrend = usePace ? paceWeekTrend : weekTrend;
+  const displayEighty20 = paceEighty20;
+  const displayWeekTrend = paceWeekTrend;
 
   // ── Weekly intensity compliance (season-aligned, like volume arc) ──
   const TARGET_EASY_PCT = 80;
@@ -289,7 +233,7 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
     const wRuns = allRuns.filter(r => { const d = getRunDate(r); return d >= monday && d < sunday; });
     if (w.actual == null || wRuns.length === 0) return { ...w, easyPct: null };
 
-    if (usePace && trainingPaces) {
+    if (trainingPaces) {
       const comb = { e: 0, m: 0, t: 0, i: 0, r: 0 };
       let hasData = false;
       wRuns.forEach(r => {
@@ -306,21 +250,6 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
         const result = calcPace8020(comb);
         return { ...w, easyPct: result ? result.easyPct : null };
       }
-    }
-
-    // HR fallback
-    const boundaries = teamZoneSettings?.boundaries || DEFAULT_ZONE_BOUNDARIES;
-    const customMaxHR = teamZoneSettings?.customMaxHR || null;
-    const maxHR = calcMaxHR(athleteAge, customMaxHR);
-    const rawStreamRuns = wRuns.filter(r => r.rawHRStream?.length > 0);
-    if (rawStreamRuns.length > 0) {
-      const combined = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
-      rawStreamRuns.forEach(r => {
-        const bd = calcZoneBreakdownFromStream(r.rawHRStream, maxHR, boundaries);
-        if (bd) bd.forEach(z => { combined[`z${z.zone}`] = (combined[`z${z.zone}`] || 0) + z.seconds; });
-      });
-      const total = Object.values(combined).reduce((s, v) => s + v, 0);
-      if (total > 0) return { ...w, easyPct: Math.round(((combined.z1 + combined.z2) / total) * 100) };
     }
 
     return { ...w, easyPct: null };
@@ -569,7 +498,7 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
           ) : (
             <View style={styles.cardBody}>
               <Text style={styles.noDataText}>
-                Your coach hasn't set up a season plan yet. Ask them to create one in Program → Seasons.
+                Your coach hasn't set up a season and weekly mileage targets yet. Ask them to set these in Program → Seasons.
               </Text>
             </View>
           )}
@@ -656,10 +585,7 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
                     style={styles.heroCard}
                   >
                     <Text style={styles.heroGaugeNum}>{pct}%</Text>
-                    <Text style={styles.heroGaugeSub}>
-                      {usePace ? 'Easy running (by pace)' : 'Z1 + Z2 (easy running)'}
-                      {!usePace && hasStreamData ? '  · Precise' : ''}
-                    </Text>
+                    <Text style={styles.heroGaugeSub}>Easy running (by pace)</Text>
                   </LinearGradient>
                 );
               })()}
@@ -734,8 +660,8 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
                 </View>
               )}
 
-              {/* Pace zone breakdown (primary when VDOT set) */}
-              {usePace && paceZoneBreakdown && (
+              {/* Pace zone breakdown (shown when VDOT set) */}
+              {paceZoneBreakdown && (
                 <View style={styles.zoneSection}>
                   <Text style={styles.eyebrowMb}>Pace zone breakdown</Text>
                   <View style={styles.zoneStackedBar}>
@@ -747,25 +673,6 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
                     <View key={z.key} style={styles.zoneRow}>
                       <View style={[styles.zoneDot, { backgroundColor: z.color }]} />
                       <Text style={styles.zoneLabel}>{z.short} · {z.name}</Text>
-                      <Text style={styles.zonePct}>{z.pct}%</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {/* HR zone breakdown (fallback when no VDOT) */}
-              {!usePace && zoneBreakdown && (
-                <View style={styles.zoneSection}>
-                  <Text style={styles.eyebrowMb}>Heart-rate zone breakdown</Text>
-                  <View style={styles.zoneStackedBar}>
-                    {zoneBreakdown.map(z => (
-                      <View key={z.zone} style={[styles.zoneBarSegment, { flex: z.pct, backgroundColor: ZONE_META[z.zone]?.color || SIGNAL.color.line }]} />
-                    ))}
-                  </View>
-                  {zoneBreakdown.map(z => (
-                    <View key={z.zone} style={styles.zoneRow}>
-                      <View style={[styles.zoneDot, { backgroundColor: ZONE_META[z.zone]?.color || SIGNAL.color.line }]} />
-                      <Text style={styles.zoneLabel}>{ZONE_META[z.zone]?.name || `Z${z.zone}`}</Text>
                       <Text style={styles.zonePct}>{z.pct}%</Text>
                     </View>
                   ))}

@@ -12,47 +12,24 @@ import {
 } from 'react-native';
 import { SIGNAL } from '../constants/design';
 import { auth, db } from '../firebaseConfig';
-import {
-  DEFAULT_ZONE_BOUNDARIES,
-  ZONE_META,
-  calcMaxHR,
-  calcZoneBreakdownFromRuns,
-  calcZoneBreakdownFromStream,
-  formatMinutes,
-  parseBirthdate,
-} from '../zoneConfig';
-import { PACE_ZONES, calcPaceZoneBreakdown } from '../utils/vdotUtils';
+import { PACE_ZONES, calcPaceZoneBreakdown, formatMinutes } from '../utils/vdotUtils';
 import RunDetailModal from './RunDetailModal';
 
 export default function TeammateProfile({ athlete, school, onBack }) {
   const [runs,            setRuns]            = useState([]);
   const [loading,         setLoading]         = useState(true);
   const [totalMiles,      setTotalMiles]       = useState(0);
-  const [teamZoneSettings, setTeamZoneSettings] = useState(null);
   const [selectedRun,     setSelectedRun]     = useState(null);
   const [runDetailVisible, setRunDetailVisible] = useState(false);
 
   const primaryColor = school?.primaryColor || '#213f96';
   const myUid = auth.currentUser?.uid;
 
-  const athleteAge = athlete.birthdate
-    ? Math.floor((new Date() - parseBirthdate(athlete.birthdate)) / (365.25 * 86400000))
-    : 16;
-
   useEffect(() => { loadProfile(); }, []);
 
   const loadProfile = async () => {
     setLoading(true);
     try {
-      // Load team zone settings for boundary config
-      if (school?.id || athlete.schoolId) {
-        try {
-          const schoolId = school?.id || athlete.schoolId;
-          const zoneDoc = await getDoc(doc(db, 'teamZoneSettings', schoolId));
-          if (zoneDoc.exists()) setTeamZoneSettings(zoneDoc.data());
-        } catch (e) { console.warn('Failed to load team zone settings, using defaults:', e); }
-      }
-
       // Load runs
       const runsSnap = await getDocs(query(
         collection(db, 'runs'),
@@ -86,77 +63,7 @@ export default function TeammateProfile({ athlete, school, onBack }) {
   const weekMiles = Math.round(weekRuns.reduce((s, r) => s + (r.miles || 0), 0) * 10) / 10;
   const totalAllMiles = Math.round(runs.reduce((s, r) => s + (r.miles || 0), 0) * 10) / 10;
 
-  // ── Zone breakdown for this month (uses team-configured boundaries) ──
-  const getZoneBreakdown = () => {
-    const boundaries = teamZoneSettings?.boundaries || DEFAULT_ZONE_BOUNDARIES;
-    const maxHR = calcMaxHR(athleteAge, teamZoneSettings?.customMaxHR || null);
-
-    const monthStart = new Date();
-    monthStart.setDate(1);
-    monthStart.setHours(0, 0, 0, 0);
-    const monthRuns = runs.filter(r => {
-      const d = r.date?.toDate?.();
-      return d && d >= monthStart;
-    });
-
-    if (monthRuns.length === 0) return { breakdown: null, hasStreamData: false };
-
-    // Priority 1: raw HR stream data — most accurate
-    const rawStreamRuns = monthRuns.filter(r => r.rawHRStream?.length > 0);
-    if (rawStreamRuns.length > 0) {
-      const combined = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
-      rawStreamRuns.forEach(r => {
-        const bd = calcZoneBreakdownFromStream(r.rawHRStream, maxHR, boundaries);
-        if (bd) bd.forEach(z => { combined[`z${z.zone}`] = (combined[`z${z.zone}`] || 0) + z.seconds; });
-      });
-      const total = Object.values(combined).reduce((s, v) => s + v, 0);
-      if (total > 0) {
-        return {
-          breakdown: Object.entries(combined)
-            .filter(([, s]) => s > 0)
-            .map(([key, secs]) => {
-              const zone = parseInt(key.replace('z', ''));
-              return { zone, seconds: secs, minutes: Math.round(secs / 60), pct: Math.round((secs / total) * 100), ...ZONE_META[zone] };
-            })
-            .sort((a, b) => a.zone - b.zone),
-          hasStreamData: true,
-        };
-      }
-    }
-
-    // Priority 2: stored zone seconds
-    const storedZoneRuns = monthRuns.filter(r => r.hasStreamData && r.zoneSeconds);
-    if (storedZoneRuns.length > 0) {
-      const combined = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
-      storedZoneRuns.forEach(r => {
-        Object.entries(r.zoneSeconds).forEach(([k, v]) => {
-          if (combined[k] !== undefined) combined[k] += v;
-        });
-      });
-      const total = Object.values(combined).reduce((s, v) => s + v, 0);
-      if (total > 0) {
-        return {
-          breakdown: Object.entries(combined)
-            .filter(([, s]) => s > 0)
-            .map(([key, secs]) => {
-              const zone = parseInt(key.replace('z', ''));
-              return { zone, seconds: secs, minutes: Math.round(secs / 60), pct: Math.round((secs / total) * 100), ...ZONE_META[zone] };
-            })
-            .sort((a, b) => a.zone - b.zone),
-          hasStreamData: true,
-        };
-      }
-    }
-
-    // Priority 3: avg HR + duration estimate
-    const bd = calcZoneBreakdownFromRuns(monthRuns, athleteAge, teamZoneSettings?.customMaxHR || null, boundaries);
-    return { breakdown: bd, hasStreamData: false };
-  };
-
-  const { breakdown: zoneBreakdown, hasStreamData } = getZoneBreakdown();
-  const totalZoneMins = zoneBreakdown ? zoneBreakdown.reduce((s, z) => s + z.minutes, 0) : 0;
-
-  // Pace zone breakdown (primary when teammate has VDOT set)
+  // Pace zone breakdown for this month (shows when teammate has VDOT set)
   const trainingPaces = athlete.trainingPaces || null;
   const getPaceBreakdown = () => {
     if (!trainingPaces) return null;
@@ -276,35 +183,6 @@ export default function TeammateProfile({ athlete, school, onBack }) {
           </View>
         )}
 
-        {/* HR zones (fallback) */}
-        {!usePace && zoneBreakdown && zoneBreakdown.length > 0 && (
-          <View style={styles.card}>
-            <View style={styles.cardTitleRow}>
-              <Text style={styles.sectionTitle}>Training zones</Text>
-              {hasStreamData
-                ? <View style={styles.preciseBadge}><Text style={styles.preciseBadgeText}>PRECISE</Text></View>
-                : <Text style={styles.eyebrow}>Estimated</Text>
-              }
-            </View>
-            <View style={styles.zoneStackedBar}>
-              {zoneBreakdown.map(z => (
-                <View key={z.zone} style={[styles.zoneStackedSegment, { flex: z.minutes, backgroundColor: ZONE_META[z.zone].color }]} />
-              ))}
-            </View>
-            {zoneBreakdown.map(z => (
-              <View key={z.zone} style={styles.zoneRow}>
-                <View style={[styles.zoneDot, { backgroundColor: ZONE_META[z.zone].color }]} />
-                <Text style={styles.zoneName}>Z{z.zone} {ZONE_META[z.zone].name}</Text>
-                <View style={styles.zoneBarBg}>
-                  <View style={[styles.zoneBarFill, { width: `${z.pct}%`, backgroundColor: ZONE_META[z.zone].color }]} />
-                </View>
-                <Text style={styles.zoneCount}>{formatMinutes(z.minutes)}</Text>
-              </View>
-            ))}
-            <Text style={styles.zoneTotalHint}>{formatMinutes(totalZoneMins)} total with HR data</Text>
-          </View>
-        )}
-
         {/* Recent runs */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Recent runs</Text>
@@ -351,9 +229,6 @@ export default function TeammateProfile({ athlete, school, onBack }) {
         visible={runDetailVisible}
         onClose={() => { setRunDetailVisible(false); setSelectedRun(null); }}
         primaryColor={primaryColor}
-        athleteAge={athleteAge}
-        zoneSettings={teamZoneSettings}
-        showHRZones={false}
         trainingPaces={trainingPaces}
       />
     </View>

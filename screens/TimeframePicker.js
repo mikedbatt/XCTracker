@@ -59,7 +59,9 @@ export function getDateRange(timeframe, activeSeason, customStart, customEnd) {
           end:   activeSeason.championshipDate ? new Date(activeSeason.championshipDate) : now,
         };
       }
-      return { start: new Date(now.getFullYear(), 7, 1), end: now };
+      // No season configured — fall back to all-time rather than guessing a
+      // sport/start date. (The picker also hides "Season" when none exists.)
+      return { start: null, end: now };
     }
     case 'custom': {
       return {
@@ -143,7 +145,7 @@ export default function TimeframePicker({
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setDropdownVisible(false)}>
           <View style={styles.dropdown}>
             <Text style={styles.dropdownTitle}>Select time range</Text>
-            {TIMEFRAMES.map((tf) => {
+            {TIMEFRAMES.filter(tf => tf.key !== 'season' || activeSeason).map((tf) => {
               const isSelected = selected?.key === tf.key;
               const subtitle = getSubtitle(tf);
               return (

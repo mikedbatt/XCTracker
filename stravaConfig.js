@@ -1,14 +1,11 @@
 // ── Strava API Configuration ──────────────────────────────────────────────────
-// Token exchange and refresh are handled by Firebase callable Cloud Functions.
-// Callable functions require a Firebase Auth token automatically, so anonymous
-// callers can't burn our Strava client_id quota.
+// Token exchange and refresh are handled by Firebase Cloud Functions (onRequest
+// HTTP endpoints). The client secret never ships in the app bundle. NOTE: kept
+// on onRequest (NOT onCall) so client and deployed functions stay matched — a
+// protocol change breaks every un-updated build. Revisit onCall only paired with
+// App Check, shipped together with a new build.
 
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { app } from './firebaseConfig';
-
-const functions = getFunctions(app, 'us-central1');
-const stravaTokenExchangeFn = httpsCallable(functions, 'stravaTokenExchange');
-const stravaTokenRefreshFn  = httpsCallable(functions, 'stravaTokenRefresh');
+const FUNCTIONS_BASE = 'https://us-central1-xctracker-a2532.cloudfunctions.net';
 
 export const STRAVA_CONFIG = {
   clientId:     process.env.EXPO_PUBLIC_STRAVA_CLIENT_ID,
@@ -19,14 +16,27 @@ export const STRAVA_CONFIG = {
 
 // ── Token exchange via Cloud Function ────────────────────────────────────────
 export async function exchangeStravaCode(code, redirectUri) {
-  const result = await stravaTokenExchangeFn({ code, redirectUri });
-  return result.data;
+  const response = await fetch(`${FUNCTIONS_BASE}/stravaTokenExchange`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code, redirectUri }),
+  });
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Token exchange failed: ${err}`);
+  }
+  return response.json();
 }
 
 // ── Token refresh via Cloud Function ─────────────────────────────────────────
 export async function refreshStravaToken(refreshToken) {
-  const result = await stravaTokenRefreshFn({ refreshToken });
-  return result.data;
+  const response = await fetch(`${FUNCTIONS_BASE}/stravaTokenRefresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshToken }),
+  });
+  if (!response.ok) throw new Error('Token refresh failed');
+  return response.json();
 }
 
 // ── Fetch ALL activities from Strava with pagination ──────────────────────────
@@ -88,8 +98,6 @@ export function stravaActivityToRun(activity, userId, schoolId) {
     schoolId: schoolId || null,
     miles: Math.round(miles * 100) / 100,
     duration,
-    heartRate: activity.average_heartrate ? Math.round(activity.average_heartrate) : null,
-    maxHeartRate: activity.max_heartrate ? Math.round(activity.max_heartrate) : null,
     elevationGain: activity.total_elevation_gain ? Math.round(activity.total_elevation_gain * 3.281) : null, // meters to feet
     averagePace,
     effort: null,   // athlete fills this in after import
@@ -101,32 +109,18 @@ export function stravaActivityToRun(activity, userId, schoolId) {
   };
 }
 
-// ── Fetch activity streams (HR + velocity) ───────────────────────────────────
-// Returns { hrStream, paceStream } where each is an array of { value, seconds }
-// hrStream entries: { hr, seconds }
-// paceStream entries: { pace (sec/mile), seconds }
+// ── Fetch activity pace stream (velocity) ────────────────────────────────────
+// Returns { paceStream } — an array of { pace (sec/mile), seconds } per point.
 export async function fetchStravaStreams(accessToken, activityId) {
-  const url = `https://www.strava.com/api/v3/activities/${activityId}/streams?keys=heartrate,time,velocity_smooth&key_by_type=true`;
+  const url = `https://www.strava.com/api/v3/activities/${activityId}/streams?keys=time,velocity_smooth&key_by_type=true`;
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  if (!response.ok) return { hrStream: null, paceStream: null };
+  if (!response.ok) return { paceStream: null };
   const data = await response.json();
 
   const timeData = data.time?.data;
-  if (!timeData) return { hrStream: null, paceStream: null };
-
-  // Build HR stream
-  let hrStream = null;
-  if (data.heartrate?.data) {
-    const hrData = data.heartrate.data;
-    const stream = [];
-    for (let i = 0; i < hrData.length; i++) {
-      const duration = i < hrData.length - 1 ? timeData[i + 1] - timeData[i] : 1;
-      if (hrData[i] > 0) stream.push({ hr: hrData[i], seconds: duration });
-    }
-    hrStream = stream.length > 0 ? stream : null;
-  }
+  if (!timeData) return { paceStream: null };
 
   // Build pace stream (velocity m/s → sec/mile)
   let paceStream = null;
@@ -143,51 +137,19 @@ export async function fetchStravaStreams(accessToken, activityId) {
     paceStream = stream.length > 0 ? stream : null;
   }
 
-  return { hrStream, paceStream };
-}
-
-// Legacy alias for backward compatibility
-export async function fetchStravaHRStream(accessToken, activityId) {
-  const { hrStream } = await fetchStravaStreams(accessToken, activityId);
-  return hrStream;
-}
-
-// ── Enhanced activity converter with stream data ──────────────────────────────
-export async function fetchRunWithZones(accessToken, activity, userId, schoolId, maxHR, boundaries) {
-  const baseRun = stravaActivityToRun(activity, userId, schoolId);
-  if (!baseRun) return null;
-
-  try {
-    const stream = await fetchStravaHRStream(accessToken, activity.id);
-    if (stream && maxHR) {
-      const { calcZoneBreakdownFromStream } = await import('./zoneConfig.js');
-      const breakdown = calcZoneBreakdownFromStream(stream, maxHR, boundaries);
-      if (breakdown) {
-        const zoneSeconds = {};
-        breakdown.forEach(z => { zoneSeconds[`z${z.zone}`] = z.seconds; });
-        return { ...baseRun, zoneSeconds, hasStreamData: true };
-      }
-    }
-  } catch (e) {
-    console.log('HR stream fetch failed, using average HR:', e);
-  }
-
-  return { ...baseRun, hasStreamData: false };
+  return { paceStream };
 }
 
 // ── Auto-sync Strava on app load ──────────────────────────────────────────────
 // Called silently from AthleteDashboard on mount. Does not block the UI.
 // Returns { imported, miles } or null if Strava is not connected / error.
-export async function autoSyncStrava(userId, userData, teamZoneSettings) {
+export async function autoSyncStrava(userId, userData) {
   try {
     const {
       getDoc, doc, getDocs, collection,
       query, where, setDoc, updateDoc,
     } = await import('firebase/firestore');
     const { db } = await import('./firebaseConfig');
-    const {
-      calcMaxHR, calcZoneBreakdownFromStream, DEFAULT_ZONE_BOUNDARIES,
-    } = await import('./zoneConfig');
 
     // Load user doc to get Strava tokens
     const userDoc = await getDoc(doc(db, 'users', userId));
@@ -242,14 +204,6 @@ export async function autoSyncStrava(userId, userData, teamZoneSettings) {
     ));
     const existingIds = new Set(existingSnap.docs.map(d => d.data().stravaId));
 
-    // Zone calculation setup — uses coach-configured team boundaries
-    const boundaries  = teamZoneSettings?.boundaries  || DEFAULT_ZONE_BOUNDARIES;
-    const customMaxHR = teamZoneSettings?.customMaxHR || null;
-    const age = userData?.birthdate
-      ? Math.floor((new Date() - new Date(userData.birthdate)) / (365.25 * 86400000))
-      : 16;
-    const maxHR = calcMaxHR(age, customMaxHR);
-
     let imported           = 0;
     let totalMilesImported = 0;
 
@@ -260,24 +214,14 @@ export async function autoSyncStrava(userId, userData, teamZoneSettings) {
       const run = stravaActivityToRun(activity, userId, userData?.schoolId);
       if (!run) continue;
 
-      // Fetch streams (HR + velocity) only to compute zone breakdowns at sync
-      // time. We do NOT persist the raw streams — storing one entry per
+      // Fetch the pace stream only to compute the zone breakdown at sync
+      // time. We do NOT persist the raw stream — storing one entry per
       // second of activity inline on the run doc was OOM-crashing the app
-      // for users with lots of synced runs. zoneSeconds + paceZoneSeconds
-      // are the durable summaries; recalculation if a coach changes
-      // boundaries later is no longer possible (acceptable trade-off).
-      let zoneSeconds = null;
+      // for users with lots of synced runs. paceZoneSeconds is the durable
+      // summary.
       let paceZoneSeconds = null;
       try {
-        const { hrStream, paceStream } = await fetchStravaStreams(accessToken, activity.id);
-
-        if (hrStream && maxHR) {
-          const breakdown = calcZoneBreakdownFromStream(hrStream, maxHR, boundaries);
-          if (breakdown) {
-            zoneSeconds = {};
-            breakdown.forEach(z => { zoneSeconds[`z${z.zone}`] = z.seconds; });
-          }
-        }
+        const { paceStream } = await fetchStravaStreams(accessToken, activity.id);
 
         if (paceStream && userData?.trainingPaces) {
           const { calcPaceZoneBreakdown } = await import('./utils/vdotUtils.js');
@@ -294,7 +238,6 @@ export async function autoSyncStrava(userId, userData, teamZoneSettings) {
       // will overwrite the same doc instead of creating duplicate runs.
       await setDoc(doc(db, 'runs', `strava_${userId}_${activity.id}`), {
         ...run,
-        ...(zoneSeconds ? { zoneSeconds, hasStreamData: true } : { hasStreamData: false }),
         ...(paceZoneSeconds ? { paceZoneSeconds, hasPaceData: true } : { hasPaceData: false }),
       });
 

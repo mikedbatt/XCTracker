@@ -247,6 +247,16 @@ export function formatPace(secPerMile) {
 }
 
 /**
+ * Format a minute count to a human-readable duration.
+ * @param {number} minutes
+ * @returns {string} e.g. "45m" or "1h 12m"
+ */
+export function formatMinutes(minutes) {
+  if (minutes >= 60) return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+  return `${minutes}m`;
+}
+
+/**
  * Parse a time string (MM:SS or HH:MM:SS) to total seconds.
  * @param {string} timeStr
  * @returns {number} seconds
