@@ -143,15 +143,32 @@ stravaConfig.js   # Strava OAuth + activity sync (client side)
   Requires `EXPO_PUBLIC_FIREBASE_VAPID_KEY` in `.env`.
 
 ### Server-side
-- `functions/index.js` — Cloud Functions: Strava OAuth token exchange and
-  refresh (callable `onCall`, auth-required, `maxInstances: 10`), push
-  notifications (Expo SDK for native + FCM admin SDK for web —
-  `sendWebPushNotifications` helper fans out per-user). Scheduled jobs:
-  `dailyCheckinReminder` (4 PM ET daily), `weeklyCheckinReminder` (hourly Sat,
-  per-school local-noon filter), `onWeeklyCheckinReply` (Firestore onUpdate;
-  also fires on coach edits and clears `athleteViewedReplyAt`).
-  Client-side dispatch goes through `httpsCallable` in `stravaConfig.js` —
-  signatures unchanged from the old fetch-based wrappers.
+- `functions/index.js` — Cloud Functions:
+  - **Strava OAuth token exchange/refresh** — `onRequest` HTTP endpoints
+    (`maxInstances: 10`). The client calls them via plain `fetch()` in
+    `stravaConfig.js`. NOTE: kept on `onRequest` (not `onCall`) so client and
+    functions stay matched — a protocol change is breaking for every un-updated
+    build, and onCall↔onRequest can't deploy in place (needs
+    `firebase functions:delete` then redeploy). Re-introduce `onCall` only
+    paired with App Check and shipped with a new build.
+  - **Strava webhooks** (event-driven sync) — `stravaWebhook` (`onRequest`,
+    public) handles the GET validation handshake and enqueues POST events to the
+    `stravaEvents` collection, acking 200 within Strava's 2s SLA.
+    `processStravaEvent` (Firestore `onCreate` on `stravaEvents`) does the work:
+    routes `owner_id → user` via `stravaAthleteId`, refreshes the token, fetches
+    the activity + pace stream, writes the run **pace-only** (`paceZoneSeconds`),
+    and handles update/delete/deauth. `totalMiles` only changes on new-doc
+    creation, so the webhook + the client polling fallback never double-count.
+    Needs `STRAVA_VERIFY_TOKEN` in `functions/.env`. One push subscription per
+    app is registered out-of-band via curl to
+    `https://www.strava.com/api/v3/push_subscriptions` (the webhook is inert
+    until then). Client polling (`autoSyncStrava`) stays as a safety net.
+  - **Push notifications** (Expo SDK for native + FCM admin SDK for web —
+    `sendWebPushNotifications` helper fans out per-user).
+  - **Scheduled jobs:** `dailyCheckinReminder` (4 PM ET daily),
+    `weeklyCheckinReminder` (hourly Sat, per-school local-noon filter),
+    `onWeeklyCheckinReply` (Firestore onUpdate; also fires on coach edits and
+    clears `athleteViewedReplyAt`).
 
 ## Environment Variables
 All credentials are in `.env` (gitignored — never commit). See `.env.example`

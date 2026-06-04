@@ -110,6 +110,268 @@ exports.stravaTokenRefresh = functions
     res.json(data);
   });
 
+// ── Strava Webhooks (event-driven sync) ──────────────────────────────────────
+// One push subscription per app points Strava at `stravaWebhook`. To stay under
+// Strava's 2-second ack SLA, the webhook just enqueues each event to the
+// `stravaEvents` collection and returns 200; `processStravaEvent` (Firestore
+// onCreate) does the real work async with automatic retries.
+//
+// Purely additive: the token functions above and the client-side polling sync
+// are untouched, so this is INERT until the push subscription is registered
+// (see the curl in the project notes). Registering it later only *adds*
+// event-driven sync on top of polling — totalMiles is guarded against
+// double-counting below.
+
+const STRAVA_VERIFY_TOKEN = process.env.STRAVA_VERIFY_TOKEN;
+
+exports.stravaWebhook = functions
+  .runWith(STRAVA_RUNTIME)
+  .https.onRequest(async (req, res) => {
+    // 1) Subscription validation handshake (GET): echo hub.challenge if the
+    //    verify token matches. Strava calls this once, at subscription creation.
+    if (req.method === 'GET') {
+      const mode = req.query['hub.mode'];
+      const token = req.query['hub.verify_token'];
+      const challenge = req.query['hub.challenge'];
+      if (mode === 'subscribe' && STRAVA_VERIFY_TOKEN && token === STRAVA_VERIFY_TOKEN) {
+        res.status(200).json({ 'hub.challenge': challenge });
+      } else {
+        res.status(403).send('Forbidden');
+      }
+      return;
+    }
+
+    // 2) Event delivery (POST): enqueue + ack 200 immediately (well under 2s).
+    //    All heavy work happens in processStravaEvent.
+    if (req.method === 'POST') {
+      try {
+        const evt = req.body || {};
+        await db.collection('stravaEvents').add({
+          objectType:     evt.object_type || null,           // 'activity' | 'athlete'
+          objectId:       evt.object_id != null ? String(evt.object_id) : null,
+          aspectType:     evt.aspect_type || null,           // 'create' | 'update' | 'delete'
+          ownerId:        evt.owner_id != null ? String(evt.owner_id) : null,
+          subscriptionId: evt.subscription_id || null,
+          updates:        evt.updates || {},
+          eventTime:      evt.event_time || null,
+          status:         'pending',
+          receivedAt:     admin.firestore.FieldValue.serverTimestamp(),
+        });
+      } catch (e) {
+        // Never let an enqueue error turn into a non-200 (Strava would retry).
+        console.error('stravaWebhook enqueue failed:', e);
+      }
+      res.status(200).send('EVENT_RECEIVED');
+      return;
+    }
+
+    res.status(405).send('Method Not Allowed');
+  });
+
+// ── Strava webhook processor ─────────────────────────────────────────────────
+// Pace-zone math ported from utils/vdotUtils.js (functions/ is a separate
+// package and can't import app code). Pace zones are the only training-zone
+// model — runs are written pace-only, matching the client.
+function getPaceZone(paceSecPerMile, tp) {
+  if (!tp || !paceSecPerMile || paceSecPerMile <= 0) return 'e';
+  const riBoundary = (tp.r + tp.i) / 2;
+  const itBoundary = (tp.i + tp.t) / 2;
+  const tmBoundary = (tp.t + tp.m) / 2;
+  const meBoundary = tp.eHigh;
+  if (paceSecPerMile <= riBoundary) return 'r';
+  if (paceSecPerMile <= itBoundary) return 'i';
+  if (paceSecPerMile <= tmBoundary) return 't';
+  if (paceSecPerMile <= meBoundary) return 'm';
+  return 'e';
+}
+
+function calcPaceZoneBreakdown(paceStream, tp) {
+  const zones = { e: 0, m: 0, t: 0, i: 0, r: 0 };
+  if (!paceStream || !tp) return zones;
+  for (const point of paceStream) {
+    if (!point.pace || point.pace <= 0 || point.pace > 1800) continue; // skip stopped
+    zones[getPaceZone(point.pace, tp)] += point.seconds || 1;
+  }
+  return zones;
+}
+
+// Pace-only activity→run (port of stravaActivityToRun in stravaConfig.js).
+function stravaActivityToRunServer(activity, userId, schoolId) {
+  const runTypes = ['Run', 'TrailRun', 'VirtualRun'];
+  if (!runTypes.includes(activity.type)) return null;
+  const miles = activity.distance / 1609.344;
+  if (miles < 0.1) return null;
+
+  const totalSeconds = activity.moving_time;
+  const hours = Math.floor(totalSeconds / 3600);
+  const mins  = Math.floor((totalSeconds % 3600) / 60);
+  const secs  = totalSeconds % 60;
+  const duration = hours > 0
+    ? `${hours}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+    : `${mins}:${String(secs).padStart(2, '0')}`;
+
+  const averagePace = activity.average_speed > 0
+    ? Math.round(1609.344 / activity.average_speed)
+    : null;
+
+  const genericNames = ['Morning Run', 'Afternoon Run', 'Evening Run'];
+  return {
+    userId,
+    schoolId: schoolId || null,
+    miles: Math.round(miles * 100) / 100,
+    duration,
+    elevationGain: activity.total_elevation_gain ? Math.round(activity.total_elevation_gain * 3.281) : null,
+    averagePace,
+    effort: null,
+    notes: genericNames.includes(activity.name) ? null : activity.name,
+    source: 'strava',
+    stravaId: String(activity.id),
+    date: new Date(activity.start_date),
+  };
+}
+
+// Return a valid access token for the user, refreshing + persisting if needed.
+async function getValidStravaToken(userRef, data) {
+  const nowSecs = Math.floor(Date.now() / 1000);
+  if (data.stravaTokenExpiry && data.stravaTokenExpiry > nowSecs + 300) {
+    return data.stravaAccessToken;
+  }
+  const resp = await fetch('https://www.strava.com/oauth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      client_id: process.env.STRAVA_CLIENT_ID,
+      client_secret: process.env.STRAVA_CLIENT_SECRET,
+      refresh_token: data.stravaRefreshToken,
+      grant_type: 'refresh_token',
+    }),
+  });
+  if (!resp.ok) throw new Error('Strava token refresh failed');
+  const t = await resp.json();
+  await userRef.update({
+    stravaAccessToken:  t.access_token,
+    stravaRefreshToken: t.refresh_token,
+    stravaTokenExpiry:  t.expires_at,
+  });
+  return t.access_token;
+}
+
+async function fetchStravaActivity(accessToken, activityId) {
+  const resp = await fetch(`https://www.strava.com/api/v3/activities/${activityId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!resp.ok) return null;
+  return resp.json();
+}
+
+async function fetchStravaPaceStream(accessToken, activityId) {
+  const url = `https://www.strava.com/api/v3/activities/${activityId}/streams?keys=time,velocity_smooth&key_by_type=true`;
+  const resp = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!resp.ok) return null;
+  const data = await resp.json();
+  const timeData = data.time && data.time.data;
+  if (!timeData || !(data.velocity_smooth && data.velocity_smooth.data)) return null;
+  const vel = data.velocity_smooth.data;
+  const stream = [];
+  for (let i = 0; i < vel.length; i++) {
+    const dur = i < vel.length - 1 ? timeData[i + 1] - timeData[i] : 1;
+    if (vel[i] > 0.5) stream.push({ pace: Math.round(1609.344 / vel[i]), seconds: dur });
+  }
+  return stream.length ? stream : null;
+}
+
+exports.processStravaEvent = functions
+  .runWith(STRAVA_RUNTIME)
+  .firestore.document('stravaEvents/{eventId}')
+  .onCreate(async (snap) => {
+    const evt = snap.data();
+    try {
+      if (!evt.ownerId) { await snap.ref.update({ status: 'ignored', reason: 'no ownerId' }); return; }
+
+      // Route Strava athlete id → our user.
+      const usersSnap = await db.collection('users')
+        .where('stravaAthleteId', '==', evt.ownerId).limit(1).get();
+      if (usersSnap.empty) { await snap.ref.update({ status: 'ignored', reason: 'no matching user' }); return; }
+      const userDoc = usersSnap.docs[0];
+      const userRef = userDoc.ref;
+      const user = userDoc.data();
+
+      // Athlete deauthorization → clear stored tokens.
+      if (evt.objectType === 'athlete') {
+        const deauthed = evt.updates && (evt.updates.authorized === 'false' || evt.updates.authorized === false);
+        if (deauthed) {
+          await userRef.update({
+            stravaAccessToken:  admin.firestore.FieldValue.delete(),
+            stravaRefreshToken: admin.firestore.FieldValue.delete(),
+            stravaTokenExpiry:  admin.firestore.FieldValue.delete(),
+          });
+          await snap.ref.update({ status: 'done', action: 'deauthorized' });
+        } else {
+          await snap.ref.update({ status: 'ignored', reason: 'athlete update (not deauth)' });
+        }
+        return;
+      }
+
+      if (evt.objectType !== 'activity') { await snap.ref.update({ status: 'ignored', reason: 'unknown objectType' }); return; }
+
+      const runRef = db.collection('runs').doc(`strava_${userDoc.id}_${evt.objectId}`);
+
+      // Activity deleted → remove the run + decrement totalMiles.
+      if (evt.aspectType === 'delete') {
+        const existing = await runRef.get();
+        if (existing.exists) {
+          const miles = existing.data().miles || 0;
+          await runRef.delete();
+          if (miles > 0) {
+            await userRef.update({
+              totalMiles: Math.max(0, Math.round(((user.totalMiles || 0) - miles) * 10) / 10),
+            });
+          }
+        }
+        await snap.ref.update({ status: 'done', action: 'deleted' });
+        return;
+      }
+
+      // Create / update — fetch the activity with the user's token.
+      if (!user.stravaAccessToken) { await snap.ref.update({ status: 'ignored', reason: 'user not connected' }); return; }
+      const accessToken = await getValidStravaToken(userRef, user);
+
+      const activity = await fetchStravaActivity(accessToken, evt.objectId);
+      if (!activity) { await snap.ref.update({ status: 'error', error: 'activity fetch failed' }); return; }
+
+      const run = stravaActivityToRunServer(activity, userDoc.id, user.schoolId);
+      if (!run) { await snap.ref.update({ status: 'ignored', reason: 'not a run / too short' }); return; }
+
+      // Pace zones from the athlete's stored VDOT paces (if set).
+      let paceZoneSeconds = null;
+      if (user.trainingPaces) {
+        const paceStream = await fetchStravaPaceStream(accessToken, evt.objectId);
+        if (paceStream) paceZoneSeconds = calcPaceZoneBreakdown(paceStream, user.trainingPaces);
+      }
+
+      const existing = await runRef.get();
+      const isNew = !existing.exists;
+      await runRef.set({
+        ...run,
+        ...(paceZoneSeconds ? { paceZoneSeconds, hasPaceData: true } : { hasPaceData: false }),
+      }, { merge: true });
+
+      // Only touch totalMiles when creating a brand-new run doc — mirrors the
+      // client poller's existing-id de-dupe so the webhook and the fallback
+      // poller can never double-count the same activity.
+      if (isNew) {
+        await userRef.update({
+          totalMiles: Math.round(((user.totalMiles || 0) + run.miles) * 10) / 10,
+        });
+      }
+
+      await snap.ref.update({ status: 'done', action: isNew ? 'created' : 'updated' });
+    } catch (e) {
+      console.error('processStravaEvent failed:', e);
+      try { await snap.ref.update({ status: 'error', error: String((e && e.message) || e) }); } catch (_) {}
+    }
+  });
+
 // ── Push Notification on New Team Post ───────────────────────────────────────
 // Triggered when a new document is created in the teamPosts collection.
 // Sends push notifications to all relevant users based on the channel.

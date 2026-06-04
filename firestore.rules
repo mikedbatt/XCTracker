@@ -253,6 +253,14 @@ service cloud.firestore {
       allow update: if isCoachAtSchool(resource.data.schoolId);
     }
 
+    // ── Strava webhook event queue ────────────────────────────────────────────
+    // Written and consumed ONLY by Cloud Functions (Admin SDK bypasses rules).
+    // Clients must never touch it. The catch-all below would already deny this;
+    // this explicit rule documents intent.
+    match /stravaEvents/{eventId} {
+      allow read, write: if false;
+    }
+
     // ── Deny everything else ──────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;
