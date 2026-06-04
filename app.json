@@ -64,7 +64,8 @@
           "isAccessMediaLocationEnabled": false
         }
       ],
-      "expo-font"
+      "expo-font",
+      "@sentry/react-native/expo"
     ],
     "experiments": {
       "typedRoutes": true,

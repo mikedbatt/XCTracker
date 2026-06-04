@@ -29,22 +29,30 @@ export function initSentry() {
     }
     return;
   }
-  Sentry.init({
-    dsn: SENTRY_DSN,
-    // Don't report errors from dev builds (too noisy, drowns out real issues)
-    enabled: !__DEV__,
-    // Lower this if quota becomes a concern; 10% performance trace sample is fine for now.
-    tracesSampleRate: 0.1,
-    environment: __DEV__ ? 'development' : 'production',
-    // Capture unhandled promise rejections in addition to thrown errors.
-    enableAutoPerformanceTracing: true,
-  });
+  // Wrap in try/catch so a Sentry init failure (missing native module,
+  // bad DSN, network issue, etc.) never crashes the app on launch. If
+  // monitoring is broken we'd rather know via missing events than via
+  // a startup crash that locks all users out.
+  try {
+    Sentry.init({
+      dsn: SENTRY_DSN,
+      // Don't report errors from dev builds (too noisy, drowns out real issues)
+      enabled: !__DEV__,
+      // Lower this if quota becomes a concern; 10% performance trace sample is fine for now.
+      tracesSampleRate: 0.1,
+      environment: __DEV__ ? 'development' : 'production',
+      // Capture unhandled promise rejections in addition to thrown errors.
+      enableAutoPerformanceTracing: true,
+    });
 
-  // Expose on window for in-browser smoke testing. Newer @sentry/react-native
-  // versions don't auto-expose anymore; without this you can't call
-  // captureException from the DevTools console. Web-only; native ignores.
-  if (typeof window !== 'undefined') {
-    window.Sentry = Sentry;
+    // Expose on window for in-browser smoke testing. Newer @sentry/react-native
+    // versions don't auto-expose anymore; without this you can't call
+    // captureException from the DevTools console. Web-only; native ignores.
+    if (typeof window !== 'undefined') {
+      window.Sentry = Sentry;
+    }
+  } catch (e) {
+    console.warn('[sentry] init failed; continuing without monitoring:', e?.message || e);
   }
 }
 
