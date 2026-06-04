@@ -14,11 +14,19 @@
 // 5. For symbolicated stack traces on native, follow the Sentry React Native
 //    Expo guide for the EAS build hook (one extra plugin in app.json).
 
+import { Platform } from 'react-native';
 import * as Sentry from '@sentry/react-native';
 
 const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN;
 
 export function initSentry() {
+  // Web-only for now. Native Sentry needs the @sentry/react-native/expo
+  // config plugin + a Sentry auth token for source-map symbolication, and
+  // adding the plugin breaks Gradle in our current build (likely a new-arch
+  // or React Compiler interaction). Native crash reporting can be added
+  // back when we wire that up properly. Web error reporting works fine.
+  if (Platform.OS !== 'web') return;
+
   if (!SENTRY_DSN) {
     if (__DEV__) {
       // Don't spam the dev console for every reload — log once.
