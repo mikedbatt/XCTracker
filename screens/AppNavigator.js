@@ -86,8 +86,11 @@ export default function AppNavigator() {
   const notificationListener = useRef();
   const responseListener = useRef();
 
-  // Set up notification listeners
+  // Set up notification listeners (native only — expo-notifications listeners
+  // are no-ops on web and emit a console warning, so skip them entirely there).
   useEffect(() => {
+    if (Platform.OS === 'web') return;
+
     // Clear badge on app open
     Notifications.setBadgeCountAsync(0);
 

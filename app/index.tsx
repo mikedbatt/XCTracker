@@ -69,7 +69,12 @@ export default function Index() {
 
   // Layout is metric-tolerant — if a font fails to load we still render the
   // app with system fallbacks rather than blocking startup.
-  if (!fontsLoaded && !fontError) return null;
+  // On web, render immediately even before fonts resolve. Returning null on
+  // client while the server static render returned the full tree caused a
+  // React hydration mismatch (#418). Web takes a brief flash of system-font
+  // text that swaps to Inter Tight when loaded — acceptable trade and makes
+  // first paint feel faster on slow mobile connections.
+  if (!fontsLoaded && !fontError && Platform.OS !== 'web') return null;
 
   return <AppNavigator />;
 }
