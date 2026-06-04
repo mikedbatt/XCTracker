@@ -1,35 +1,27 @@
-// ── Sentry crash + error monitoring ──────────────────────────────────────────
-// Initialized once at app startup. Reports JS errors, unhandled promise
-// rejections, and (on native) native crashes. Web and native share one DSN —
-// @sentry/react-native handles both platforms.
+// ── Sentry crash + error monitoring (web only for now) ─────────────────────
+// Native is intentionally disabled — @sentry/react-native requires the
+// @sentry/react-native/expo config plugin in app.json to link its native
+// module, and that plugin currently breaks our Gradle build (likely a
+// new-architecture / React Compiler interaction). Web is where Sentry's
+// main value sits today (browser errors from web-only users), so we gate
+// the package import + init to web. Native crashes go to native crash
+// reporting (none right now — future work).
 //
-// Without EXPO_PUBLIC_SENTRY_DSN set in .env, this is a no-op so dev / CI
-// builds don't try to talk to Sentry.
-//
-// One-time setup:
-// 1. Create a free Sentry account at https://sentry.io
-// 2. Create a project ("React Native" type)
-// 3. Copy the DSN (looks like https://abc123@o12345.ingest.sentry.io/67890)
-// 4. Add to .env:  EXPO_PUBLIC_SENTRY_DSN=https://abc123@...
-// 5. For symbolicated stack traces on native, follow the Sentry React Native
-//    Expo guide for the EAS build hook (one extra plugin in app.json).
+// CRITICAL: do NOT static-import @sentry/react-native here. Even without
+// calling init, the module's top-level code accesses native bridges that
+// don't exist on Android/iOS without the config plugin → app crashes on
+// launch. The dynamic import inside initSentry keeps the module out of
+// the native bundle entirely.
 
 import { Platform } from 'react-native';
-import * as Sentry from '@sentry/react-native';
 
 const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN;
 
-export function initSentry() {
-  // Web-only for now. Native Sentry needs the @sentry/react-native/expo
-  // config plugin + a Sentry auth token for source-map symbolication, and
-  // adding the plugin breaks Gradle in our current build (likely a new-arch
-  // or React Compiler interaction). Native crash reporting can be added
-  // back when we wire that up properly. Web error reporting works fine.
+export async function initSentry() {
   if (Platform.OS !== 'web') return;
 
   if (!SENTRY_DSN) {
     if (__DEV__) {
-      // Don't spam the dev console for every reload — log once.
       if (!global.__sentryWarned) {
         console.warn('[sentry] EXPO_PUBLIC_SENTRY_DSN not set; error monitoring disabled');
         global.__sentryWarned = true;
@@ -37,25 +29,19 @@ export function initSentry() {
     }
     return;
   }
-  // Wrap in try/catch so a Sentry init failure (missing native module,
-  // bad DSN, network issue, etc.) never crashes the app on launch. If
-  // monitoring is broken we'd rather know via missing events than via
-  // a startup crash that locks all users out.
+
   try {
+    // Dynamic import so the @sentry/react-native package is NEVER pulled
+    // into the native bundle. Web only.
+    const Sentry = await import('@sentry/react-native');
     Sentry.init({
       dsn: SENTRY_DSN,
-      // Don't report errors from dev builds (too noisy, drowns out real issues)
       enabled: !__DEV__,
-      // Lower this if quota becomes a concern; 10% performance trace sample is fine for now.
       tracesSampleRate: 0.1,
       environment: __DEV__ ? 'development' : 'production',
-      // Capture unhandled promise rejections in addition to thrown errors.
       enableAutoPerformanceTracing: true,
     });
-
-    // Expose on window for in-browser smoke testing. Newer @sentry/react-native
-    // versions don't auto-expose anymore; without this you can't call
-    // captureException from the DevTools console. Web-only; native ignores.
+    // Expose on window for in-browser smoke testing. Web only.
     if (typeof window !== 'undefined') {
       window.Sentry = Sentry;
     }
@@ -63,7 +49,3 @@ export function initSentry() {
     console.warn('[sentry] init failed; continuing without monitoring:', e?.message || e);
   }
 }
-
-// Re-export so call sites can do explicit Sentry.captureException(e) inside
-// catch blocks for events worth highlighting beyond what's auto-captured.
-export { Sentry };
