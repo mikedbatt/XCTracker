@@ -47,7 +47,9 @@ for the original spec + implementation deltas log.
 
 ## Project Structure
 ```
-app/              # Expo Router entry (index.tsx only)
+app/              # Expo Router entry. `index.tsx` boots the app;
+                  # `+html.tsx` is the web-only HTML shell that injects a
+                  # brand splash visible until React hydrates #root.
 screens/          # All application screens — main source code
 components/       # Reusable UI components (Card, Button, WebMaxWidth)
 constants/        # Theme colors and app-wide constants
@@ -144,12 +146,15 @@ zoneConfig.js     # HR zone math, boundary validation, birthdate parsing
   Requires `EXPO_PUBLIC_FIREBASE_VAPID_KEY` in `.env`.
 
 ### Server-side
-- `functions/index.js` — Cloud Functions: Strava OAuth token exchange (HTTP),
-  push notifications (Expo SDK for native + FCM admin SDK for web —
+- `functions/index.js` — Cloud Functions: Strava OAuth token exchange and
+  refresh (callable `onCall`, auth-required, `maxInstances: 10`), push
+  notifications (Expo SDK for native + FCM admin SDK for web —
   `sendWebPushNotifications` helper fans out per-user). Scheduled jobs:
   `dailyCheckinReminder` (4 PM ET daily), `weeklyCheckinReminder` (hourly Sat,
   per-school local-noon filter), `onWeeklyCheckinReply` (Firestore onUpdate;
   also fires on coach edits and clears `athleteViewedReplyAt`).
+  Client-side dispatch goes through `httpsCallable` in `stravaConfig.js` —
+  signatures unchanged from the old fetch-based wrappers.
 
 ## Environment Variables
 All credentials are in `.env` (gitignored — never commit). See `.env.example`

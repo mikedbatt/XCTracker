@@ -1,8 +1,14 @@
 // ── Strava API Configuration ──────────────────────────────────────────────────
-// Token exchange and refresh are handled by Firebase Cloud Functions.
-// The client secret never ships in the app bundle.
+// Token exchange and refresh are handled by Firebase callable Cloud Functions.
+// Callable functions require a Firebase Auth token automatically, so anonymous
+// callers can't burn our Strava client_id quota.
 
-const FUNCTIONS_BASE = 'https://us-central1-xctracker-a2532.cloudfunctions.net';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { app } from './firebaseConfig';
+
+const functions = getFunctions(app, 'us-central1');
+const stravaTokenExchangeFn = httpsCallable(functions, 'stravaTokenExchange');
+const stravaTokenRefreshFn  = httpsCallable(functions, 'stravaTokenRefresh');
 
 export const STRAVA_CONFIG = {
   clientId:     process.env.EXPO_PUBLIC_STRAVA_CLIENT_ID,
@@ -13,27 +19,14 @@ export const STRAVA_CONFIG = {
 
 // ── Token exchange via Cloud Function ────────────────────────────────────────
 export async function exchangeStravaCode(code, redirectUri) {
-  const response = await fetch(`${FUNCTIONS_BASE}/stravaTokenExchange`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code, redirectUri }),
-  });
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Token exchange failed: ${err}`);
-  }
-  return response.json();
+  const result = await stravaTokenExchangeFn({ code, redirectUri });
+  return result.data;
 }
 
 // ── Token refresh via Cloud Function ─────────────────────────────────────────
 export async function refreshStravaToken(refreshToken) {
-  const response = await fetch(`${FUNCTIONS_BASE}/stravaTokenRefresh`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refreshToken }),
-  });
-  if (!response.ok) throw new Error('Token refresh failed');
-  return response.json();
+  const result = await stravaTokenRefreshFn({ refreshToken });
+  return result.data;
 }
 
 // ── Fetch ALL activities from Strava with pagination ──────────────────────────
