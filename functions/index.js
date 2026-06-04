@@ -28,29 +28,31 @@ async function sendWebPushNotifications(messages) {
 }
 
 // ── Strava Token Exchange ────────────────────────────────────────────────────
-// Callable function: requires a Firebase Auth token, capped instances.
-// Replaces the previous public onRequest endpoint to prevent abuse of our
-// Strava client_id (Strava rate-limits per-app, so a flood would kill prod
-// sync for legit users).
+// Public onRequest endpoint — matches the fetch() client shipped in the live
+// TestFlight build. Kept on onRequest (NOT onCall) so existing installs can
+// refresh tokens and keep syncing. maxInstances caps cost-abuse exposure.
+//
+// NOTE: the onCall (auth-required) version is a breaking change for every
+// un-updated client — only flip back to onCall in the SAME release that ships
+// a build whose stravaConfig.js uses httpsCallable. See commit 03025d8.
 
 const STRAVA_RUNTIME = { maxInstances: 10 };
 
 exports.stravaTokenExchange = functions
   .runWith(STRAVA_RUNTIME)
-  .https.onCall(async (data, context) => {
-    if (!context.auth) {
-      throw new functions.https.HttpsError('unauthenticated', 'Must be signed in');
-    }
-    const { code, redirectUri } = data || {};
-    if (!code) {
-      throw new functions.https.HttpsError('invalid-argument', 'Missing code');
-    }
+  .https.onRequest(async (req, res) => {
+    // Allow CORS
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type');
+    if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
+
+    const { code, redirectUri } = req.body;
+    if (!code) { res.status(400).json({ error: 'Missing code' }); return; }
 
     const clientId = process.env.STRAVA_CLIENT_ID;
     const clientSecret = process.env.STRAVA_CLIENT_SECRET;
-    if (!clientId || !clientSecret) {
-      throw new functions.https.HttpsError('failed-precondition', 'Strava env vars not set');
-    }
+    if (!clientId || !clientSecret) { res.status(500).json({ error: 'Strava env vars not set' }); return; }
 
     const response = await fetch('https://www.strava.com/oauth/token', {
       method: 'POST',
@@ -66,29 +68,30 @@ exports.stravaTokenExchange = functions
 
     if (!response.ok) {
       const err = await response.text();
-      throw new functions.https.HttpsError('unknown', `Strava token exchange failed: ${err}`);
+      res.status(response.status).json({ error: `Strava token exchange failed: ${err}` });
+      return;
     }
-    return response.json();
+
+    const data = await response.json();
+    res.json(data);
   });
 
 // ── Strava Token Refresh ─────────────────────────────────────────────────────
 
 exports.stravaTokenRefresh = functions
   .runWith(STRAVA_RUNTIME)
-  .https.onCall(async (data, context) => {
-    if (!context.auth) {
-      throw new functions.https.HttpsError('unauthenticated', 'Must be signed in');
-    }
-    const { refreshToken } = data || {};
-    if (!refreshToken) {
-      throw new functions.https.HttpsError('invalid-argument', 'Missing refreshToken');
-    }
+  .https.onRequest(async (req, res) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type');
+    if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
+
+    const { refreshToken } = req.body;
+    if (!refreshToken) { res.status(400).json({ error: 'Missing refreshToken' }); return; }
 
     const clientId = process.env.STRAVA_CLIENT_ID;
     const clientSecret = process.env.STRAVA_CLIENT_SECRET;
-    if (!clientId || !clientSecret) {
-      throw new functions.https.HttpsError('failed-precondition', 'Strava env vars not set');
-    }
+    if (!clientId || !clientSecret) { res.status(500).json({ error: 'Strava env vars not set' }); return; }
 
     const response = await fetch('https://www.strava.com/oauth/token', {
       method: 'POST',
@@ -101,10 +104,10 @@ exports.stravaTokenRefresh = functions
       }),
     });
 
-    if (!response.ok) {
-      throw new functions.https.HttpsError('unknown', 'Strava token refresh failed');
-    }
-    return response.json();
+    if (!response.ok) { res.status(response.status).json({ error: 'Strava token refresh failed' }); return; }
+
+    const data = await response.json();
+    res.json(data);
   });
 
 // ── Push Notification on New Team Post ───────────────────────────────────────
