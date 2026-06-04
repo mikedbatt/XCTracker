@@ -22,16 +22,12 @@ import { SIGNAL } from '../constants/design';
 
 export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
   const [joinCode, setJoinCode] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
   const [selectedSchool, setSelectedSchool] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [searching, setSearching] = useState(false);
-  const [activeTab, setActiveTab] = useState('code');
 
-  // Look up the head coach (admin_coach) for a school so the search results
-  // can show "Coach: Jane Doe" alongside each school. Helps disambiguate
-  // when multiple schools share the same name (e.g. two Davis High Schools).
+  // Look up the head coach (admin_coach) for a school so the post-code-entry
+  // confirmation card can show "Coach: Jane Doe" — helps the athlete verify
+  // they entered the right code before requesting to join.
   // Returns null if no head coach found or on error — never throws.
   const loadHeadCoachName = async (schoolId) => {
     try {
@@ -48,39 +44,6 @@ export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
       console.warn('Head coach lookup failed for', schoolId, e);
       return null;
     }
-  };
-
-  const handleSearch = async () => {
-    if (!searchQuery || searchQuery.length < 3) {
-      Alert.alert('Search', 'Please enter at least 3 characters to search.');
-      return;
-    }
-    setSearching(true);
-    setSearchResults([]);
-    try {
-      const schoolsRef = collection(db, 'schools');
-      const q = query(
-        schoolsRef,
-        where('name', '>=', searchQuery),
-        where('name', '<=', searchQuery + '')
-      );
-      const snapshot = await getDocs(q);
-      const results = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-
-      // Decorate each result with its head coach's name in parallel.
-      const enriched = await Promise.all(results.map(async (s) => ({
-        ...s,
-        headCoachName: await loadHeadCoachName(s.id),
-      })));
-
-      setSearchResults(enriched);
-      if (enriched.length === 0) {
-        Alert.alert('No results', 'No schools found. Try a different search or ask your coach for the join code.');
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Search failed. Please try again.');
-    }
-    setSearching(false);
   };
 
   const handleJoinByCode = async () => {
@@ -139,15 +102,12 @@ export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
 
       {/* Brand header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Find your team</Text>
-        <Text style={styles.subtitle}>Join your school's program</Text>
+        <Text style={styles.title}>Join your team</Text>
+        <Text style={styles.subtitle}>Enter the code your coach gave you</Text>
       </View>
 
       {/* Join by code section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Have a join code?</Text>
-        <Text style={[styles.eyebrow, styles.eyebrowSpaced]}>Enter the code from your coach</Text>
-
         <View style={styles.card}>
           <TextInput
             style={styles.codeInput}
@@ -166,64 +126,19 @@ export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
             {loading ? (
               <ActivityIndicator color={SIGNAL.color.white} size="small" />
             ) : (
-              <Text style={styles.primaryButtonText}>Join team</Text>
+              <Text style={styles.primaryButtonText}>Find my team</Text>
             )}
           </TouchableOpacity>
         </View>
-      </View>
-
-      {/* OR divider */}
-      <View style={styles.divider}>
-        <View style={styles.dividerLine} />
-        <Text style={styles.dividerText}>OR SEARCH</Text>
-        <View style={styles.dividerLine} />
-      </View>
-
-      {/* Search by name section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Search by school</Text>
-        <Text style={[styles.eyebrow, styles.eyebrowSpaced]}>Find your team by name</Text>
-
-        <View style={styles.searchRow}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="School name..."
-            placeholderTextColor={SIGNAL.color.mute2}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            autoCapitalize="words"
-          />
-          <TouchableOpacity
-            style={styles.searchButton}
-            onPress={handleSearch}
-            disabled={searching}
-          >
-            {searching ? (
-              <ActivityIndicator color={SIGNAL.color.white} size="small" />
-            ) : (
-              <Text style={styles.searchButtonText}>Search</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        {searchResults.length > 0 && (
-          <View style={styles.resultsList}>
-            {searchResults.map((school) => (
-              <SchoolCard
-                key={school.id}
-                school={school}
-                onJoin={() => handleRequestToJoin(school)}
-                loading={loading}
-              />
-            ))}
-          </View>
-        )}
+        <Text style={styles.hintText}>
+          Don't have a code? Ask your coach — they can see it under Profile → School info.
+        </Text>
       </View>
 
       {/* Selected school confirmation (from join code) */}
       {selectedSchool && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Found your school</Text>
+          <Text style={styles.sectionTitle}>Found your team</Text>
           <Text style={[styles.eyebrow, styles.eyebrowSpaced]}>Confirm and request to join</Text>
           <SchoolCard
             school={selectedSchool}
@@ -377,61 +292,16 @@ const styles = StyleSheet.create({
     letterSpacing: SIGNAL.letter.bodyTight,
   },
 
-  // ── OR divider ──────────────────────────────────────────────────────────
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SIGNAL.space[4],
-    marginBottom: SIGNAL.space[7],
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: SIGNAL.color.line,
-  },
-  dividerText: {
-    ...SIGNAL.style.eyebrow,
-    fontFamily: SIGNAL.font.bodyMedium,
-    color: SIGNAL.color.mute2,
-  },
-
-  // ── Search row ──────────────────────────────────────────────────────────
-  searchRow: {
-    flexDirection: 'row',
-    gap: SIGNAL.space[3],
-  },
-  searchInput: {
-    flex: 1,
-    backgroundColor: SIGNAL.color.white,
-    borderRadius: SIGNAL.radius.control,
-    borderWidth: 1,
-    borderColor: SIGNAL.color.line,
-    paddingVertical: SIGNAL.space[4] + 1,
-    paddingHorizontal: SIGNAL.space[5] + 1,
+  // ── Hint text below the code card ──────────────────────────────────────
+  hintText: {
     fontFamily: SIGNAL.font.body,
-    fontSize: 15,
-    color: SIGNAL.color.ink,
-    letterSpacing: SIGNAL.letter.bodyTight,
-  },
-  searchButton: {
-    backgroundColor: SIGNAL.color.indigo,
-    borderRadius: SIGNAL.radius.control,
-    paddingHorizontal: SIGNAL.space[6],
-    minWidth: 90,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  searchButtonText: {
-    fontFamily: SIGNAL.font.bodySemi,
-    fontSize: 14,
-    color: SIGNAL.color.white,
-    letterSpacing: SIGNAL.letter.bodyTight,
-  },
-
-  // ── Results list ────────────────────────────────────────────────────────
-  resultsList: {
+    fontSize: 12.5,
+    color: SIGNAL.color.mute,
+    textAlign: 'center',
     marginTop: SIGNAL.space[4],
-    gap: SIGNAL.space[2],
+    paddingHorizontal: SIGNAL.space[3],
+    lineHeight: 17,
+    letterSpacing: SIGNAL.letter.bodyTight,
   },
 
   // ── School card ─────────────────────────────────────────────────────────

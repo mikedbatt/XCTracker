@@ -75,25 +75,38 @@ service cloud.firestore {
     }
 
     // ── Runs ──────────────────────────────────────────────────────────────────
-    // Athletes write their own runs. Any signed-in user can read (coach reads
-    // athlete runs; some legacy docs may have schoolId: null).
+    // Athletes write their own runs. Read scoping:
+    //   - Athlete always reads own runs (covers legacy docs with schoolId=null
+    //     that pre-date a join-school flow).
+    //   - Anyone at the same school can read (coaches, teammates for leaderboard).
+    //   - Parents can read runs of athletes they're linked to.
+    // Multi-school safe: a user at School A cannot enumerate School B's runs.
     match /runs/{runId} {
       allow create: if isSignedIn()
         && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isSignedIn()
         && resource.data.userId == request.auth.uid;
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() && (
+        resource.data.userId == request.auth.uid
+        || (resource.data.schoolId != null && belongsToSchool(resource.data.schoolId))
+        || (resource.data.userId in getUserData().get('linkedAthleteIds', []))
+      );
     }
 
     // ── Check-ins (wellness) ──────────────────────────────────────────────────
-    // Any signed-in user can read (coaches query by schoolId; some docs may
-    // have schoolId: null). Only the athlete who owns the check-in can write.
+    // Same multi-school scoping as runs. Only the athlete who owns the
+    // check-in can write. Note: weekly check-ins live in a separate collection
+    // with stricter (head-coach-only) rules — see /weeklyCheckins below.
     match /checkins/{checkinId} {
       allow create: if isSignedIn()
         && request.resource.data.userId == request.auth.uid;
       allow update: if isSignedIn()
         && resource.data.userId == request.auth.uid;
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() && (
+        resource.data.userId == request.auth.uid
+        || (resource.data.schoolId != null && belongsToSchool(resource.data.schoolId))
+        || (resource.data.userId in getUserData().get('linkedAthleteIds', []))
+      );
       allow delete: if false;
     }
 
@@ -215,12 +228,16 @@ service cloud.firestore {
 
     // ── Attendance ────────────────────────────────────────────────────────────
     // Doc ID format: schoolId_athleteId_YYYY-MM-DD.
-    // Coaches at the school write. Signed-in users read (athletes see their own
-    // attendance in-app, parents see their linked athletes', coaches see all).
-    // Keeping read open mirrors the pattern used for runs/checkins since the
-    // in-app UI filters to the requester's relevant scope.
+    // Coaches at the school write. Reads scoped per role:
+    //   - Athlete reads own attendance (athleteId field on the doc)
+    //   - Same-school users read (coach analytics, teammate visibility)
+    //   - Parent reads linked athletes' attendance
     match /attendance/{attendanceId} {
-      allow read:   if isSignedIn();
+      allow read: if isSignedIn() && (
+        resource.data.athleteId == request.auth.uid
+        || belongsToSchool(resource.data.schoolId)
+        || (resource.data.athleteId in getUserData().get('linkedAthleteIds', []))
+      );
       allow create, update: if isSignedIn()
         && isCoachAtSchool(request.resource.data.schoolId);
       allow delete: if isSignedIn()

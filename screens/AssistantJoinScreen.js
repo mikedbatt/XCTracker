@@ -21,14 +21,8 @@ import { auth, db } from '../firebaseConfig';
 import { SIGNAL } from '../constants/design';
 
 export default function AssistantJoinScreen({ onJoinComplete }) {
-  const [joinCode, setJoinCode] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [selectedSchool, setSelectedSchool] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [searching, setSearching] = useState(false);
-  const [activeTab, setActiveTab] = useState('code');
-  const [requested, setRequested] = useState(false);
+  const [joinCode, setJoinCode] = useState('');  const [selectedSchool, setSelectedSchool] = useState(null);
+  const [loading, setLoading] = useState(false);  const [requested, setRequested] = useState(false);
 
   // Look up the head coach (admin_coach) for a school so the search results
   // can show "Coach: Jane Doe" alongside each school. Helps disambiguate
@@ -49,39 +43,6 @@ export default function AssistantJoinScreen({ onJoinComplete }) {
       return null;
     }
   };
-
-  const handleSearch = async () => {
-    if (!searchQuery || searchQuery.length < 3) {
-      Alert.alert('Search', 'Please enter at least 3 characters to search.');
-      return;
-    }
-    setSearching(true);
-    setSearchResults([]);
-    try {
-      const q = query(
-        collection(db, 'schools'),
-        where('name', '>=', searchQuery),
-        where('name', '<=', searchQuery + '')
-      );
-      const snapshot = await getDocs(q);
-      const results = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-
-      // Decorate each result with its head coach's name in parallel.
-      const enriched = await Promise.all(results.map(async (s) => ({
-        ...s,
-        headCoachName: await loadHeadCoachName(s.id),
-      })));
-
-      setSearchResults(enriched);
-      if (enriched.length === 0) {
-        Alert.alert('No results', 'No schools found. Try a different search or ask your head coach for the join code.');
-      }
-    } catch {
-      Alert.alert('Error', 'Search failed. Please try again.');
-    }
-    setSearching(false);
-  };
-
   const handleJoinByCode = async () => {
     if (!joinCode || joinCode.length < 6) {
       Alert.alert('Invalid code', 'Please enter the 6-character join code from your head coach.');
@@ -159,25 +120,7 @@ export default function AssistantJoinScreen({ onJoinComplete }) {
         <Text style={styles.title}>Join a team</Text>
         <Text style={styles.subtitle}>Assist a head coach's program</Text>
       </View>
-
-      {/* Tabs */}
-      <View style={styles.tabs}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'code' && styles.tabActive]}
-          onPress={() => setActiveTab('code')}
-        >
-          <Text style={[styles.tabText, activeTab === 'code' && styles.tabTextActive]}>Join code</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'search' && styles.tabActive]}
-          onPress={() => setActiveTab('search')}
-        >
-          <Text style={[styles.tabText, activeTab === 'search' && styles.tabTextActive]}>Search school</Text>
-        </TouchableOpacity>
-      </View>
-
-      {activeTab === 'code' && (
-        <View style={styles.section}>
+              <View style={styles.section}>
           <Text style={styles.sectionTitle}>Have a join code?</Text>
           <Text style={[styles.eyebrow, styles.eyebrowSpaced]}>Enter the code from your head coach</Text>
 
@@ -204,59 +147,7 @@ export default function AssistantJoinScreen({ onJoinComplete }) {
             </TouchableOpacity>
           </View>
         </View>
-      )}
-
-      {activeTab === 'search' && (
-        <>
-          {/* OR divider */}
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>OR SEARCH</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Search by school</Text>
-            <Text style={[styles.eyebrow, styles.eyebrowSpaced]}>Find the team by name</Text>
-
-            <View style={styles.searchRow}>
-              <TextInput
-                style={styles.searchInput}
-                placeholder="School name..."
-                placeholderTextColor={SIGNAL.color.mute2}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                autoCapitalize="words"
-              />
-              <TouchableOpacity
-                style={styles.searchButton}
-                onPress={handleSearch}
-                disabled={searching}
-              >
-                {searching ? (
-                  <ActivityIndicator color={SIGNAL.color.white} size="small" />
-                ) : (
-                  <Text style={styles.searchButtonText}>Search</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-
-            {searchResults.length > 0 && (
-              <View style={styles.resultsList}>
-                {searchResults.map((school) => (
-                  <SchoolCard
-                    key={school.id}
-                    school={school}
-                    onJoin={() => handleRequestToJoin(school)}
-                    loading={loading}
-                  />
-                ))}
-              </View>
-            )}
-          </View>
-        </>
-      )}
-
+      
       {/* Selected school confirmation (from join code) */}
       {selectedSchool && (
         <View style={styles.section}>
