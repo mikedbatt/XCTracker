@@ -163,6 +163,60 @@ export function calcPaceZoneBreakdown(paceStream, trainingPaces) {
 }
 
 /**
+ * Compute pace-zone seconds for a single run, with sensible fallbacks.
+ * Tiered priority (most precise first):
+ *   1. rawPaceStream  — per-second pace data from Strava
+ *   2. paceZoneSeconds — pre-computed at sync time
+ *   3. miles + duration — derive avg pace, assign whole run to one zone
+ *      (used for manual run entries with no pace stream)
+ *
+ * Returns `{ e, m, t, i, r }` seconds, or null if the run has neither
+ * pace data nor miles+duration to derive from.
+ */
+export function calcPaceZoneSecondsForRun(run, trainingPaces) {
+  if (!run || !trainingPaces) return null;
+
+  // 1. Raw stream — most precise
+  if (run.rawPaceStream && run.rawPaceStream.length > 0) {
+    return calcPaceZoneBreakdown(run.rawPaceStream, trainingPaces);
+  }
+
+  // 2. Pre-computed zone seconds
+  if (run.paceZoneSeconds) {
+    return {
+      e: run.paceZoneSeconds.e || 0,
+      m: run.paceZoneSeconds.m || 0,
+      t: run.paceZoneSeconds.t || 0,
+      i: run.paceZoneSeconds.i || 0,
+      r: run.paceZoneSeconds.r || 0,
+    };
+  }
+
+  // 3. Manual fallback — derive avg pace from miles + duration
+  const miles = parseFloat(run.miles);
+  if (!miles || miles <= 0) return null;
+  let durationSec = null;
+  if (typeof run.duration === 'string' && run.duration.includes(':')) {
+    const parts = run.duration.split(':').map(p => parseInt(p, 10));
+    if (parts.length === 2) durationSec = parts[0] * 60 + parts[1];
+    else if (parts.length === 3) durationSec = parts[0] * 3600 + parts[1] * 60 + parts[2];
+  } else if (typeof run.duration === 'number') {
+    durationSec = run.duration;
+  }
+  if (!durationSec || durationSec <= 0) return null;
+
+  const avgPaceSecPerMile = durationSec / miles;
+  const zone = getPaceZone(avgPaceSecPerMile, trainingPaces);
+  return {
+    e: zone === 'e' ? durationSec : 0,
+    m: zone === 'm' ? durationSec : 0,
+    t: zone === 't' ? durationSec : 0,
+    i: zone === 'i' ? durationSec : 0,
+    r: zone === 'r' ? durationSec : 0,
+  };
+}
+
+/**
  * Calculate 80/20 compliance from pace zone breakdown.
  * Easy% = (e + m) / total — marathon pace counts as "easy" intensity.
  * @param {{ e, m, t, i, r }} paceZones — seconds per zone

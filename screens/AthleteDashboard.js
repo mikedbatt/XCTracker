@@ -41,7 +41,7 @@ import {
 } from '../zoneConfig';
 import { batchDocsByIds } from '../utils/batchDocsByIds';
 import { useStaleRefresh } from '../hooks/useStaleRefresh';
-import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020, formatPace } from '../utils/vdotUtils';
+import { PACE_ZONES, calcPaceZoneBreakdown, calcPaceZoneSecondsForRun, calcPace8020, formatPace } from '../utils/vdotUtils';
 import AthleteProfile from './AthleteProfile';
 import CalendarScreen from './CalendarScreen';
 import { SIGNAL_TYPE_COLORS, TYPE_COLORS, WORKOUT_PACE_ZONE } from '../constants/training';
@@ -623,17 +623,15 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
   // Pace zones — compute from runs that have rawPaceStream data
   const trainingPaces = userData.trainingPaces || null;
 
-  // Helper to compute pace breakdown from a set of runs
+  // Helper to compute pace breakdown from a set of runs. Falls back to
+  // deriving avg pace from miles+duration for manual runs (no Strava stream)
+  // so athletes who log manually still get pace-based zones.
   const computePaceBreakdown = (runs) => {
     if (!trainingPaces) return { breakdown: null, analysis: null };
     const combined = { e: 0, m: 0, t: 0, i: 0, r: 0 };
     for (const r of runs) {
-      if (r.rawPaceStream?.length > 0) {
-        const zones = calcPaceZoneBreakdown(r.rawPaceStream, trainingPaces);
-        Object.keys(zones).forEach(k => { combined[k] += zones[k]; });
-      } else if (r.paceZoneSeconds) {
-        Object.keys(r.paceZoneSeconds).forEach(k => { combined[k] += (r.paceZoneSeconds[k] || 0); });
-      }
+      const zones = calcPaceZoneSecondsForRun(r, trainingPaces);
+      if (zones) Object.keys(zones).forEach(k => { combined[k] += zones[k]; });
     }
     const total = Object.values(combined).reduce((s, v) => s + v, 0);
     if (total <= 0) return { breakdown: null, analysis: null };
@@ -691,7 +689,9 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
             <Text style={styles.greeting}>
               Hey, <Text style={styles.greetingAccent}>{userData.firstName || 'Athlete'}</Text>
             </Text>
-            <Text style={styles.eyebrow}>{school?.name || 'TeamBase'}</Text>
+            <Text style={styles.eyebrow}>
+              {isPending ? 'Pending approval' : (school?.name || 'TeamBase')}
+            </Text>
           </View>
           <TouchableOpacity onPress={() => { setActiveTab('home'); setProfileVisible(true); }} style={styles.profileBtn} activeOpacity={0.8}>
             <View style={[styles.profileAvatar, { backgroundColor: avatarColor }]}>

@@ -20,7 +20,7 @@ import {
   calcMaxHR, calcZoneBreakdownFromStream, calcZoneBreakdownFromRuns,
   calc8020, ZONE_META, DEFAULT_ZONE_BOUNDARIES,
 } from '../zoneConfig';
-import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
+import { PACE_ZONES, calcPaceZoneBreakdown, calcPaceZoneSecondsForRun, calcPace8020 } from '../utils/vdotUtils';
 import { getMondayISO, getRunDate, groupRunsByWeek } from '../utils/dateUtils';
 
 
@@ -234,18 +234,17 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
   }
 
   // ── Feature 3b: Pace-based Training Quality (primary when VDOT set) ──
+  // Uses calcPaceZoneSecondsForRun which falls back to deriving avg pace from
+  // miles + duration on manual runs — so athletes who log manually (no Strava)
+  // still get pace-based 80/20 instead of being kicked back to HR.
   const trainingPaces = userData.trainingPaces || null;
   let paceZoneBreakdown = null;
   let paceEighty20 = null;
   if (trainingPaces) {
     const combined = { e: 0, m: 0, t: 0, i: 0, r: 0 };
     recentRuns.forEach(r => {
-      if (r.rawPaceStream?.length > 0) {
-        const zones = calcPaceZoneBreakdown(r.rawPaceStream, trainingPaces);
-        Object.keys(zones).forEach(k => { combined[k] += zones[k]; });
-      } else if (r.paceZoneSeconds) {
-        Object.keys(r.paceZoneSeconds).forEach(k => { combined[k] += (r.paceZoneSeconds[k] || 0); });
-      }
+      const zones = calcPaceZoneSecondsForRun(r, trainingPaces);
+      if (zones) Object.keys(zones).forEach(k => { combined[k] += zones[k]; });
     });
     const total = Object.values(combined).reduce((s, v) => s + v, 0);
     if (total > 0) {
@@ -267,12 +266,9 @@ export default function AthleteAnalytics({ userData, school, myGroup, athleteAge
       const comb = { e: 0, m: 0, t: 0, i: 0, r: 0 };
       let hasData = false;
       wRuns.forEach(r => {
-        if (r.rawPaceStream?.length > 0) {
-          const zones = calcPaceZoneBreakdown(r.rawPaceStream, trainingPaces);
+        const zones = calcPaceZoneSecondsForRun(r, trainingPaces);
+        if (zones) {
           Object.keys(zones).forEach(k => { comb[k] += zones[k]; });
-          hasData = true;
-        } else if (r.paceZoneSeconds) {
-          Object.keys(r.paceZoneSeconds).forEach(k => { comb[k] += (r.paceZoneSeconds[k] || 0); });
           hasData = true;
         }
       });
