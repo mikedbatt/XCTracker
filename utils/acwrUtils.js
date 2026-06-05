@@ -20,7 +20,6 @@
 //     coaches don't panic over returning-from-injury athletes with tiny
 //     denominators.
 
-import { STATUS } from '../constants/design';
 import { getRunDate } from './dateUtils';
 
 export const ACWR_STATUS = {
@@ -84,36 +83,4 @@ export function calcACWR(runs, reference = new Date()) {
   else                   status = ACWR_STATUS.SPIKE;
 
   return { status, ratio, acute, chronic, lowBaseline: false };
-}
-
-export function getACWRLabel(status) {
-  switch (status) {
-    case ACWR_STATUS.SWEET_SPOT:    return 'Sweet spot';
-    case ACWR_STATUS.ELEVATED:      return 'Elevated';
-    case ACWR_STATUS.SPIKE:         return 'Spike';
-    case ACWR_STATUS.UNDERTRAINING: return 'Ramping up';
-    case ACWR_STATUS.INSUFFICIENT:  return 'Need more data';
-    default:                        return '';
-  }
-}
-
-export function getACWRColor(status) {
-  switch (status) {
-    case ACWR_STATUS.SWEET_SPOT:    return STATUS.success;
-    case ACWR_STATUS.ELEVATED:      return STATUS.warning;
-    case ACWR_STATUS.SPIKE:         return STATUS.error;
-    case ACWR_STATUS.UNDERTRAINING: return STATUS.info;
-    case ACWR_STATUS.INSUFFICIENT:  return '#9CA3AF';
-    default:                        return '#9CA3AF';
-  }
-}
-
-export function getACWRColorBg(status) {
-  switch (status) {
-    case ACWR_STATUS.SWEET_SPOT:    return STATUS.successBg;
-    case ACWR_STATUS.ELEVATED:      return STATUS.warningBg;
-    case ACWR_STATUS.SPIKE:         return STATUS.errorBg;
-    case ACWR_STATUS.UNDERTRAINING: return STATUS.infoBg;
-    default:                        return '#F3F4F6';
-  }
 }

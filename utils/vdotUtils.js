@@ -268,13 +268,3 @@ export function parseTimeToSeconds(timeStr) {
   if (parts.length === 2) return parts[0] * 60 + parts[1];
   return 0;
 }
-
-/**
- * Convert velocity in meters/second to pace in seconds/mile.
- * @param {number} metersPerSec
- * @returns {number} seconds per mile
- */
-export function velocityToPace(metersPerSec) {
-  if (!metersPerSec || metersPerSec <= 0) return 0;
-  return 1609.344 / metersPerSec;
-}

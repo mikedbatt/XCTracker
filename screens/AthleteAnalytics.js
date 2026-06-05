@@ -402,7 +402,7 @@ export default function AthleteAnalytics({ userData, school, myGroup, onClose })
   }
 
   // VDOT badge value (header chip)
-  const vdotValue = trainingPaces?.vdot ? Math.round(trainingPaces.vdot * 10) / 10 : null;
+  const vdotValue = userData?.vdot ? Math.round(userData.vdot * 10) / 10 : null;
 
   // Header subline — mirrors the design's "Season VI · Build · 40d to championship"
   const headerSub = (() => {

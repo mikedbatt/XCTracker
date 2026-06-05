@@ -172,7 +172,7 @@ export async function autoSyncStrava(userId, userData) {
         });
         accessToken = refreshed.access_token;
       } catch (e) {
-        console.log('Auto-sync token refresh failed:', e);
+        console.warn('Auto-sync token refresh failed:', e);
         return null;
       }
     }
@@ -230,7 +230,7 @@ export async function autoSyncStrava(userId, userData) {
 
         await new Promise(r => setTimeout(r, 200));
       } catch (e) {
-        console.log('Auto-sync stream fetch:', e);
+        console.warn('Auto-sync stream fetch:', e);
       }
 
       // Write the run to Firestore using a deterministic doc ID
@@ -258,7 +258,7 @@ export async function autoSyncStrava(userId, userData) {
     };
   } catch (e) {
     // Auto-sync failures are silent — never crash the dashboard
-    console.log('Auto-sync error:', e);
+    console.warn('Auto-sync error:', e);
     return null;
   }
 }

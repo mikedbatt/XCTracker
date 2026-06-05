@@ -203,34 +203,31 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
   };
 
   const handleRemoveParent = (parent) => {
-    Alert.alert(
-      'Remove parent?',
-      `${parent.firstName} ${parent.lastName} will no longer be able to see your training data.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Remove', style: 'destructive', onPress: async () => {
-          try {
-            await updateDoc(doc(db, 'users', auth.currentUser.uid), {
-              linkedParentIds: arrayRemove(parent.id),
-            });
-            await updateDoc(doc(db, 'users', parent.id), {
-              linkedAthleteIds: arrayRemove(auth.currentUser.uid),
-            });
-            setLinkedParents(prev => prev.filter(p => p.id !== parent.id));
-          } catch (e) { console.warn('Failed to remove parent:', e); }
-        }},
-      ]
-    );
+    confirmDestructive({
+      title: 'Remove parent?',
+      message: `${parent.firstName} ${parent.lastName} will no longer be able to see your training data.`,
+      confirmLabel: 'Remove',
+      onConfirm: async () => {
+        try {
+          await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+            linkedParentIds: arrayRemove(parent.id),
+          });
+          await updateDoc(doc(db, 'users', parent.id), {
+            linkedAthleteIds: arrayRemove(auth.currentUser.uid),
+          });
+          setLinkedParents(prev => prev.filter(p => p.id !== parent.id));
+        } catch (e) { console.warn('Failed to remove parent:', e); }
+      },
+    });
   };
 
   const handleLeaveTeam = () => {
     if (!userData.schoolId) return; // nothing to leave
-    Alert.alert(
-      'Leave team?',
-      `You'll be removed from ${school?.name || 'your school'} and your runs will stop being shared with that coach. You can join a different school right after.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Leave team', style: 'destructive', onPress: async () => {
+    confirmDestructive({
+      title: 'Leave team?',
+      message: `You'll be removed from ${school?.name || 'your school'} and your runs will stop being shared with that coach. You can join a different school right after.`,
+      confirmLabel: 'Leave team',
+      onConfirm: async () => {
           try {
             const uid = auth.currentUser.uid;
             const oldSchoolId = userData.schoolId;
@@ -268,9 +265,8 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
             console.warn('Leave team failed:', e);
             Alert.alert('Could not leave team', 'Something went wrong. Please try again.');
           }
-        }},
-      ]
-    );
+      },
+    });
   };
 
   const handleSignOut = () => {

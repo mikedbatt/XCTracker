@@ -19,6 +19,7 @@ import { auth, db } from '../firebaseConfig';
 import { SIGNAL } from '../constants/design';
 import { SIGNAL_TYPE_COLORS } from '../constants/training';
 import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020, formatMinutes } from '../utils/vdotUtils';
+import { confirmDestructive } from '../utils/confirmDialog';
 import DatePickerField from './DatePickerField';
 
 const EFFORT_LABELS = ['', 'Very Easy', 'Easy', 'Moderate', 'Moderate', 'Medium',
@@ -219,29 +220,27 @@ export default function RunDetailModal({
   };
 
   const handleDelete = () => {
-    Alert.alert(
-      'Delete run?',
-      'Delete this ' + run.miles + ' mile run? This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: async () => {
-          setDeleting(true);
-          try {
-            await deleteDoc(doc(db, 'runs', run.id));
-            const userDoc = await getDoc(doc(db, 'users', run.userId));
-            if (userDoc.exists()) {
-              const current = userDoc.data().totalMiles || 0;
-              await updateDoc(doc(db, 'users', run.userId), {
-                totalMiles: Math.max(0, Math.round((current - (run.miles || 0)) * 10) / 10),
-              });
-            }
-            onDeleted && onDeleted();
-            onClose();
-          } catch { Alert.alert('Error', 'Could not delete run.'); }
-          setDeleting(false);
-        }},
-      ]
-    );
+    confirmDestructive({
+      title: 'Delete run?',
+      message: 'Delete this ' + run.miles + ' mile run? This cannot be undone.',
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
+        setDeleting(true);
+        try {
+          await deleteDoc(doc(db, 'runs', run.id));
+          const userDoc = await getDoc(doc(db, 'users', run.userId));
+          if (userDoc.exists()) {
+            const current = userDoc.data().totalMiles || 0;
+            await updateDoc(doc(db, 'users', run.userId), {
+              totalMiles: Math.max(0, Math.round((current - (run.miles || 0)) * 10) / 10),
+            });
+          }
+          onDeleted && onDeleted();
+          onClose();
+        } catch { Alert.alert('Error', 'Could not delete run.'); }
+        setDeleting(false);
+      },
+    });
   };
 
   // Effort gradient based on effort tier

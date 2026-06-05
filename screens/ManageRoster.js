@@ -98,12 +98,11 @@ export default function ManageRoster({ schoolId, groups = [], onClose, onPending
 
   const handleRemove = (athlete) => {
     const fullName = `${athlete.firstName || ''} ${athlete.lastName || ''}`.trim() || 'this athlete';
-    Alert.alert(
-      'Remove from team?',
-      `${fullName} will be removed from the team and lose access to coach plans and team feed. Their account and run history are preserved — they can join a different school anytime.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Remove', style: 'destructive', onPress: async () => {
+    confirmDestructive({
+      title: 'Remove from team?',
+      message: `${fullName} will be removed from the team and lose access to coach plans and team feed. Their account and run history are preserved — they can join a different school anytime.`,
+      confirmLabel: 'Remove',
+      onConfirm: async () => {
           setRemoving(athlete.id);
           try {
             // Clear team-link fields on the athlete user doc. Allowed by the
@@ -133,9 +132,8 @@ export default function ManageRoster({ schoolId, groups = [], onClose, onPending
             Alert.alert('Could not remove', 'Something went wrong. Please try again.');
           }
           setRemoving(null);
-        }},
-      ]
-    );
+      },
+    });
   };
 
   const groupName = (groupId) => {

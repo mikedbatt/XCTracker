@@ -323,8 +323,9 @@ exports.processStravaEvent = functions
           const miles = existing.data().miles || 0;
           await runRef.delete();
           if (miles > 0) {
+            // Atomic decrement — avoids clobbering concurrent webhook/poller writes.
             await userRef.update({
-              totalMiles: Math.max(0, Math.round(((user.totalMiles || 0) - miles) * 10) / 10),
+              totalMiles: admin.firestore.FieldValue.increment(-miles),
             });
           }
         }
@@ -360,8 +361,10 @@ exports.processStravaEvent = functions
       // client poller's existing-id de-dupe so the webhook and the fallback
       // poller can never double-count the same activity.
       if (isNew) {
+        // Atomic increment — two concurrent new-activity events can't clobber
+        // each other's count (the isNew guard already prevents same-activity dupes).
         await userRef.update({
-          totalMiles: Math.round(((user.totalMiles || 0) + run.miles) * 10) / 10,
+          totalMiles: admin.firestore.FieldValue.increment(run.miles),
         });
       }
 

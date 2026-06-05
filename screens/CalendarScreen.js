@@ -20,6 +20,7 @@ import { BRAND, SIGNAL } from '../constants/design';
 import { CATEGORIES, SIGNAL_TYPE_COLORS, TYPE_COLORS, WORKOUT_PACE_ZONE } from '../constants/training';
 import { formatPace } from '../utils/vdotUtils';
 import { toLocalISODate } from '../utils/dateUtils';
+import { confirmDestructive } from '../utils/confirmDialog';
 import DatePickerField from './DatePickerField';
 import RunDetailModal from './RunDetailModal';
 import WorkoutDetailModal from './WorkoutDetailModal';
@@ -264,20 +265,18 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
   };
 
   const handleDelete = (item) => {
-    Alert.alert(
-      'Delete?',
-      `Are you sure you want to delete "${item.title}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: async () => {
-          try {
-            await deleteDoc(doc(db, 'events', item.id));
-            setDetailVisible(false);
-            loadItems();
-          } catch { Alert.alert('Error', 'Could not delete.'); }
-        }},
-      ]
-    );
+    confirmDestructive({
+      title: 'Delete?',
+      message: `Are you sure you want to delete "${item.title}"?`,
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
+        try {
+          await deleteDoc(doc(db, 'events', item.id));
+          setDetailVisible(false);
+          loadItems();
+        } catch { Alert.alert('Error', 'Could not delete.'); }
+      },
+    });
   };
 
   const getColor = (item) => typeColor(item.type);

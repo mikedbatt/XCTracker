@@ -8,6 +8,7 @@ import {
 import { auth, db } from '../firebaseConfig';
 import { SIGNAL } from '../constants/design';
 import { batchDocsByIds } from '../utils/batchDocsByIds';
+import { confirmDestructive } from '../utils/confirmDialog';
 import { formatPace } from '../utils/vdotUtils';
 
 export default function ManageGroups({ schoolId, athletes, onClose }) {
@@ -102,23 +103,21 @@ export default function ManageGroups({ schoolId, athletes, onClose }) {
 
   const handleDeleteGroup = (group) => {
     const count = athletes.filter(a => a.groupId === group.id).length;
-    Alert.alert(
-      `Delete "${group.name}"?`,
-      count > 0 ? `${count} athlete(s) will become unassigned.` : 'This group has no athletes.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: async () => {
-          try {
-            const inGroup = athletes.filter(a => a.groupId === group.id);
-            for (const a of inGroup) {
-              await updateDoc(doc(db, 'users', a.id), { groupId: null });
-            }
-            await deleteDoc(doc(db, 'groups', group.id));
-            await loadGroups();
-          } catch { Alert.alert('Error', 'Could not delete group.'); }
-        }},
-      ]
-    );
+    confirmDestructive({
+      title: `Delete "${group.name}"?`,
+      message: count > 0 ? `${count} athlete(s) will become unassigned.` : 'This group has no athletes.',
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
+        try {
+          const inGroup = athletes.filter(a => a.groupId === group.id);
+          for (const a of inGroup) {
+            await updateDoc(doc(db, 'users', a.id), { groupId: null });
+          }
+          await deleteDoc(doc(db, 'groups', group.id));
+          await loadGroups();
+        } catch { Alert.alert('Error', 'Could not delete group.'); }
+      },
+    });
   };
 
   const handleAssignAthlete = (athlete) => {

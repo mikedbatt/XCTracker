@@ -111,18 +111,3 @@ export function calcPackAnalysis(results) {
     sorted,
   };
 }
-
-// Detect negative/positive splits from mile split array
-export function analyzeSplits(splits) {
-  if (!splits || splits.length < 2) return null;
-  const mid = Math.floor(splits.length / 2);
-  const firstHalf = splits.slice(0, mid).reduce((s, sp) => s + sp.time, 0);
-  const secondHalf = splits.slice(mid).reduce((s, sp) => s + sp.time, 0);
-  // Normalize if odd number of splits
-  const firstAvg = firstHalf / mid;
-  const secondAvg = secondHalf / (splits.length - mid);
-  const diff = secondAvg - firstAvg;
-  if (diff < -2) return 'negative'; // second half faster
-  if (diff > 2) return 'positive';  // second half slower
-  return 'even';
-}

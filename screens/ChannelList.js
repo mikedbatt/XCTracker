@@ -73,7 +73,7 @@ export default function ChannelList({ userData, school, groups, athletes, onClos
           try {
             const gDoc = await getDoc(doc(db, 'groups', userData.groupId));
             if (gDoc.exists()) myGroup = { id: gDoc.id, ...gDoc.data() };
-          } catch {}
+          } catch (e) { console.warn('ChannelList group load failed:', e); }
         }
         if (myGroup) {
           myChannels.push({ key: `group_${myGroup.id}`, name: myGroup.name, icon: 'fitness', color: primaryColor });
