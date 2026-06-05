@@ -53,6 +53,7 @@ import WorkoutDetailModal from '../screens/WorkoutDetailModal';
 import { ACWR_STATUS, calcACWR } from '../utils/acwrUtils';
 import { batchDocsByIds } from '../utils/batchDocsByIds';
 import { computeVolumeCompliance, getCurrentWeekPace, getAthleteWeeklyTarget } from '../utils/complianceUtils';
+import { computeOvertraining } from '../utils/overtrainingUtils';
 import { calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
 import { useStaleRefresh } from '../hooks/useStaleRefresh';
 import { getRunDate, toLocalISODate } from '../utils/dateUtils';
@@ -134,83 +135,11 @@ async function checkOvertraining(athleteId, attendanceStats = null) {
     ]);
 
     const allRuns = runsSnap.docs.map(d => d.data());
-    const getCheckinDate = (c) => c.date?.toDate ? c.date.toDate() : new Date(c.date);
-    const checkins = checkinSnap.docs
-      .map(d => d.data())
-      .filter(c => getCheckinDate(c) >= thisMonday)
-      .sort((a, b) => getCheckinDate(b) - getCheckinDate(a));
-
-    // Bucket runs into Monday-aligned weeks
-    const thisWeekRuns = allRuns.filter(r => getRunDate(r) >= thisMonday);
-    const thisWeekMiles = thisWeekRuns.reduce((s, r) => s + (r.miles || 0), 0);
-
-    // Prior 3 weeks
-    const priorWeekMiles = [];
-    for (let w = 1; w <= 3; w++) {
-      const wStart = new Date(thisMonday);
-      wStart.setDate(thisMonday.getDate() - w * 7);
-      const wEnd = new Date(wStart);
-      wEnd.setDate(wStart.getDate() + 7);
-      const miles = allRuns
-        .filter(r => { const d = getRunDate(r); return d >= wStart && d < wEnd; })
-        .reduce((s, r) => s + (r.miles || 0), 0);
-      priorWeekMiles.push(miles);
-    }
-
-    const avg3wk = priorWeekMiles.length > 0
-      ? priorWeekMiles.reduce((s, m) => s + m, 0) / priorWeekMiles.length
-      : 0;
-
-    const signals = [];
-
-    // ACWR-based load-spike signal (replaces the old "miles up 15%" heuristic).
-    // ACWR >1.5 is a well-established injury-risk threshold; >1.3 is elevated.
-    const acwr = calcACWR(allRuns, now);
-    if (acwr.status === ACWR_STATUS.SPIKE) {
-      signals.push({ text: `Training load spike (ACWR ${acwr.ratio.toFixed(2)})`, solo: true });
-    } else if (acwr.status === ACWR_STATUS.ELEVATED) {
-      signals.push({ text: `Elevated training load (ACWR ${acwr.ratio.toFixed(2)})` });
-    }
-
-    // Attendance absence signal — only fires if enough recent days have been
-    // recorded to make the rate meaningful (≥4), avoiding false positives
-    // when a coach has only taken roll once in the window.
-    if (attendanceStats
-        && attendanceStats.recentRecorded >= 4
-        && attendanceStats.recentAbsenceRate >= 0.25) {
-      const pct = Math.round(attendanceStats.recentAbsenceRate * 100);
-      signals.push({ text: `Missed ${pct}% of recent practices` });
-    }
-
-    const highEffortDays = thisWeekRuns.filter(r => (r.effort || 0) >= 8).length;
-    if (highEffortDays >= 4) signals.push({ text: `Effort 8+ on ${highEffortDays} of last 7 days` });
-
-    if (checkins.length >= 3) {
-      const recentAvgMood  = checkins.slice(0, 3).reduce((s, c) => s + (c.mood || 3), 0) / 3;
-      const olderAvgMood   = checkins.slice(-3).reduce((s, c) => s + (c.mood || 3), 0) / 3;
-      if (recentAvgMood < olderAvgMood - 0.5) signals.push({ text: 'Mood declining this week' });
-      const recentAvgSleep = checkins.slice(0, 3).reduce((s, c) => s + (c.sleepQuality || 3), 0) / 3;
-      if (recentAvgSleep < 2.5) signals.push({ text: 'Poor sleep reported' });
-    }
-
-    // Most recent injury/illness — use latest check-in this week (not just today)
-    // so the coach sees it even if the athlete hasn't checked in yet today
-    const latestCheckin = checkins[0] || null; // already sorted desc by date
-    const latestInjury = latestCheckin?.injury || null;
-    const latestIllness = latestCheckin?.illness || null;
-    const latestCheckinDate = latestCheckin?.date?.toDate
-      ? latestCheckin.date.toDate()
-      : latestCheckin?.date ? new Date(latestCheckin.date) : null;
-
-    // Moderate/severe injury feeds into overtraining signal
-    if (latestInjury && (latestInjury.severity === 'moderate' || latestInjury.severity === 'severe')) {
-      const loc = latestInjury.locations?.join(', ') || 'unspecified';
-      signals.push({ text: `Reported ${latestInjury.severity} injury (${loc})` });
-    }
-
-    const hasSoloTrigger = signals.some(s => s.solo);
-    const alert = hasSoloTrigger || signals.filter(s => !s.solo).length >= 2;
-    return { alert, signals: signals.map(s => s.text), todayInjury: latestInjury, todayIllness: latestIllness, injuryCheckinDate: latestCheckinDate };
+    const checkins = checkinSnap.docs.map(d => d.data());
+    // Shared with the athlete screens so signals are identical everywhere.
+    const { alert, signals, latestInjury, latestIllness, latestCheckinDate } =
+      computeOvertraining({ runs: allRuns, checkins, attendanceStats, now });
+    return { alert, signals, todayInjury: latestInjury, todayIllness: latestIllness, injuryCheckinDate: latestCheckinDate };
   } catch { return { alert: false, signals: [], todayInjury: null, todayIllness: null, injuryCheckinDate: null }; }
 }
 

@@ -18,6 +18,7 @@ import SeasonReview from './SeasonReview';
 import { formatTime, calcPace, formatPace } from '../utils/raceUtils';
 import { PACE_ZONES, calcPaceZoneBreakdown, calcPaceZoneSecondsForRun, calcPace8020 } from '../utils/vdotUtils';
 import { getMondayISO, getRunDate, groupRunsByWeek } from '../utils/dateUtils';
+import { computeOvertraining } from '../utils/overtrainingUtils';
 
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -280,38 +281,9 @@ export default function AthleteAnalytics({ userData, school, myGroup, onClose })
   const avg7Legs = last7Checkins.length > 0 ? last7Checkins.reduce((s, c) => s + (c.legFatigue || 3), 0) / last7Checkins.length : null;
   const avg7Mood = last7Checkins.length > 0 ? last7Checkins.reduce((s, c) => s + (c.mood || 3), 0) / last7Checkins.length : null;
 
-  // Overtraining signals (adapted from CoachDashboard checkOvertraining)
-  const signals = [];
-  const thisMonday = new Date(now);
-  const dayOfWeek = thisMonday.getDay();
-  thisMonday.setDate(thisMonday.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-  thisMonday.setHours(0, 0, 0, 0);
-  const thisWeekRuns = allRuns.filter(r => getRunDate(r) >= thisMonday);
-  const thisWeekMiles = thisWeekRuns.reduce((s, r) => s + (r.miles || 0), 0);
-
-  const priorWeekMiles = [];
-  for (let w = 1; w <= 3; w++) {
-    const wStart = new Date(thisMonday); wStart.setDate(thisMonday.getDate() - w * 7);
-    const wEnd = new Date(wStart); wEnd.setDate(wStart.getDate() + 7);
-    const miles = allRuns.filter(r => { const d = getRunDate(r); return d >= wStart && d < wEnd; }).reduce((s, r) => s + (r.miles || 0), 0);
-    priorWeekMiles.push(miles);
-  }
-  const avg3wk = priorWeekMiles.length > 0 ? priorWeekMiles.reduce((s, m) => s + m, 0) / priorWeekMiles.length : 0;
-  if (avg3wk > 0 && thisWeekMiles > avg3wk * 1.15) {
-    signals.push(`Miles up ${Math.round(((thisWeekMiles - avg3wk) / avg3wk) * 100)}% vs 3-week avg`);
-  }
-  const highEffortDays = thisWeekRuns.filter(r => (r.effort || 0) >= 8).length;
-  if (highEffortDays >= 4) signals.push(`Effort 8+ on ${highEffortDays} of last 7 days`);
-  if (last3Checkins.length >= 3) {
-    const recentMood = last3Checkins.reduce((s, c) => s + (c.mood || 3), 0) / 3;
-    const olderCheckins = recentCheckins.slice(3, 6);
-    if (olderCheckins.length >= 3) {
-      const olderMood = olderCheckins.reduce((s, c) => s + (c.mood || 3), 0) / 3;
-      if (recentMood < olderMood - 0.5) signals.push('Mood declining this week');
-    }
-    const recentSleep = last3Checkins.reduce((s, c) => s + (c.sleepQuality || 3), 0) / 3;
-    if (recentSleep < 2.5) signals.push('Poor sleep reported');
-  }
+  // Overtraining signals + weekly load — shared with CoachDashboard so athlete
+  // and coach see identical (ACWR-based) signals.
+  const { signals, thisWeekMiles, avg3wk } = computeOvertraining({ runs: allRuns, checkins, now });
 
   // Active injuries
   const activeInjuries = [];
