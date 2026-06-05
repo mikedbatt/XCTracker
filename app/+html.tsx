@@ -46,7 +46,19 @@ export default function Root({ children }: PropsWithChildren) {
       <head>
         <meta charSet="utf-8" />
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
-        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover" />
+
+        {/* ── PWA / installability ── */}
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#4F46E5" />
+        <meta name="description" content="Team training platform for distance-running programs — log runs, sync from Strava, track pace zones, and see team analytics." />
+        {/* iOS home-screen install */}
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="TeamBase" />
+        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+        <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+
         <ScrollViewStyleReset />
         <style dangerouslySetInnerHTML={{ __html: loadingSplashCSS }} />
       </head>

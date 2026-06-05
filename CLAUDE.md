@@ -258,14 +258,26 @@ firebase deploy --only firestore:indexes  # indexes-only redeploy
 
 ## Web platform notes
 The app is supported on web via react-native-web; deploy URL is
-https://xctracker-a2532.web.app. Patterns when working in web-touched code:
+https://xctracker-a2532.web.app. **The first-school beta ships as a web-only
+installable PWA** (see `[[project_pwa_beta_pivot]]` in memory); native is
+preserved and resumable. Patterns when working in web-touched code:
 
+- **PWA / installability:** `public/manifest.json` (standalone, indigo theme) +
+  `public/icons/*` (192/512/maskable, currently the full-res `icon.png` — resize
+  as polish) + PWA/apple meta in `app/+html.tsx`. Expo copies `public/` → `dist/`.
+- **Firestore offline persistence:** `firebaseConfig.js` uses
+  `initializeFirestore(... persistentLocalCache ...)` on web (IndexedDB; falls
+  back to default if unavailable). Native caches by default.
+- **Lazy-loaded screens (bundle):** `SeasonReview`, `CoachAnalytics`,
+  `AthleteAnalytics` are `React.lazy` + `<Suspense>` in the dashboards — keep heavy
+  on-demand screens out of the initial bundle.
 - **Auth persistence:** `firebaseConfig.js` branches via Platform —
   `browserLocalPersistence` on web, AsyncStorage on native. Don't import
   `getReactNativePersistence` unconditionally — it has no DOM backing.
 - **Push notifications:** native uses expo-notifications + `expoPushToken`.
   Web uses FCM via `utils/webPush.js` + `webPushToken`. Cloud Functions fan
   out to both tokens per user. Requires `EXPO_PUBLIC_FIREBASE_VAPID_KEY`.
+  iOS web push only works once the PWA is installed to the home screen (16.4+).
 - **Service worker:** `public/firebase-messaging-sw.js` handles background
   web push. Firebase config is passed in via URL query string at registration
   time so values stay in sync with `firebaseConfig.js`.
@@ -277,8 +289,15 @@ https://xctracker-a2532.web.app. Patterns when working in web-touched code:
 - **SecureStore:** wrap calls in try/catch when shared between native and web.
   SecureStore throws on web; native fallbacks (Firebase persistence) handle
   the auth side fine.
-- **Strava:** OAuth is disabled on web for v1 — gated behind `Platform.OS !==
-  'web'` in AthleteDashboard prompt + AthleteProfile Connections section.
+- **Strava on web:** enabled for the PWA beta via a **full-page redirect** in
+  `StravaConnect.handleConnect` (web branch) → returns to the `app/strava-callback.tsx`
+  route, which calls the shared `connectStravaWithCode` helper (`stravaConfig.js`)
+  to exchange the code + store tokens (incl. `stravaAthleteId`). Native uses the
+  in-app browser session flow. NOTE: Strava allows ONE callback domain per app —
+  for the beta it's set to the web host, so **native Strava OAuth is paused**
+  (reversible). New runs sync **server-side via the webhook**; client auto-sync
+  stays off on web (browser→Strava data API may be CORS-blocked — backfill is a
+  go-live decision).
 - **Layout:** AppNavigator wraps dashboards in `<WebMaxWidth>` (max 1280px,
   centered) so they don't stretch on ultrawides. Use `useResponsiveLayout()`
   hook for any screen-size-specific behavior.

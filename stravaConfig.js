@@ -39,6 +39,28 @@ export async function refreshStravaToken(refreshToken) {
   return response.json();
 }
 
+// ── Exchange an OAuth code + persist the connection to the user doc ───────────
+// Shared by the native connect flow (StravaConnect.handleOAuthSuccess) and the
+// web OAuth callback route (app/strava-callback.tsx) so both store the same
+// fields (incl. stravaAthleteId, which webhook routing depends on).
+export async function connectStravaWithCode(uid, code, redirectUri) {
+  const tokenData = await exchangeStravaCode(code, redirectUri);
+  const { doc, updateDoc } = await import('firebase/firestore');
+  const { db } = await import('./firebaseConfig');
+  await updateDoc(doc(db, 'users', uid), {
+    stravaAccessToken:  tokenData.access_token,
+    stravaRefreshToken: tokenData.refresh_token,
+    stravaTokenExpiry:  tokenData.expires_at,
+    stravaAthleteId:    tokenData.athlete?.id?.toString() ?? null,
+    stravaAthlete: {
+      id:        tokenData.athlete?.id ?? null,
+      firstName: tokenData.athlete?.firstname ?? null,
+      lastName:  tokenData.athlete?.lastname ?? null,
+    },
+  });
+  return tokenData;
+}
+
 // ── Fetch ALL activities from Strava with pagination ──────────────────────────
 export async function fetchStravaActivities(accessToken, afterTimestamp = null) {
   const allActivities = [];

@@ -585,9 +585,9 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
         {/* ── Connections section ── */}
         {activeSection === 'connections' && (
           <>
-            {/* Connected apps — currently just Strava. Hidden on web for v1
-                because Strava OAuth needs a separate Strava dev app for web. */}
-            {Platform.OS !== 'web' && (
+            {/* Connected apps — currently just Strava. Shown on web for the PWA
+                beta (web OAuth via /strava-callback). */}
+            {(
               <>
                 <Text style={[styles.eyebrow, { marginTop: 0, marginBottom: 10, paddingLeft: 4 }]}>Connected apps</Text>
                 <View style={styles.connectionCard}>

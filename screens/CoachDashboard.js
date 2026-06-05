@@ -15,7 +15,7 @@ import {
   updateDoc,
   where
 } from 'firebase/firestore';
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator, Alert,
   KeyboardAvoidingView,
@@ -33,7 +33,6 @@ import { auth, db } from '../firebaseConfig';
 import { SIGNAL } from '../constants/design';
 import AthleteDetailScreen from '../screens/AthleteDetailScreen';
 import AttendanceScreen from '../screens/AttendanceScreen';
-import CoachAnalytics from '../screens/CoachAnalytics';
 import CoachProfile from '../screens/CoachProfile';
 import CalendarScreen from '../screens/CalendarScreen';
 import { SIGNAL_TYPE_COLORS } from '../constants/training';
@@ -42,7 +41,6 @@ import ManageRoster from '../screens/ManageRoster';
 import ManageSeasons from '../screens/ManageSeasons';
 import RaceManager from '../screens/RaceManager';
 import { getActiveSeason, getPhaseForSeason, getCompletedSeasons } from '../screens/SeasonPlanner';
-import SeasonReview from '../screens/SeasonReview';
 import WeeklyPlanner from '../screens/WeeklyPlanner';
 import WeeklyCheckinHistory from '../screens/WeeklyCheckinHistory';
 import { confirmDestructive } from '../utils/confirmDialog';
@@ -58,6 +56,10 @@ import { calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
 import { useStaleRefresh } from '../hooks/useStaleRefresh';
 import { getRunDate, toLocalISODate } from '../utils/dateUtils';
 import { getWeekAnchor } from '../utils/weeklyCheckinUtils';
+
+// Lazy-loaded (heavy, opened on demand) — kept out of the initial bundle.
+const CoachAnalytics = lazy(() => import('../screens/CoachAnalytics'));
+const SeasonReview   = lazy(() => import('../screens/SeasonReview'));
 
 // ── Daily message templates by phase (written as coach → athletes) ────────────
 const PHASE_TIPS = {
@@ -1900,27 +1902,31 @@ export default function CoachDashboard({ userData }) {
       )}
       {analyticsVisible && (
         <View style={[styles.subScreen, { bottom: navHeight }]}>
-          <CoachAnalytics
-            athletes={athletes}
-            athleteWeeklyMiles={athleteWeeklyMiles}
-            athlete3WeekAvg={athlete3WeekAvg}
-            athleteWeeklyBreakdown={athleteWeeklyBreakdown}
-            athletePaceEasyPct={athletePaceEasyPct}
-            overtTrainingAlerts={overtTrainingAlerts}
-            athleteMiles={athleteMiles}
-            groups={groups}
-            school={school}
-            schoolId={userData.schoolId}
-            userData={userData}
-            onClose={() => setAnalyticsVisible(false)}
-          />
+          <Suspense fallback={<View style={styles.loading}><ActivityIndicator size="large" color={SIGNAL.color.indigo} /></View>}>
+            <CoachAnalytics
+              athletes={athletes}
+              athleteWeeklyMiles={athleteWeeklyMiles}
+              athlete3WeekAvg={athlete3WeekAvg}
+              athleteWeeklyBreakdown={athleteWeeklyBreakdown}
+              athletePaceEasyPct={athletePaceEasyPct}
+              overtTrainingAlerts={overtTrainingAlerts}
+              athleteMiles={athleteMiles}
+              groups={groups}
+              school={school}
+              schoolId={userData.schoolId}
+              userData={userData}
+              onClose={() => setAnalyticsVisible(false)}
+            />
+          </Suspense>
         </View>
       )}
 
       {/* ── Persistent bottom nav ── */}
       {seasonReviewVisible && seasonReviewSeason && (
         <View style={[styles.subScreen, { bottom: navHeight }]}>
-          <SeasonReview season={seasonReviewSeason} school={school} userData={userData} athletes={athletes} onClose={() => { setSeasonReviewVisible(false); setSeasonReviewSeason(null); }} />
+          <Suspense fallback={<View style={styles.loading}><ActivityIndicator size="large" color={SIGNAL.color.indigo} /></View>}>
+            <SeasonReview season={seasonReviewSeason} school={school} userData={userData} athletes={athletes} onClose={() => { setSeasonReviewVisible(false); setSeasonReviewSeason(null); }} />
+          </Suspense>
         </View>
       )}
 

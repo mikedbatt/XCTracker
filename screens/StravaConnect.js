@@ -21,7 +21,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../firebaseConfig';
 import { BRAND, SIGNAL, STRAVA_ORANGE } from '../constants/design';
 import {
-  STRAVA_CONFIG, exchangeStravaCode,
+  STRAVA_CONFIG,
+  connectStravaWithCode,
   fetchStravaActivities,
   fetchStravaStreams,
   refreshStravaToken,
@@ -85,7 +86,16 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
 
   const handleConnect = async () => {
     try {
-      // Build the redirect URI using Expo's deep linking
+      // Web: full-page redirect to Strava; the /strava-callback route handles the
+      // return (the native in-app browser session flow doesn't apply on web).
+      if (Platform.OS === 'web') {
+        const redirectUri = `${window.location.origin}/strava-callback`;
+        const authUrl = `${STRAVA_CONFIG.authUrl}?client_id=${STRAVA_CONFIG.clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&approval_prompt=auto&scope=${STRAVA_CONFIG.scopes}`;
+        window.location.href = authUrl;
+        return;
+      }
+
+      // Native: build the redirect URI using Expo's deep linking
       const redirectUri = Linking.createURL('strava-auth');
 
       const authUrl = `${STRAVA_CONFIG.authUrl}?client_id=${STRAVA_CONFIG.clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&approval_prompt=auto&scope=${STRAVA_CONFIG.scopes}`;
@@ -114,19 +124,7 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
     setSyncing(true);
     try {
       const redirectUri = Linking.createURL('strava-auth');
-      const tokenData = await exchangeStravaCode(code, redirectUri);
-
-      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
-        stravaAccessToken:  tokenData.access_token,
-        stravaRefreshToken: tokenData.refresh_token,
-        stravaTokenExpiry:  tokenData.expires_at,
-        stravaAthleteId:    tokenData.athlete?.id?.toString(),
-        stravaAthlete: {
-          id:        tokenData.athlete?.id,
-          firstName: tokenData.athlete?.firstname,
-          lastName:  tokenData.athlete?.lastname,
-        },
-      });
+      const tokenData = await connectStravaWithCode(auth.currentUser.uid, code, redirectUri);
 
       setStravaLinked(true);
       setStravaAthlete({

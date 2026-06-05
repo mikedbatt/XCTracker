@@ -13,7 +13,7 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore';
-import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import React, { memo, lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert,
   Animated,
@@ -40,7 +40,6 @@ import { SIGNAL_TYPE_COLORS, TYPE_COLORS, WORKOUT_PACE_ZONE } from '../constants
 import DatePickerField from './DatePickerField';
 import RunDetailModal from './RunDetailModal';
 import { getActiveSeason, getCompletedSeasons } from './SeasonPlanner';
-import SeasonReview from './SeasonReview';
 import StravaConnect from './StravaConnect';
 import ChannelList from './ChannelList';
 import TeammateProfile from './TeammateProfile';
@@ -56,7 +55,6 @@ import {
   isInWeeklyWindow,
 } from '../utils/weeklyCheckinUtils';
 import WorkoutDetailModal from './WorkoutDetailModal';
-import AthleteAnalytics from './AthleteAnalytics';
 
 const EFFORT_LABELS = DESIGN_EFFORT_LABELS;
 const EFFORT_COLORS = DESIGN_EFFORT_COLORS;
@@ -66,6 +64,10 @@ const EFFORT_COLORS = DESIGN_EFFORT_COLORS;
 // they skip re-rendering when their props haven't changed — which is the case
 // on every bottom-nav tap. Callbacks passed in must be stable refs (useCallback).
 const MemoCalendarScreen   = memo(CalendarScreen);
+// Lazy-loaded on web to keep them out of the initial bundle (they're heavy and
+// only opened on demand). Suspense fallback below covers the brief first load.
+const SeasonReview         = lazy(() => import('./SeasonReview'));
+const AthleteAnalytics     = lazy(() => import('./AthleteAnalytics'));
 const MemoAthleteAnalytics = memo(AthleteAnalytics);
 const MemoChannelList      = memo(ChannelList);
 
@@ -185,8 +187,9 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
 
   const triggerAutoSync = async () => {
     try {
-      // Strava sync is native-only for v1 — Strava OAuth on web needs a
-      // separate Strava dev app, deferred until web hits production.
+      // On web, Strava sync is webhook-driven (server-side) — the client doesn't
+      // auto-pull (browser→Strava data-API calls may be CORS-blocked; the initial
+      // backfill path is settled at go-live). New runs arrive via the webhook.
       if (Platform.OS === 'web') return;
       const user = auth.currentUser;
       if (!user) return;
@@ -990,8 +993,8 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
         )}
 
         {/* ── Strava connect prompt (compact row per design ref) ── */}
-        {/* Hidden on web for v1 — Strava OAuth requires a separate Strava dev app for web. */}
-        {Platform.OS !== 'web' && !stravaLinked && !stravaDismissed && (
+        {/* Shown on web too for the PWA beta — web OAuth runs via /strava-callback. */}
+        {!stravaLinked && !stravaDismissed && (
           <View style={[styles.cardSpacer]}>
             <View style={styles.stravaRow}>
               <View style={styles.stravaLogo}>
@@ -1487,7 +1490,9 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
       {/* ── Sub-screens rendered over content but under nav ── */}
       {seasonReviewVisible && seasonReviewSeason && (
         <View style={[styles.subScreen, { bottom: navHeight }]}>
-          <SeasonReview season={seasonReviewSeason} school={school} userData={userData} onClose={() => { setSeasonReviewVisible(false); setSeasonReviewSeason(null); }} />
+          <Suspense fallback={<View style={styles.loading}><ActivityIndicator size="large" color={SIGNAL.color.indigo} /></View>}>
+            <SeasonReview season={seasonReviewSeason} school={school} userData={userData} onClose={() => { setSeasonReviewVisible(false); setSeasonReviewSeason(null); }} />
+          </Suspense>
         </View>
       )}
       {calendarMounted && (
@@ -1507,12 +1512,14 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
       )}
       {statsMounted && (
         <View style={[styles.subScreen, { bottom: navHeight }, !statsVisible && { display: 'none' }]}>
-          <MemoAthleteAnalytics
-            userData={userData}
-            school={school}
-            myGroup={myGroup}
-            onClose={handleCloseStats}
-          />
+          <Suspense fallback={<View style={styles.loading}><ActivityIndicator size="large" color={SIGNAL.color.indigo} /></View>}>
+            <MemoAthleteAnalytics
+              userData={userData}
+              school={school}
+              myGroup={myGroup}
+              onClose={handleCloseStats}
+            />
+          </Suspense>
         </View>
       )}
       {profileVisible && (
