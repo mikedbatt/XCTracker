@@ -374,6 +374,7 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
       ) : (
         <FlatList
           ref={listRef}
+          style={styles.list}
           data={listData}
           keyExtractor={item => item.id}
           renderItem={renderPost}
@@ -539,10 +540,14 @@ const styles = StyleSheet.create({
   },
 
   // ── List + empty state ──────────────────────────────────────────────────
+  list: {
+    flex: 1, // occupy only the space above the compose bar so scrollToEnd
+             // lands the newest message in view, not behind the input
+  },
   listContent: {
     paddingHorizontal: 14,
     paddingTop: 16,
-    paddingBottom: 8,
+    paddingBottom: 12,
   },
   emptyCard: {
     alignItems: 'center',
