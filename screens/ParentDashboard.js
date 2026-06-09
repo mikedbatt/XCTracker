@@ -172,7 +172,7 @@ export default function ParentDashboard({ userData }) {
         <View style={styles.noAthletes}>
           <Text style={styles.noAthletesTitle}>No athletes linked</Text>
           <Text style={styles.noAthletesText}>
-            Ask your athlete to sign up for TeamBase first, then you can link to their account.
+            Ask your athlete to sign up for XCTracker first, then you can link to their account.
           </Text>
           <TouchableOpacity style={styles.linkBtn} onPress={() => setActiveTab('profile')}>
             <Text style={styles.linkBtnText}>Link an athlete</Text>
@@ -265,7 +265,7 @@ export default function ParentDashboard({ userData }) {
                     <View style={{ flex: 1 }}>
                       <Text style={styles.summaryName}>{selectedAthlete.firstName} {selectedAthlete.lastName}</Text>
                       <Text style={styles.summarySub}>
-                        {selectedAthlete.gradYear ? `Class of ${selectedAthlete.gradYear} · ` : ''}{school?.name || 'TeamBase'}
+                        {selectedAthlete.gradYear ? `Class of ${selectedAthlete.gradYear} · ` : ''}{school?.name || 'XCTracker'}
                       </Text>
                     </View>
                   </View>

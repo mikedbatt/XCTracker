@@ -20,7 +20,7 @@ const loadingSplashCSS = `
     z-index: 9999;
   }
   #root:empty::after {
-    content: 'TeamBase';
+    content: 'XCTracker';
     position: fixed;
     inset: 0;
     display: flex;
@@ -58,7 +58,7 @@ export default function Root({ children }: PropsWithChildren) {
             area and lays content out BELOW it — otherwise headers/back buttons
             render under the notch and become untappable in the installed PWA. */}
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="TeamBase" />
+        <meta name="apple-mobile-web-app-title" content="XCTracker" />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
         <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
 

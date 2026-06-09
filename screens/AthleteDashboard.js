@@ -664,7 +664,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
               Hey, <Text style={styles.greetingAccent}>{userData.firstName || 'Athlete'}</Text>
             </Text>
             <Text style={styles.eyebrow}>
-              {isPending ? 'Pending approval' : (school?.name || 'TeamBase')}
+              {isPending ? 'Pending approval' : (school?.name || 'XCTracker')}
             </Text>
           </View>
           <TouchableOpacity onPress={() => { setActiveTab('home'); setProfileVisible(true); }} style={styles.profileBtn} activeOpacity={0.8}>

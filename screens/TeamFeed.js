@@ -190,7 +190,7 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
       if (e.code === 'PERMISSION_DENIED') {
         Alert.alert(
           'Permission needed',
-          'TeamBase needs photo library access to save images. You can enable it in Settings → TeamBase → Photos.'
+          'XCTracker needs photo library access to save images. You can enable it in Settings → XCTracker → Photos.'
         );
         return;
       }

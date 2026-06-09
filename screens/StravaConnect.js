@@ -17,7 +17,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { auth, db } from '../firebaseConfig';
 import { BRAND, SIGNAL, STRAVA_ORANGE } from '../constants/design';
 import { confirmDestructive } from '../utils/confirmDialog';
@@ -490,17 +490,19 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
               ))}
             </View>
 
-            {/* Connect with Strava (Strava orange CTA) */}
+            {/* Official "Connect with Strava" button — Strava orange + logo per
+                Strava brand guidelines. */}
             <TouchableOpacity
               style={styles.connectBtn}
               onPress={handleConnect}
               activeOpacity={0.85}
             >
+              <FontAwesome5 name="strava" size={20} color={SIGNAL.color.white} style={{ marginRight: 10 }} />
               <Text style={styles.connectBtnText}>Connect with Strava</Text>
             </TouchableOpacity>
 
             <Text style={styles.helperText}>
-              You'll be taken to Strava to authorize TeamBase to read your activities. We never post or modify your Strava data.
+              You'll be taken to Strava to authorize XCTracker to read your activities. We never post or modify your Strava data.
             </Text>
           </>
         )}
@@ -699,6 +701,7 @@ const styles = StyleSheet.create({
   },
 
   connectBtn: {
+    flexDirection: 'row',
     backgroundColor: STRAVA_ORANGE,
     borderRadius: SIGNAL.radius.button,
     paddingVertical: 16,

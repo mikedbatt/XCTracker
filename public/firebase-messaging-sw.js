@@ -38,7 +38,7 @@ try {
   messaging.onBackgroundMessage((payload) => {
     const { title, body } = payload.notification || {};
     const data = payload.data || {};
-    self.registration.showNotification(title || 'TeamBase', {
+    self.registration.showNotification(title || 'XCTracker', {
       body: body || '',
       icon: '/favicon.png',
       data,

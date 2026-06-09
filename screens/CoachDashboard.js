@@ -678,7 +678,7 @@ export default function CoachDashboard({ userData }) {
       '',
       ...lines,
       '',
-      `Sent from TeamBase`,
+      `Sent from XCTracker`,
     ].join('\n');
 
     try {
@@ -936,7 +936,7 @@ export default function CoachDashboard({ userData }) {
               Coach {userData.lastName}
             </Text>
             <Text style={styles.headerEyebrow} numberOfLines={1}>
-              {school?.name || 'TeamBase'}{school?.sport ? ` · ${school.sport}` : ''}
+              {school?.name || 'XCTracker'}{school?.sport ? ` · ${school.sport}` : ''}
             </Text>
           </View>
           <View style={styles.headerRight}>

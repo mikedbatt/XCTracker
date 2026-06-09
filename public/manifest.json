@@ -1,6 +1,6 @@
 {
-  "name": "TeamBase",
-  "short_name": "TeamBase",
+  "name": "XCTracker",
+  "short_name": "XCTracker",
   "description": "Team training platform for distance-running programs — log runs, sync from Strava, track pace zones, and see team analytics.",
   "start_url": "/",
   "scope": "/",

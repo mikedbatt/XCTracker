@@ -117,7 +117,7 @@ export async function fetchStravaActivities(accessToken, afterTimestamp = null) 
   return allActivities;
 }
 
-// ── Convert Strava activity to TeamBase run format ───────────────────────────
+// ── Convert Strava activity to XCTracker run format ───────────────────────────
 export function stravaActivityToRun(activity, userId, schoolId) {
   // Only import running activities
   const runTypes = ['Run', 'TrailRun', 'VirtualRun'];

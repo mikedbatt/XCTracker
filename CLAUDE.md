@@ -1,7 +1,7 @@
-# TeamBase — Claude Code Guide
+# XCTracker — Claude Code Guide
 
 ## Project Overview
-TeamBase is a team training platform built with React Native + Expo. It supports
+XCTracker is a team training platform built with React Native + Expo. It supports
 multiple sports (cross country, indoor track, outdoor track, and more). Three
 main user roles:
 
@@ -15,7 +15,7 @@ main user roles:
   notifications. Cannot post.
 
 Note: repo folder is still named `XCTracker/` from pre-rebrand; product name
-is TeamBase everywhere in UI/assets.
+is XCTracker everywhere in UI/assets.
 
 ## Design System: Signal
 The app ships in the **Signal** visual design — white-first surfaces, hairline

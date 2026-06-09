@@ -1,4 +1,4 @@
-// ─── TeamBase Design System ──────────────────────────────────────────────────
+// ─── XCTracker Design System ──────────────────────────────────────────────────
 // Single source of truth for all visual tokens.
 // Import from here instead of hardcoding colors, sizes, or spacing.
 

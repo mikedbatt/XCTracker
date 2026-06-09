@@ -102,7 +102,7 @@ export default function InstallPrompt() {
           <Ionicons name="download-outline" size={20} color={SIGNAL.color.indigo} />
         </View>
         <View style={styles.body}>
-          <Text style={styles.title}>Install TeamBase</Text>
+          <Text style={styles.title}>Install XCTracker</Text>
           <Text style={styles.sub}>
             {showIosHint
               ? 'Tap the Share button, then “Add to Home Screen.”'

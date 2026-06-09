@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "TeamBase",
+    "name": "XCTracker",
     "slug": "XCTracker",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -59,8 +59,8 @@
       [
         "expo-media-library",
         {
-          "photosPermission": "Allow TeamBase to save shared photos to your camera roll.",
-          "savePhotosPermission": "Allow TeamBase to save shared photos to your camera roll.",
+          "photosPermission": "Allow XCTracker to save shared photos to your camera roll.",
+          "savePhotosPermission": "Allow XCTracker to save shared photos to your camera roll.",
           "isAccessMediaLocationEnabled": false
         }
       ],
