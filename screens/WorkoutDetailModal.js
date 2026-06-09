@@ -73,6 +73,9 @@ export default function WorkoutDetailModal({ item, visible, onClose, primaryColo
             } else if (zone === 'repetition') {
               paceLabel = 'REPETITION PACE';
               paceValue = `${formatPace(tp.r)} /mi`;
+            } else if (zone === 'marathon') {
+              paceLabel = 'MODERATE PACE';
+              paceValue = `${formatPace(tp.m)} /mi`;
             }
             return paceValue ? (
               <View style={[styles.paceCard, { backgroundColor: tintWash, borderColor: tintBorder }]}>

@@ -1062,7 +1062,8 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
                   paceText = zone === 'easy' ? `${formatPace(tp.eLow)}–${formatPace(tp.eHigh)}/mi`
                     : zone === 'threshold' ? `${formatPace(tp.t)}/mi`
                     : zone === 'interval' ? `${formatPace(tp.i)}/mi`
-                    : zone === 'repetition' ? `${formatPace(tp.r)}/mi` : null;
+                    : zone === 'repetition' ? `${formatPace(tp.r)}/mi`
+                    : zone === 'marathon' ? `${formatPace(tp.m)}/mi` : null;
                 }
                 const dateLabel = workout.date?.toDate?.()?.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
                 return (

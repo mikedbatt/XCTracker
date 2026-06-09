@@ -427,7 +427,8 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
                         const paceText = zone === 'easy' ? `${formatPace(tp.eLow)}–${formatPace(tp.eHigh)}/mi`
                           : zone === 'threshold' ? `${formatPace(tp.t)}/mi`
                           : zone === 'interval' ? `${formatPace(tp.i)}/mi`
-                          : zone === 'repetition' ? `${formatPace(tp.r)}/mi` : null;
+                          : zone === 'repetition' ? `${formatPace(tp.r)}/mi`
+                          : zone === 'marathon' ? `${formatPace(tp.m)}/mi` : null;
                         return paceText ? <Text style={styles.workoutPace}>Target {paceText}</Text> : null;
                       })()}
                       {item.description && <Text style={styles.workoutDesc} numberOfLines={1}>{item.description}</Text>}
@@ -505,6 +506,7 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
                       const paceText = zone === 'easy' ? `${formatPace(tp.eLow)}–${formatPace(tp.eHigh)}/mi`
                         : zone === 'threshold' ? `${formatPace(tp.t)}/mi`
                         : zone === 'interval' ? `${formatPace(tp.i)}/mi`
+                        : zone === 'marathon' ? `${formatPace(tp.m)}/mi`
                         : zone === 'repetition' ? `${formatPace(tp.r)}/mi` : null;
                       return paceText ? <Text style={styles.workoutPace}>Target {paceText}</Text> : null;
                     })()}
