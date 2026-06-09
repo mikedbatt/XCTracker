@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { addDoc, collection, deleteDoc, doc, getDocs, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -51,10 +51,15 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
   // ── Real-time listener (filtered by channel) ───────────────────────────
   useEffect(() => {
     if (!userData.schoolId) return;
-    // Single-field query on schoolId, filter channel client-side to avoid composite index
+    // Fetch only the ~100 most recent posts server-side (uses the existing
+    // teamPosts[schoolId, createdAt] index) instead of downloading the school's
+    // whole post history. Channel is still filtered client-side. The cap is
+    // across all channels, which is fine at beta scale (whole_team dominates).
     const q = query(
       collection(db, 'teamPosts'),
       where('schoolId', '==', userData.schoolId),
+      orderBy('createdAt', 'desc'),
+      limit(100),
     );
     const unsub = onSnapshot(q, snap => {
       const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -80,6 +85,8 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
       const snap = await getDocs(query(
         collection(db, 'teamPosts'),
         where('schoolId', '==', userData.schoolId),
+        orderBy('createdAt', 'desc'),
+        limit(100),
       ));
       const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       const filtered = all
