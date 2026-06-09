@@ -45,15 +45,10 @@ export function initPwaAutoUpdate(onUpdateAvailable) {
   setTimeout(check, 4000);
 }
 
-// Hard reload that also clears the service-worker caches so the new build's
-// hashed assets are fetched fresh.
-export async function reloadForUpdate() {
-  if (typeof window === 'undefined') return;
-  try {
-    if (typeof caches !== 'undefined') {
-      const keys = await caches.keys();
-      await Promise.all(keys.map((k) => caches.delete(k)));
-    }
-  } catch {}
-  window.location.reload();
+// Reload onto the new build. A normal reload navigates → the SW serves a fresh
+// (network-first) index.html → new content-hashed bundles are fetched, while
+// already-cached immutable assets stay put. We deliberately DON'T clear caches
+// here — doing so forced a slow cold re-download on every update.
+export function reloadForUpdate() {
+  if (typeof window !== 'undefined') window.location.reload();
 }

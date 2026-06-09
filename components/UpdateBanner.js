@@ -18,7 +18,10 @@ export default function UpdateBanner() {
   if (Platform.OS !== 'web' || !show) return null;
 
   return (
-    <View style={styles.wrap} pointerEvents="box-none">
+    <View
+      style={[styles.wrap, { paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }]}
+      pointerEvents="box-none"
+    >
       <TouchableOpacity style={styles.banner} onPress={reloadForUpdate} activeOpacity={0.9}>
         <Ionicons name="arrow-up-circle" size={20} color={SIGNAL.color.white} />
         <Text style={styles.text}>New version available — tap to update</Text>
