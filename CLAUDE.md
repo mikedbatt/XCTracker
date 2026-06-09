@@ -323,8 +323,12 @@ preserved and resumable. Patterns when working in web-touched code:
   in-app browser session flow. NOTE: Strava allows ONE callback domain per app —
   for the beta it's set to the web host, so **native Strava OAuth is paused**
   (reversible). New runs sync **server-side via the webhook**; client auto-sync
-  stays off on web (browser→Strava data API may be CORS-blocked — backfill is a
-  go-live decision).
+  stays off on web (browser→Strava data API is CORS-blocked). **History import**
+  is server-side via the `stravaBackfill` function (see Cloud Functions): the web
+  `strava-callback` route **auto-imports the last 60 days on connect** (shows an
+  "Importing your runs…" state), and `StravaConnect` keeps a manual "Import last
+  60 days" button as a catch-up/re-sync (also reachable via Profile →
+  Connections → **Manage**).
 - **Layout:** AppNavigator wraps dashboards in `<WebMaxWidth>` (max 1280px,
   centered) so they don't stretch on ultrawides. Use `useResponsiveLayout()`
   hook for any screen-size-specific behavior.
