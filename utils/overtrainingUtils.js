@@ -9,6 +9,7 @@
 
 import { calcACWR, ACWR_STATUS } from './acwrUtils';
 import { getRunDate } from './dateUtils';
+import { isCrossTraining } from './activityMiles';
 
 /**
  * @param {object}   opts
@@ -32,14 +33,17 @@ export function computeOvertraining({ runs = [], checkins = [], attendanceStats 
   thisMonday.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
   thisMonday.setHours(0, 0, 0, 0);
 
-  const thisWeekRuns = runs.filter(r => { const d = getRunDate(r); return d && d >= thisMonday; });
+  // Overtraining is a RUNNING mechanical-load signal — exclude cross-training
+  // (a bike ride doesn't carry running impact load).
+  const runningRuns = runs.filter(r => !isCrossTraining(r));
+  const thisWeekRuns = runningRuns.filter(r => { const d = getRunDate(r); return d && d >= thisMonday; });
   const thisWeekMiles = thisWeekRuns.reduce((s, r) => s + (r.miles || 0), 0);
 
   const priorWeekMiles = [];
   for (let w = 1; w <= 3; w++) {
     const wStart = new Date(thisMonday); wStart.setDate(thisMonday.getDate() - w * 7);
     const wEnd = new Date(wStart); wEnd.setDate(wStart.getDate() + 7);
-    const miles = runs
+    const miles = runningRuns
       .filter(r => { const d = getRunDate(r); return d && d >= wStart && d < wEnd; })
       .reduce((s, r) => s + (r.miles || 0), 0);
     priorWeekMiles.push(miles);

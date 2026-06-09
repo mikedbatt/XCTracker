@@ -24,6 +24,7 @@ import DatePickerField from './DatePickerField';
 import { getMondayISO, getRunDate, groupRunsByWeek, toLocalISODate } from '../utils/dateUtils';
 import { computeOvertraining } from '../utils/overtrainingUtils';
 import { confirmDestructive } from '../utils/confirmDialog';
+import { aggregateMiles, isCrossTraining, DEFAULT_CT_FACTORS } from '../utils/activityMiles';
 
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -168,10 +169,13 @@ export default function AthleteDetailScreen({ athlete, school, groups, onBack, p
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
   // ── Basic stats ──
+  // Cross-training counts as running-equivalent CREDIT miles (per the school's
+  // factors), not raw miles — mirror the dashboards.
+  const ctFactors = school?.crossTrainingFactors || DEFAULT_CT_FACTORS;
   const weekRuns = allRuns.filter(r => { const d = r.date?.toDate?.(); return d && d >= weekStart; });
   const monthRuns = allRuns.filter(r => { const d = r.date?.toDate?.(); return d && d >= monthStart; });
-  const weekMiles = Math.round(weekRuns.reduce((s, r) => s + (r.miles || 0), 0) * 10) / 10;
-  const monthMiles = Math.round(monthRuns.reduce((s, r) => s + (r.miles || 0), 0) * 10) / 10;
+  const weekMiles = aggregateMiles(weekRuns, ctFactors).totalMiles;
+  const monthMiles = aggregateMiles(monthRuns, ctFactors).totalMiles;
 
   // ── Season & phase info ──
   const activeSeason = getActiveSeason(school);
@@ -233,6 +237,7 @@ export default function AthleteDetailScreen({ athlete, school, groups, onBack, p
   if (trainingPaces) {
     const combined = { e: 0, m: 0, t: 0, i: 0, r: 0 };
     recentRuns.forEach(r => {
+      if (isCrossTraining(r)) return; // CT has no running pace
       if (r.rawPaceStream?.length > 0) {
         const zones = calcPaceZoneBreakdown(r.rawPaceStream, trainingPaces);
         Object.keys(zones).forEach(k => { combined[k] += zones[k]; });
@@ -293,7 +298,7 @@ export default function AthleteDetailScreen({ athlete, school, groups, onBack, p
     monday: mon,
     target: volumePlan[mon] || 0,
     actual: weeklyRunData[mon]
-      ? Math.round(weeklyRunData[mon].reduce((s, r) => s + (r.miles || 0), 0) * 10) / 10
+      ? aggregateMiles(weeklyRunData[mon], ctFactors).totalMiles
       : (mon <= currentMonday ? 0 : null),
     isCurrent: mon === currentMonday,
     isPast: mon < currentMonday,

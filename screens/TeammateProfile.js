@@ -13,6 +13,7 @@ import {
 import { SIGNAL } from '../constants/design';
 import { auth, db } from '../firebaseConfig';
 import { PACE_ZONES, calcPaceZoneBreakdown, formatMinutes } from '../utils/vdotUtils';
+import { aggregateMiles, isCrossTraining, DEFAULT_CT_FACTORS } from '../utils/activityMiles';
 import RunDetailModal from './RunDetailModal';
 
 export default function TeammateProfile({ athlete, school, onBack }) {
@@ -24,6 +25,8 @@ export default function TeammateProfile({ athlete, school, onBack }) {
 
   const primaryColor = school?.primaryColor || '#213f96';
   const myUid = auth.currentUser?.uid;
+  // Cross-training counts as running-equivalent credit miles, not raw miles.
+  const ctFactors = school?.crossTrainingFactors || DEFAULT_CT_FACTORS;
 
   useEffect(() => { loadProfile(); }, []);
 
@@ -48,7 +51,7 @@ export default function TeammateProfile({ athlete, school, onBack }) {
         const d = r.date?.toDate?.();
         return d && d >= monthStart;
       });
-      setTotalMiles(Math.round(monthRuns.reduce((s, r) => s + (r.miles || 0), 0) * 10) / 10);
+      setTotalMiles(aggregateMiles(monthRuns, ctFactors).totalMiles);
     } catch (e) { console.error('TeammateProfile load:', e); }
     setLoading(false);
   };
@@ -60,8 +63,8 @@ export default function TeammateProfile({ athlete, school, onBack }) {
   weekStart.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
   weekStart.setHours(0, 0, 0, 0);
   const weekRuns = runs.filter(r => { const d = r.date?.toDate?.(); return d && d >= weekStart; });
-  const weekMiles = Math.round(weekRuns.reduce((s, r) => s + (r.miles || 0), 0) * 10) / 10;
-  const totalAllMiles = Math.round(runs.reduce((s, r) => s + (r.miles || 0), 0) * 10) / 10;
+  const weekMiles = aggregateMiles(weekRuns, ctFactors).totalMiles;
+  const totalAllMiles = aggregateMiles(runs, ctFactors).totalMiles;
 
   // Pace zone breakdown for this month (shows when teammate has VDOT set)
   const trainingPaces = athlete.trainingPaces || null;
@@ -77,6 +80,7 @@ export default function TeammateProfile({ athlete, school, onBack }) {
     const combined = { e: 0, m: 0, t: 0, i: 0, r: 0 };
     let hasData = false;
     monthRuns.forEach(r => {
+      if (isCrossTraining(r)) return; // CT has no running pace
       if (r.rawPaceStream?.length > 0) {
         const zones = calcPaceZoneBreakdown(r.rawPaceStream, trainingPaces);
         Object.keys(zones).forEach(k => { combined[k] += zones[k]; });

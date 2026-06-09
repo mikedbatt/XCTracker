@@ -21,6 +21,7 @@
 //     denominators.
 
 import { getRunDate } from './dateUtils';
+import { isCrossTraining } from './activityMiles';
 
 export const ACWR_STATUS = {
   INSUFFICIENT:  'insufficient',
@@ -46,8 +47,11 @@ const LOW_BASELINE_MILES  = 5; // chronic avg under 5 mi/wk → flag as low base
  *   lowBaseline: boolean,
  * }}
  */
-export function calcACWR(runs, reference = new Date()) {
+export function calcACWR(allRuns, reference = new Date()) {
   const now = reference;
+  // ACWR measures RUNNING mechanical load — exclude cross-training entirely
+  // (a bike ride doesn't carry running impact, so it can't spike running risk).
+  const runs = (allRuns || []).filter(r => !isCrossTraining(r));
   const sevenDaysAgo    = new Date(now.getTime() - 7  * 86400000);
   const twentyEightAgo  = new Date(now.getTime() - 28 * 86400000);
 

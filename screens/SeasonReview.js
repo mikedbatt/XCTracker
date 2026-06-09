@@ -13,6 +13,7 @@ import { SPORTS } from './SeasonPlanner';
 import { formatTime } from '../utils/raceUtils';
 import { calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
 import { getMondayISO } from '../utils/dateUtils';
+import { creditForRun, isCrossTraining, DEFAULT_CT_FACTORS } from '../utils/activityMiles';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -34,6 +35,8 @@ export default function SeasonReview({ season, school, userData, athletes = [], 
   const sport = SPORTS[season.sport] || SPORTS.cross_country;
   const seasonStart = new Date(season.seasonStart);
   const seasonEnd = new Date(season.championshipDate);
+  // Cross-training counts as running-equivalent credit miles, not raw miles.
+  const ctFactors = school?.crossTrainingFactors || DEFAULT_CT_FACTORS;
 
   useEffect(() => { loadSeasonData(); }, []);
 
@@ -87,10 +90,11 @@ export default function SeasonReview({ season, school, userData, athletes = [], 
       .sort((a, b) => a.meetDate - b.meetDate);
 
     // By the Numbers
-    const totalMiles = Math.round(allRuns.reduce((s, r) => s + (r.miles || 0), 0) * 10) / 10;
+    const totalMiles = Math.round(allRuns.reduce((s, r) => s + creditForRun(r, ctFactors), 0) * 10) / 10;
     const totalRuns = allRuns.length;
     const runDays = new Set(allRuns.map(r => r.date?.toDate?.()?.toISOString().split('T')[0]).filter(Boolean)).size;
-    const longestRun = allRuns.reduce((max, r) => Math.max(max, r.miles || 0), 0);
+    // Longest RUN — exclude cross-training (a 10-mi bike isn't a long run).
+    const longestRun = allRuns.reduce((max, r) => isCrossTraining(r) ? max : Math.max(max, r.miles || 0), 0);
 
     // Biggest week
     const weekMap = {};
@@ -98,7 +102,7 @@ export default function SeasonReview({ season, school, userData, athletes = [], 
       const d = r.date?.toDate?.();
       if (!d) return;
       const mon = getMondayISO(d);
-      weekMap[mon] = (weekMap[mon] || 0) + (r.miles || 0);
+      weekMap[mon] = (weekMap[mon] || 0) + creditForRun(r, ctFactors);
     });
     const biggestWeek = Math.round(Math.max(...Object.values(weekMap), 0) * 10) / 10;
 
@@ -141,6 +145,7 @@ export default function SeasonReview({ season, school, userData, athletes = [], 
     if (trainingPaces) {
       const combined = { e: 0, m: 0, t: 0, i: 0, r: 0 };
       allRuns.forEach(r => {
+        if (isCrossTraining(r)) return; // CT has no running pace
         if (r.rawPaceStream?.length > 0) {
           const zones = calcPaceZoneBreakdown(r.rawPaceStream, trainingPaces);
           Object.keys(zones).forEach(k => { combined[k] += zones[k]; });
@@ -213,13 +218,13 @@ export default function SeasonReview({ season, school, userData, athletes = [], 
     });
 
     // Team Numbers
-    const teamTotalMiles = Math.round(allRuns.reduce((s, r) => s + (r.miles || 0), 0));
+    const teamTotalMiles = Math.round(allRuns.reduce((s, r) => s + creditForRun(r, ctFactors), 0));
     const teamTotalRuns = allRuns.length;
     const avgPerAthlete = athletes.length > 0 ? Math.round(teamTotalMiles / athletes.length) : 0;
 
     // Most miles athlete
     const milesPerAthlete = {};
-    allRuns.forEach(r => { milesPerAthlete[r.userId] = (milesPerAthlete[r.userId] || 0) + (r.miles || 0); });
+    allRuns.forEach(r => { milesPerAthlete[r.userId] = (milesPerAthlete[r.userId] || 0) + creditForRun(r, ctFactors); });
     const topMilesId = Object.entries(milesPerAthlete).sort((a, b) => b[1] - a[1])[0];
     const topMilesAthlete = topMilesId ? athletes.find(a => a.id === topMilesId[0]) : null;
     const topMilesVal = topMilesId ? Math.round(topMilesId[1]) : 0;

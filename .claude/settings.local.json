@@ -62,7 +62,22 @@
       "Bash(rmdir app/\\\\\\(tabs\\\\\\))",
       "Bash(rm:*)",
       "Bash(rm -f components/ui/icon-symbol.ios.tsx components/ui/icon-symbol.tsx)",
-      "Bash(rmdir components/ui)"
+      "Bash(rmdir components/ui)",
+      "Bash(git log:*)",
+      "Bash(curl:*)",
+      "Bash(sort -t: -k2 -rn)",
+      "Bash(git tag *)",
+      "Bash(git remote *)",
+      "Bash(git checkout *)",
+      "Bash(git config *)",
+      "Bash(git credential *)",
+      "Bash(awk END{print NR} *)",
+      "Bash(git merge *)",
+      "Bash(xargs wc *)",
+      "Bash(sort -k1 -n)",
+      "Bash(xargs -I {} basename {})",
+      "Bash(git branch *)",
+      "Bash(magick -version)"
     ]
   }
 }

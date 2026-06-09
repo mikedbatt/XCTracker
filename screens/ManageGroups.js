@@ -10,6 +10,7 @@ import { SIGNAL } from '../constants/design';
 import { batchDocsByIds } from '../utils/batchDocsByIds';
 import { confirmDestructive } from '../utils/confirmDialog';
 import { formatPace } from '../utils/vdotUtils';
+import { creditForRun } from '../utils/activityMiles';
 
 export default function ManageGroups({ schoolId, athletes, onClose }) {
   const [groups, setGroups] = useState([]);
@@ -71,11 +72,12 @@ export default function ManageGroups({ schoolId, athletes, onClose }) {
     for (const athlete of athletes) {
       const rawRuns = runsByAthlete[athlete.id] || [];
       const runs = rawRuns.map(r => ({ ...r, date: r.date?.toDate?.() }));
-      const w1 = runs.filter(r => r.date && r.date >= week1Start).reduce((s, r) => s + (r.miles || 0), 0);
-      const w2 = runs.filter(r => r.date && r.date >= week2Start && r.date < week1Start).reduce((s, r) => s + (r.miles || 0), 0);
-      const w3 = runs.filter(r => r.date && r.date >= week3Start && r.date < week2Start).reduce((s, r) => s + (r.miles || 0), 0);
+      // Cross-training contributes its credit miles (snapshot), not raw miles.
+      const w1 = runs.filter(r => r.date && r.date >= week1Start).reduce((s, r) => s + creditForRun(r), 0);
+      const w2 = runs.filter(r => r.date && r.date >= week2Start && r.date < week1Start).reduce((s, r) => s + creditForRun(r), 0);
+      const w3 = runs.filter(r => r.date && r.date >= week3Start && r.date < week2Start).reduce((s, r) => s + creditForRun(r), 0);
       const avg3 = Math.round(((w1 + w2 + w3) / 3) * 10) / 10;
-      const last30 = runs.filter(r => r.date && r.date >= oneMonthAgo).reduce((s, r) => s + (r.miles || 0), 0);
+      const last30 = runs.filter(r => r.date && r.date >= oneMonthAgo).reduce((s, r) => s + creditForRun(r), 0);
       stats[athlete.id] = { avg3wk: avg3, last30: Math.round(last30 * 10) / 10 };
     }
     setAthleteStats(stats);

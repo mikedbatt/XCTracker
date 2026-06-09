@@ -19,6 +19,7 @@ import { formatTime, calcPace, formatPace } from '../utils/raceUtils';
 import { PACE_ZONES, calcPaceZoneBreakdown, calcPaceZoneSecondsForRun, calcPace8020 } from '../utils/vdotUtils';
 import { getMondayISO, getRunDate, groupRunsByWeek } from '../utils/dateUtils';
 import { computeOvertraining } from '../utils/overtrainingUtils';
+import { aggregateMiles, isCrossTraining, DEFAULT_CT_FACTORS } from '../utils/activityMiles';
 
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -82,12 +83,14 @@ export default function AthleteAnalytics({ userData, school, myGroup, onClose })
         : {});
   const weeklyRunData = groupRunsByWeek(allRuns);
   const currentMonday = getMondayISO(new Date());
+  // Cross-training contributes credit miles (counts toward the weekly target).
+  const ctFactors = school?.crossTrainingFactors || DEFAULT_CT_FACTORS;
 
   const volumeWeeks = Object.keys(volumePlan).sort().map(mon => ({
     monday: mon,
     target: volumePlan[mon] || 0,
     actual: weeklyRunData[mon]
-      ? Math.round(weeklyRunData[mon].reduce((s, r) => s + (r.miles || 0), 0) * 10) / 10
+      ? aggregateMiles(weeklyRunData[mon], ctFactors).totalMiles
       : (mon <= currentMonday ? 0 : null), // null = future
     isCurrent: mon === currentMonday,
     isPast: mon < currentMonday,
@@ -112,7 +115,7 @@ export default function AthleteAnalytics({ userData, school, myGroup, onClose })
       priorWeeks.push({
         monday: mondayISO,
         target: null,
-        actual: wRuns ? Math.round(wRuns.reduce((s, r) => s + (r.miles || 0), 0) * 10) / 10 : 0,
+        actual: wRuns ? aggregateMiles(wRuns, ctFactors).totalMiles : 0,
         isCurrent: false,
         isPast: true,
         isPriorSeason: true,
@@ -138,7 +141,7 @@ export default function AthleteAnalytics({ userData, school, myGroup, onClose })
       monday.setDate(thisMon.getDate() - 7 * i);
       const mondayISO = monday.toISOString().split('T')[0];
       const wRuns = weeklyRunData[mondayISO] || [];
-      const actual = Math.round(wRuns.reduce((s, r) => s + (r.miles || 0), 0) * 10) / 10;
+      const actual = aggregateMiles(wRuns, ctFactors).totalMiles;
       const target = volumePlan[mondayISO] || myGroup?.weeklyMilesTarget || 0;
       weeks.push({ monday: mondayISO, actual, target });
     }
@@ -189,6 +192,7 @@ export default function AthleteAnalytics({ userData, school, myGroup, onClose })
   if (trainingPaces) {
     const combined = { e: 0, m: 0, t: 0, i: 0, r: 0 };
     recentRuns.forEach(r => {
+      if (isCrossTraining(r)) return; // CT has no running pace
       const zones = calcPaceZoneSecondsForRun(r, trainingPaces);
       if (zones) Object.keys(zones).forEach(k => { combined[k] += zones[k]; });
     });
@@ -212,6 +216,7 @@ export default function AthleteAnalytics({ userData, school, myGroup, onClose })
       const comb = { e: 0, m: 0, t: 0, i: 0, r: 0 };
       let hasData = false;
       wRuns.forEach(r => {
+        if (isCrossTraining(r)) return; // CT has no running pace
         const zones = calcPaceZoneSecondsForRun(r, trainingPaces);
         if (zones) {
           Object.keys(zones).forEach(k => { comb[k] += zones[k]; });
@@ -238,6 +243,7 @@ export default function AthleteAnalytics({ userData, school, myGroup, onClose })
       const comb = { e: 0, m: 0, t: 0, i: 0, r: 0 };
       let hasData = false;
       wRuns.forEach(r => {
+        if (isCrossTraining(r)) return; // CT has no running pace
         if (r.rawPaceStream?.length > 0) {
           const zones = calcPaceZoneBreakdown(r.rawPaceStream, trainingPaces);
           Object.keys(zones).forEach(k => { comb[k] += zones[k]; });
