@@ -1121,6 +1121,34 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
             </View>
             <View style={styles.sectionBody}>
               {upcomingWorkouts.slice(0, 2).map(workout => {
+                // If a coach modification covers this day, replace the group
+                // workout with the modified one (cross-training or rest).
+                const wDate = workout.date?.toDate?.();
+                const ov = (myOverride && wDate && (() => {
+                  const iso = toLocalISODate(wDate);
+                  return myOverride.startDate <= iso && iso <= myOverride.endDate;
+                })()) ? myOverride : null;
+                if (ov) {
+                  const isRest = ov.type === 'rest';
+                  const oc = isRest ? SIGNAL.color.mute : SIGNAL.color.cyan;
+                  const dLabel = wDate?.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                  return (
+                    <View key={workout.id} style={[styles.workoutCard, { borderLeftColor: oc, borderLeftWidth: 3 }]}>
+                      <View style={[styles.workoutChip, { backgroundColor: `${oc}${SIGNAL.tint.chip}` }]}>
+                        <View style={[styles.workoutChipDot, { backgroundColor: oc }]} />
+                        <Text style={[styles.workoutChipText, { color: oc }]}>{isRest ? 'Rest' : 'Cross Train'}</Text>
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.workoutTitle}>{isRest ? 'No workout — rest (coach)' : 'Cross-training (coach)'}</Text>
+                        {(dLabel || ov.note) && (
+                          <Text style={styles.workoutMeta} numberOfLines={1}>
+                            {dLabel}{dLabel && ov.note ? ' · ' : ''}{ov.note || ''}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                  );
+                }
                 const c = SIGNAL_TYPE_COLORS[workout.type] || TYPE_COLORS[workout.type] || SIGNAL.color.indigo;
                 const wkMiles = myGroup && workout.groupMiles?.[myGroup.id]
                   ? workout.groupMiles[myGroup.id]

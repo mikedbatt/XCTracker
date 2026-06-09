@@ -878,10 +878,12 @@ export default function CoachDashboard({ userData }) {
 
   // Injury / illness alert
   const injuredAthletes = athletes.filter(a => overtTrainingAlerts[a.id]?.todayInjury || overtTrainingAlerts[a.id]?.todayIllness);
-  // Injured athletes whose workout the coach has already modified drop into a
-  // "managed" list so the coach can see who still needs attention.
+  // "Managed" = every athlete with an active coach workout modification (they
+  // stay visible here until the modification ends, even if their injury
+  // check-in ages out). "Needs attention" = reporting injury, not yet modified.
+  const managedInjured = athletes.filter(a => activeOverrides[a.id]);
   const needsAttentionInjured = injuredAthletes.filter(a => !activeOverrides[a.id]);
-  const managedInjured = injuredAthletes.filter(a => activeOverrides[a.id]);
+  const showInjuryCard = needsAttentionInjured.length > 0 || managedInjured.length > 0;
   const injuryStatus = injuredAthletes.length > 0 ? 'alert' : 'ok';
   const injuryGradient = injuryStatus === 'alert'
     ? [SIGNAL.color.coral, SIGNAL.color.effort10]
@@ -1382,7 +1384,7 @@ export default function CoachDashboard({ userData }) {
           ) : null}
 
           {/* Injury / Illness alert */}
-          {injuredAthletes.length > 0 && (() => {
+          {showInjuryCard && (() => {
             const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
             const formatWhen = (d) => {
               if (!d) return '';
@@ -1405,6 +1407,7 @@ export default function CoachDashboard({ userData }) {
                       {needsAttentionInjured.length > 0
                         ? `${needsAttentionInjured.length} reporting injury or illness`
                         : 'Injuries — all managed'}
+                      {managedInjured.length > 0 ? <Text style={styles.managedCount}>  ·  {managedInjured.length} managed</Text> : null}
                     </Text>
                   </View>
                   <Ionicons name={injuryCardExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={SIGNAL.color.coral} />
@@ -2547,6 +2550,11 @@ const styles = StyleSheet.create({
     color: SIGNAL.color.cyan,
     marginTop: 14,
     marginBottom: 4,
+  },
+  managedCount: {
+    fontFamily: SIGNAL.font.bodyMedium,
+    fontSize: 12,
+    color: SIGNAL.color.cyan,
   },
 
   // ── Weekly check-in card ───────────────────────────────────────────────────

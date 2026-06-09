@@ -1,4 +1,4 @@
-import { addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, updateDoc, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, updateDoc, where } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -37,6 +37,7 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
   const [runDetailVisible, setRunDetailVisible] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedItems, setSelectedItems] = useState([]);
+  const [myOverride, setMyOverride] = useState(null); // athlete's active workout modification
   const [loading, setLoading] = useState(true);
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -59,6 +60,8 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
   const [groupAdjustments, setGroupAdjustments] = useState({});
   const primaryColor = school?.primaryColor || BRAND;
   const isCoach = userData.role === 'admin_coach' || userData.role === 'assistant_coach';
+  // True when the athlete's coach modification covers this ISO date.
+  const overrideCovers = (iso) => !!myOverride && myOverride.startDate <= iso && iso <= myOverride.endDate;
 
   // Signal: resolve workout-type color with Signal palette first, fallback to legacy, then indigo.
   const typeColor = (t) => SIGNAL_TYPE_COLORS[t] || TYPE_COLORS[t] || SIGNAL.color.indigo;
@@ -151,6 +154,28 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
         } catch (e) { console.warn('Runs for calendar:', e); }
       }
 
+      // Athlete's active coach workout modification — mark covered days and
+      // store it so day detail can replace the group workout.
+      if (isAthlete && !externalAthleteRuns) {
+        try {
+          const ovSnap = await getDoc(doc(db, 'workoutOverrides', auth.currentUser.uid));
+          const todayISO = toLocalISODate(new Date());
+          const o = ovSnap.exists() ? ovSnap.data() : null;
+          const active = o && o.endDate && o.endDate >= todayISO ? o : null;
+          setMyOverride(active);
+          if (active) {
+            const cur = new Date(active.startDate + 'T12:00:00');
+            const end = new Date(active.endDate + 'T12:00:00');
+            while (cur <= end) {
+              const key = toLocalISODate(cur);
+              if (!marks[key]) marks[key] = { dots: [], marked: true };
+              if (marks[key].dots.length < 3) marks[key].dots.push({ key: `ov_${key}`, color: SIGNAL.color.cyan });
+              cur.setDate(cur.getDate() + 1);
+            }
+          }
+        } catch (e) { console.warn('Override for calendar:', e); }
+      }
+
       setMarkedDates(marks);
     } catch (e) { console.error('Calendar load:', e); }
     setLoading(false);
@@ -158,9 +183,13 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
 
   const handleDayPress = (day) => {
     setSelectedDate(day.dateString);
+    const covered = overrideCovers(day.dateString);
     setSelectedItems(allItems.filter(item => {
       const d = item.date?.toDate?.();
-      return d && toLocalISODate(d) === day.dateString;
+      if (!(d && toLocalISODate(d) === day.dateString)) return false;
+      // On a coach-modified day, hide the group Training workout — it's replaced.
+      if (covered && (item.category || 'Training') === 'Training') return false;
+      return true;
     }));
     // Also find any runs logged on this day (for athletes)
     setSelectedRuns(athleteRuns.filter(run => {
@@ -390,7 +419,22 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
               <Text style={styles.eyebrow}>
                 {new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
               </Text>
-              {selectedItems.length === 0 ? (
+              {/* Coach workout modification — replaces the group workout this day */}
+              {overrideCovers(selectedDate) && (
+                <View style={[styles.workoutCard, { borderLeftWidth: 3, borderLeftColor: SIGNAL.color.cyan }]}>
+                  <View style={[styles.typePill, { backgroundColor: `${SIGNAL.color.cyan}${SIGNAL.tint.chip}` }]}>
+                    <View style={[styles.typePillDot, { backgroundColor: SIGNAL.color.cyan }]} />
+                    <Text style={[styles.typePillText, { color: SIGNAL.color.cyan }]}>{myOverride.type === 'rest' ? 'Rest' : 'Cross Train'}</Text>
+                  </View>
+                  <View style={styles.workoutInfo}>
+                    <Text style={styles.workoutTitle} numberOfLines={1}>
+                      {myOverride.type === 'rest' ? 'No workout — rest (coach)' : 'Cross-training (coach)'}
+                    </Text>
+                    {myOverride.note && <Text style={styles.workoutDesc} numberOfLines={2}>{myOverride.note}</Text>}
+                  </View>
+                </View>
+              )}
+              {selectedItems.length === 0 && !overrideCovers(selectedDate) ? (
                 <View style={styles.emptyCard}>
                   <Text style={styles.emptyText}>No items on this day.</Text>
                   {isCoach && (

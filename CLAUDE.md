@@ -149,7 +149,11 @@ stravaConfig.js   # Strava OAuth + activity sync (client side)
   `endDate >= todayISO`) from `AthleteDetailScreen` ("Modify workout"). Injured
   athletes with an active override move to a "Managed" list on CoachDashboard's
   injury card; a `rest` override suppresses the under-target compliance flag.
-  Athletes see their modification on AthleteDashboard.
+  Within the override range the athlete's **scheduled group workout is replaced**
+  by the modification on both their dashboard upcoming-workouts and the calendar
+  (CalendarScreen marks the days + swaps the day-detail item). The "Managed" list
+  shows every athlete with an active override (even after their injury check-in
+  ages out).
 - `utils/confirmDialog.js` — `confirmDestructive({title, message, confirmLabel,
   onConfirm})`. **Use this instead of `Alert.alert([...buttons])`** — the
   multi-button native Alert is broken on web (collapses to OK-only via
