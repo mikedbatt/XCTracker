@@ -118,7 +118,7 @@ export const PACE_ZONES = [
   { key: 'r', name: 'Repetition', color: '#9c27b0', short: 'R' },
   { key: 'i', name: 'Interval',   color: '#e91e63', short: 'I' },
   { key: 't', name: 'Threshold',  color: '#ff9800', short: 'T' },
-  { key: 'm', name: 'Marathon',   color: '#2196f3', short: 'M' },
+  { key: 'm', name: 'Moderate',   color: '#2196f3', short: 'M' },
   { key: 'e', name: 'Easy',       color: '#4caf50', short: 'E' },
 ];
 

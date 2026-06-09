@@ -305,7 +305,7 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
   // Pace zone rows — color-keyed indicator + label + pace value
   const paceRows = vdotPaces ? [
     { key: 'E', name: 'Easy',      pace: `${formatPace(vdotPaces.eLow)} – ${formatPace(vdotPaces.eHigh)}`, color: SIGNAL.color.lime },
-    { key: 'M', name: 'Marathon',  pace: formatPace(vdotPaces.m),                                          color: SIGNAL.color.emerald },
+    { key: 'M', name: 'Moderate',  pace: formatPace(vdotPaces.m),                                          color: SIGNAL.color.emerald },
     { key: 'T', name: 'Threshold', pace: formatPace(vdotPaces.t),                                          color: SIGNAL.color.amber },
     { key: 'I', name: 'Interval',  pace: formatPace(vdotPaces.i),                                          color: SIGNAL.color.coral },
     { key: 'R', name: 'Rep',       pace: formatPace(vdotPaces.r),                                          color: SIGNAL.color.violet },
