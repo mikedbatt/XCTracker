@@ -460,15 +460,12 @@ export default function AthleteDetailScreen({ athlete, school, groups, onBack, p
             </View>
           )}
 
-          {/* Coach action bar (Message + Modify workout) */}
+          {/* Coach action bar (Modify workout) */}
           {!parentMode && (
             <>
               <View style={styles.actionBar}>
-                <TouchableOpacity style={styles.primaryBtn} activeOpacity={0.85}>
-                  <Text style={styles.primaryBtnText}>Message</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.outlineBtn} activeOpacity={0.85} onPress={() => setModifyVisible(true)}>
-                  <Text style={styles.outlineBtnText}>Modify workout</Text>
+                <TouchableOpacity style={styles.primaryBtn} activeOpacity={0.85} onPress={() => setModifyVisible(true)}>
+                  <Text style={styles.primaryBtnText}>Modify workout</Text>
                 </TouchableOpacity>
               </View>
               {override && (
