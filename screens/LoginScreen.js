@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 import { SIGNAL } from '../constants/design';
+import { confirmDestructive } from '../utils/confirmDialog';
 import { PRIVACY_URL, TERMS_URL } from '../constants/legal';
 
 const ROLES = [
@@ -201,25 +202,23 @@ export default function LoginScreen({ onAuthSuccess }) {
       Alert.alert('Enter your email', 'Type your email address above first, then tap Forgot Password.');
       return;
     }
-    Alert.alert(
-      'Reset password?',
-      `Send a reset link to ${email}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Send reset link', onPress: async () => {
-          try {
-            await sendPasswordResetEmail(auth, email);
-            Alert.alert('Email sent', `Check ${email} for a password reset link. Check your spam folder if you don't see it.`);
-          } catch (error) {
-            if (error.code === 'auth/user-not-found') {
-              Alert.alert('Not found', 'No account found with that email address.');
-            } else {
-              Alert.alert('Error', 'Could not send reset email. Please try again.');
-            }
+    confirmDestructive({
+      title: 'Reset password?',
+      message: `Send a reset link to ${email}?`,
+      confirmLabel: 'Send reset link',
+      onConfirm: async () => {
+        try {
+          await sendPasswordResetEmail(auth, email);
+          Alert.alert('Email sent', `Check ${email} for a password reset link. Check your spam folder if you don't see it.`);
+        } catch (error) {
+          if (error.code === 'auth/user-not-found') {
+            Alert.alert('Not found', 'No account found with that email address.');
+          } else {
+            Alert.alert('Error', 'Could not send reset email. Please try again.');
           }
-        }},
-      ]
-    );
+        }
+      },
+    });
   };
 
   const age = calculateAge();

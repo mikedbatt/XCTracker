@@ -56,6 +56,9 @@ export default function CoachSetupScreen({ onSetupComplete }) {
   const [timezone, setTimezone] = useState(detectDefaultTimezone());
   const [loading, setLoading] = useState(false);
   const [focusedField, setFocusedField] = useState(null);
+  // Set on success → shows the join-code success screen. (Don't use Alert with
+  // buttons for this — its onPress is dropped on web, stranding the coach.)
+  const [createdCode, setCreatedCode] = useState(null);
 
   const handleCreateSchool = async () => {
     if (!schoolName || !city || !state) {
@@ -99,11 +102,7 @@ export default function CoachSetupScreen({ onSetupComplete }) {
         coachRole: 'admin',
       });
 
-      Alert.alert(
-        'School Created!',
-        `Your join code is: ${joinCode}\n\nShare this with your athletes so they can find and join your program.`,
-        [{ text: 'Got it!', onPress: () => onSetupComplete && onSetupComplete() }]
-      );
+      setCreatedCode(joinCode);
     } catch (error) {
       Alert.alert('Error', 'Could not create school. Please try again.');
       console.error(error);
@@ -116,6 +115,33 @@ export default function CoachSetupScreen({ onSetupComplete }) {
     styles.input,
     focusedField === field && styles.inputFocused,
   ];
+
+  // Success screen — shown once the school is created. Displays the join code to
+  // share with athletes and an explicit way into the dashboard.
+  if (createdCode) {
+    return (
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <Text style={styles.eyebrow}>Coach setup</Text>
+          <Text style={styles.title}>Your team is ready 🎉</Text>
+          <Text style={styles.subtitle}>Share this join code so athletes can find and join your program.</Text>
+        </View>
+        <View style={styles.card}>
+          <Text style={styles.successCodeLabel}>JOIN CODE</Text>
+          <Text style={styles.successCode}>{createdCode}</Text>
+          <Text style={styles.successHint}>
+            You can always find it later under Profile → School info.
+          </Text>
+          <TouchableOpacity
+            style={styles.successButton}
+            onPress={() => onSetupComplete && onSetupComplete()}
+          >
+            <Text style={styles.successButtonText}>Go to my dashboard</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -362,6 +388,43 @@ const styles = StyleSheet.create({
     padding: SIGNAL.space.card,
     marginBottom: SIGNAL.space[5],
     ...SIGNAL.border.hairline,
+  },
+
+  // ── Success state ───────────────────────────────────────────────────────
+  successCodeLabel: {
+    ...SIGNAL.style.eyebrow,
+    textAlign: 'center',
+    marginBottom: SIGNAL.space[2],
+  },
+  successCode: {
+    fontFamily: SIGNAL.font.mono,
+    fontSize: 34,
+    letterSpacing: 8,
+    color: SIGNAL.color.indigo,
+    textAlign: 'center',
+    marginBottom: SIGNAL.space[4],
+  },
+  successHint: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 13,
+    color: SIGNAL.color.mute,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: SIGNAL.space[6],
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  successButton: {
+    backgroundColor: SIGNAL.color.indigo,
+    borderRadius: SIGNAL.radius.button,
+    paddingVertical: SIGNAL.space[5],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successButtonText: {
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 15,
+    color: SIGNAL.color.white,
+    letterSpacing: SIGNAL.letter.bodyTight,
   },
   sectionTitle: {
     fontFamily: SIGNAL.font.bodySemi,

@@ -127,14 +127,13 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
       if (prevSameSport) {
         // Offer to import
         const doImport = await new Promise(resolve => {
-          Alert.alert(
-            'Import from previous season?',
-            `Would you like to import the peak mileage plan from ${prevSameSport.name} as a starting point?`,
-            [
-              { text: 'Start fresh', onPress: () => resolve(false) },
-              { text: 'Import', onPress: () => resolve(true) },
-            ]
-          );
+          confirmDestructive({
+            title: 'Import from previous season?',
+            message: `Would you like to import the peak mileage plan from ${prevSameSport.name} as a starting point?`,
+            confirmLabel: 'Import',
+            onConfirm: () => resolve(true),
+            onCancel: () => resolve(false),
+          });
         });
         if (doImport) {
           newSeason.peakMileage = { ...prevSameSport.peakMileage };
@@ -242,26 +241,24 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
       Alert.alert('Set peak mileage', 'Set a championship week peak for at least one group first.');
       return;
     }
-    Alert.alert(
-      'Generate Volume Plan?',
-      `Auto-fill weekly targets for ${groupsWithPeak.length} group${groupsWithPeak.length > 1 ? 's' : ''} based on peak mileage and training phases.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Generate', onPress: async () => {
-          for (const g of groupsWithPeak) {
-            const peak = s.peakMileage[g.id];
-            const starting = s.startingMileage?.[g.id] || null;
-            const curve = generateVolumeCurve(s, peak, starting);
-            const plans = { ...(g.seasonPlans || {}), [key]: curve };
-            try {
-              await updateDoc(doc(db, 'groups', g.id), { seasonPlans: plans });
-            } catch (e) { console.warn('Failed to save volume plan:', e); }
-          }
-          await reloadGroups();
-          Alert.alert('Done', `Volume plan generated for ${groupsWithPeak.length} group${groupsWithPeak.length > 1 ? 's' : ''}.`);
-        }},
-      ]
-    );
+    confirmDestructive({
+      title: 'Generate Volume Plan?',
+      message: `Auto-fill weekly targets for ${groupsWithPeak.length} group${groupsWithPeak.length > 1 ? 's' : ''} based on peak mileage and training phases.`,
+      confirmLabel: 'Generate',
+      onConfirm: async () => {
+        for (const g of groupsWithPeak) {
+          const peak = s.peakMileage[g.id];
+          const starting = s.startingMileage?.[g.id] || null;
+          const curve = generateVolumeCurve(s, peak, starting);
+          const plans = { ...(g.seasonPlans || {}), [key]: curve };
+          try {
+            await updateDoc(doc(db, 'groups', g.id), { seasonPlans: plans });
+          } catch (e) { console.warn('Failed to save volume plan:', e); }
+        }
+        await reloadGroups();
+        Alert.alert('Done', `Volume plan generated for ${groupsWithPeak.length} group${groupsWithPeak.length > 1 ? 's' : ''}.`);
+      },
+    });
   };
 
   const handleVolumeSave = async (groupId, sKey, weekISO, value) => {

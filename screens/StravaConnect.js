@@ -20,6 +20,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../firebaseConfig';
 import { BRAND, SIGNAL, STRAVA_ORANGE } from '../constants/design';
+import { confirmDestructive } from '../utils/confirmDialog';
 import {
   STRAVA_CONFIG,
   backfillStravaRuns,
@@ -297,27 +298,25 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
   };
 
   const handleDisconnect = () => {
-    Alert.alert(
-      'Disconnect Strava?',
-      'Your existing runs will remain. You can reconnect at any time.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Disconnect', style: 'destructive', onPress: async () => {
-          await updateDoc(doc(db, 'users', auth.currentUser.uid), {
-            stravaAccessToken:  null,
-            stravaRefreshToken: null,
-            stravaTokenExpiry:  null,
-            stravaAthleteId:    null,
-            stravaAthlete:      null,
-            stravaLastSync:     null,
-          });
-          setStravaLinked(false);
-          setStravaAthlete(null);
-          setLastSyncDate(null);
-          setSyncResult(null);
-        }},
-      ]
-    );
+    confirmDestructive({
+      title: 'Disconnect Strava?',
+      message: 'Your existing runs will remain. You can reconnect at any time.',
+      confirmLabel: 'Disconnect',
+      onConfirm: async () => {
+        await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+          stravaAccessToken:  null,
+          stravaRefreshToken: null,
+          stravaTokenExpiry:  null,
+          stravaAthleteId:    null,
+          stravaAthlete:      null,
+          stravaLastSync:     null,
+        });
+        setStravaLinked(false);
+        setStravaAthlete(null);
+        setLastSyncDate(null);
+        setSyncResult(null);
+      },
+    });
   };
 
   if (loading) {

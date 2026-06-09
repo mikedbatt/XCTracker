@@ -254,14 +254,12 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
               <TouchableOpacity
                 activeOpacity={0.85}
                 onLongPress={() => {
-                  Alert.alert(
-                    'Save image',
-                    'Save this image to your camera roll?',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      { text: 'Save', onPress: () => handleSaveImage(post.imageUrl) },
-                    ]
-                  );
+                  confirmDestructive({
+                    title: 'Save image',
+                    message: 'Save this image to your camera roll?',
+                    confirmLabel: 'Save',
+                    onConfirm: () => handleSaveImage(post.imageUrl),
+                  });
                 }}
               >
                 <Image source={{ uri: post.imageUrl }} style={styles.bubbleImage} resizeMode="cover" />
@@ -304,14 +302,12 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
             <TouchableOpacity
               activeOpacity={0.85}
               onLongPress={() => {
-                Alert.alert(
-                  'Save image',
-                  'Save this image to your camera roll?',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Save', onPress: () => handleSaveImage(post.imageUrl) },
-                  ]
-                );
+                confirmDestructive({
+                  title: 'Save image',
+                  message: 'Save this image to your camera roll?',
+                  confirmLabel: 'Save',
+                  onConfirm: () => handleSaveImage(post.imageUrl),
+                });
               }}
             >
               <Image source={{ uri: post.imageUrl }} style={styles.bubbleImage} resizeMode="cover" />

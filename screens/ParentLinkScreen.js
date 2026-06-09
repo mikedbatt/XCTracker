@@ -14,6 +14,9 @@ export default function ParentLinkScreen({ onLinkComplete }) {
   const [athleteEmail, setAthleteEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [foundAthlete, setFoundAthlete] = useState(null);
+  // Set on success → shows the linked confirmation. (Not an Alert with a button:
+  // its onPress is dropped on web, stranding the parent on this screen.)
+  const [linked, setLinked] = useState(false);
 
   const handleFindAthlete = async () => {
     if (!athleteEmail) {
@@ -54,16 +57,39 @@ export default function ParentLinkScreen({ onLinkComplete }) {
         linkedParentIds: arrayUnion(user.uid),
       });
 
-      Alert.alert(
-        'Linked!',
-        `You're now connected to ${foundAthlete.firstName}'s training. You can view their miles, schedule, and recent runs.`,
-        [{ text: 'Got it!', onPress: () => onLinkComplete && onLinkComplete() }]
-      );
+      setLinked(true);
     } catch (error) {
       Alert.alert('Error', 'Could not link accounts. Please try again.');
     }
     setLoading(false);
   };
+
+  // Success screen — shown after linking. Confirms the connection and gives an
+  // explicit way forward (works on web and native).
+  if (linked) {
+    return (
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <Text style={styles.title}>You're linked</Text>
+          <Text style={styles.subtitle}>Connected to your athlete</Text>
+        </View>
+        <View style={styles.card}>
+          <Text style={styles.successTitle}>
+            You're now connected to {foundAthlete?.firstName}'s training 🎉
+          </Text>
+          <Text style={styles.successBody}>
+            You can view their miles, schedule, and recent runs from your dashboard.
+          </Text>
+          <TouchableOpacity
+            style={styles.successButton}
+            onPress={() => onLinkComplete && onLinkComplete()}
+          >
+            <Text style={styles.successButtonText}>Go to my dashboard</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -199,6 +225,37 @@ const styles = StyleSheet.create({
     padding: SIGNAL.space.card,
     marginBottom: SIGNAL.space[5],
     ...SIGNAL.border.hairline,
+  },
+
+  // ── Success state ───────────────────────────────────────────────────────
+  successTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 18,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+    lineHeight: 24,
+    marginBottom: SIGNAL.space[3],
+  },
+  successBody: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 14,
+    color: SIGNAL.color.mute,
+    lineHeight: 20,
+    letterSpacing: SIGNAL.letter.bodyTight,
+    marginBottom: SIGNAL.space[6],
+  },
+  successButton: {
+    backgroundColor: SIGNAL.color.indigo,
+    borderRadius: SIGNAL.radius.button,
+    paddingVertical: SIGNAL.space[5],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successButtonText: {
+    fontFamily: SIGNAL.font.bodyBold,
+    fontSize: 15,
+    color: SIGNAL.color.white,
+    letterSpacing: SIGNAL.letter.bodyTight,
   },
   sectionTitle: {
     fontFamily: SIGNAL.font.bodySemi,

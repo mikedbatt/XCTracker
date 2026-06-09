@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 import { bottomInset } from '../utils/safeArea';
+import { confirmDestructive } from '../utils/confirmDialog';
 import { SIGNAL } from '../constants/design';
 import { CATEGORIES, SIGNAL_TYPE_COLORS, TYPE_COLORS, WORKOUT_INTENSITY } from '../constants/training';
 import { getPhaseForSeason } from './SeasonPlanner';
@@ -426,9 +427,14 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
       return;
     }
 
-    Alert.alert('Push to Calendar?', `${filledSlots.length} workout${filledSlots.length > 1 ? 's' : ''} for the week of ${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Push', onPress: async () => {
+    // confirmDestructive (not Alert.alert with buttons) — the multi-button Alert
+    // is dropped on react-native-web, so the "Push" onPress never fired on the
+    // PWA and the button appeared to do nothing.
+    confirmDestructive({
+      title: 'Push to Calendar?',
+      message: `${filledSlots.length} workout${filledSlots.length > 1 ? 's' : ''} for the week of ${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+      confirmLabel: 'Push',
+      onConfirm: async () => {
         setSaving(true);
         try {
           // Delete existing planner events for this week
@@ -484,8 +490,8 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
           Alert.alert('Error', 'Could not push to calendar. Please try again.');
         }
         setSaving(false);
-      }},
-    ]);
+      },
+    });
   };
 
   const weekLabel = `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${new Date(weekStart.getTime() + 6 * 86400000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;

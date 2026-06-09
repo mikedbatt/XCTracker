@@ -24,6 +24,7 @@ export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
   const [joinCode, setJoinCode] = useState('');
   const [selectedSchool, setSelectedSchool] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [requestSent, setRequestSent] = useState(false);
 
   // Look up the head coach (admin_coach) for a school so the post-code-entry
   // confirmation card can show "Coach: Jane Doe" — helps the athlete verify
@@ -86,16 +87,43 @@ export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
         pendingAthleteIds: arrayUnion(user.uid),
       });
 
-      Alert.alert(
-        'Request Sent!',
-        `Your request to join ${school.name} has been sent to the coach. You'll be notified when approved!\n\nIn the meantime, you can start logging your runs.`,
-        [{ text: 'Start Logging!', onPress: () => onJoinComplete && onJoinComplete() }]
-      );
+      // Show an in-app success state (NOT Alert.alert with buttons — the button
+      // array is dropped on react-native-web, so the navigation onPress would
+      // never fire and the user would be stranded with no confirmation).
+      setRequestSent(true);
     } catch (error) {
       Alert.alert('Error', 'Could not send join request. Please try again.');
     }
     setLoading(false);
   };
+
+  // Success screen — shown after a request is sent. Gives clear confirmation and
+  // an explicit way forward (works on web and native).
+  if (requestSent) {
+    return (
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Request sent</Text>
+          <Text style={styles.subtitle}>You're almost in</Text>
+        </View>
+        <View style={styles.card}>
+          <Text style={styles.successTitle}>
+            Your request to join {selectedSchool?.name} is on its way 🎉
+          </Text>
+          <Text style={styles.successBody}>
+            Your coach will approve you shortly — you'll get full team access once
+            they do. In the meantime, you can start logging your runs.
+          </Text>
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={() => onJoinComplete && onJoinComplete()}
+          >
+            <Text style={styles.primaryButtonText}>Go to my dashboard</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -255,6 +283,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: SIGNAL.color.line,
     padding: SIGNAL.space[7],
+  },
+
+  // ── Success state ───────────────────────────────────────────────────────
+  successTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 18,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+    lineHeight: 24,
+    marginBottom: SIGNAL.space[3],
+  },
+  successBody: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 14,
+    color: SIGNAL.color.mute,
+    lineHeight: 20,
+    letterSpacing: SIGNAL.letter.bodyTight,
+    marginBottom: SIGNAL.space[6],
   },
 
   // ── Join code input (mono, large, centered) ─────────────────────────────
