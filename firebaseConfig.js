@@ -38,6 +38,11 @@ function initDb() {
   try {
     return initializeFirestore(app, {
       localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+      // Auto-detect long-polling. The default WebChannel streaming transport can
+      // hang ~30s before falling back on mobile/school/proxy networks that block
+      // it — which shows up as a very slow first dashboard load. Auto-detect
+      // picks the working transport up front so the first query connects fast.
+      experimentalAutoDetectLongPolling: true,
     });
   } catch (e) {
     console.warn('Firestore persistent cache unavailable, using default:', e);

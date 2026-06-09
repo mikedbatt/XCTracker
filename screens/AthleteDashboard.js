@@ -215,7 +215,12 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
     try {
       const user = auth.currentUser;
 
-      // Phase 1: parallelize the user doc with the school doc (neither depends on the other).
+      // ── Critical path: the athlete's OWN data drives first paint. We await
+      // only these reads, then clear the spinner; everything else (team
+      // leaderboard, feed badge, prompts) loads in the background below so a
+      // slow/large team query can't hold the whole dashboard hostage. ──
+
+      // Phase 1: user doc + school doc in parallel (neither depends on the other).
       const [userDoc, schoolDoc] = await Promise.all([
         getDoc(doc(db, 'users', user.uid)),
         userData.schoolId
@@ -225,45 +230,49 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
 
       let currentSchool = school;
       if (schoolDoc?.exists()) { currentSchool = schoolDoc.data(); setSchool(currentSchool); }
-
       const userDocData = userDoc.exists() ? userDoc.data() : null;
-
-      // Phase 2: group lookup is sequential — needs groupId from the user doc above.
-      let loadedGroup = null;
-      if (userData.schoolId && userDocData) {
-        try {
-          const groupId = userDocData.groupId;
-          if (groupId) {
-            const groupDoc = await getDoc(doc(db, 'groups', groupId));
-            if (groupDoc.exists()) {
-              loadedGroup = { id: groupDoc.id, ...groupDoc.data() };
-              setMyGroup(loadedGroup);
-              // Use week-specific plan target, fall back to default
-              const now = new Date();
-              const d = now.getDay();
-              const mon = new Date(now);
-              mon.setDate(now.getDate() - (d === 0 ? 6 : d - 1));
-              const mondayISO = mon.toISOString().split('T')[0];
-              const weekTarget = loadedGroup.weeklyPlan?.[mondayISO] ?? loadedGroup.weeklyMilesTarget;
-              // null = coach hasn't set a target; hero card shows a clean
-              // "no target" state rather than a fabricated goal.
-              setWeeklyTarget(weekTarget ?? null);
-            }
-          } else {
-            setMyGroup(null);
-            setWeeklyTarget(null);
-          }
-        } catch (e) { console.warn('Failed to load athlete group:', e); }
-      }
 
       const activeSeason = getActiveSeason(currentSchool);
       const { start: startDate, end: endDate } = getDateRange(selectedTimeframe, activeSeason, customStart, customEnd);
+      const weekStart = getWeekStart();
 
       const runsQuery = startDate
         ? query(collection(db, 'runs'), where('userId', '==', user.uid), where('date', '>=', startDate), orderBy('date', 'desc'), limit(200))
         : query(collection(db, 'runs'), where('userId', '==', user.uid), orderBy('date', 'desc'), limit(200));
 
-      const runsSnap = await getDocs(runsQuery);
+      // Phase 2: group, this-timeframe runs, and this-week runs are independent —
+      // fetch them in parallel instead of three sequential round-trips.
+      const groupId = userDocData?.groupId;
+      const [groupDoc, runsSnap, weekRunsSnap] = await Promise.all([
+        (userData.schoolId && groupId)
+          ? getDoc(doc(db, 'groups', groupId)).catch(() => null)
+          : Promise.resolve(null),
+        getDocs(runsQuery),
+        getDocs(query(
+          collection(db, 'runs'), where('userId', '==', user.uid),
+          where('date', '>=', weekStart), orderBy('date', 'desc')
+        )).catch(() => null),
+      ]);
+
+      // Group → weekly target
+      if (groupDoc && groupDoc.exists && groupDoc.exists()) {
+        const loadedGroup = { id: groupDoc.id, ...groupDoc.data() };
+        setMyGroup(loadedGroup);
+        const now = new Date();
+        const d = now.getDay();
+        const mon = new Date(now);
+        mon.setDate(now.getDate() - (d === 0 ? 6 : d - 1));
+        const mondayISO = mon.toISOString().split('T')[0];
+        const weekTarget = loadedGroup.weeklyPlan?.[mondayISO] ?? loadedGroup.weeklyMilesTarget;
+        // null = coach hasn't set a target; hero card shows a clean "no target"
+        // state rather than a fabricated goal.
+        setWeeklyTarget(weekTarget ?? null);
+      } else if (userData.schoolId && !groupId) {
+        setMyGroup(null);
+        setWeeklyTarget(null);
+      }
+
+      // Own runs (timeframe)
       const runs = runsSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => {
         const d = r.date?.toDate?.();
         if (!d) return false;
@@ -272,98 +281,100 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
         return true;
       });
       setRecentRuns(runs);
-
       const tMiles = runs.reduce((s, r) => s + (r.miles || 0), 0);
       setTotalMiles(Math.round(tMiles * 10) / 10);
 
-      // Always fetch current week miles separately (independent of timeframe picker)
-      const weekStart = getWeekStart();
-      try {
-        const weekRunsSnap = await getDocs(query(
-          collection(db, 'runs'), where('userId', '==', user.uid),
-          where('date', '>=', weekStart), orderBy('date', 'desc')
-        ));
+      // This-week runs (independent of the timeframe picker)
+      if (weekRunsSnap) {
         const wRunDocs = weekRunsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         setWeekRuns(wRunDocs);
         const wMiles = wRunDocs.reduce((s, r) => s + (r.miles || 0), 0);
         setWeeklyMiles(Math.round(wMiles * 10) / 10);
-      } catch (e) {
-        // Fallback: use filtered runs if separate query fails
+      } else {
+        // Fallback: derive from the timeframe runs if the week query failed
         const wFiltered = runs.filter(r => { const d = r.date?.toDate?.(); return d && d >= weekStart; });
         setWeekRuns(wFiltered);
         const wMiles = wFiltered.reduce((s, r) => s + (r.miles || 0), 0);
         setWeeklyMiles(Math.round(wMiles * 10) / 10);
       }
 
-      // Reuse the user doc already fetched in Phase 1 — avoids a duplicate Firestore read.
-      if (userDocData) {
-        setStravaLinked(!!userDocData.stravaAccessToken);
+      setStravaLinked(!!userDocData?.stravaAccessToken);
+
+      // ── Background: everything below updates the UI as it arrives but does NOT
+      // gate the spinner. loadDashboard returns now → first paint happens with
+      // the athlete's own data; secondary cards fill in a beat later. ──
+      loadSecondaryDashboard(user, userDocData, { startDate, endDate, tMiles });
+    } catch (error) { console.error('Dashboard load error:', error); }
+  };
+
+  // Secondary dashboard data — parents, prompts, team leaderboard, feed badge.
+  // Intentionally NOT awaited by loadDashboard so a large team query can't block
+  // first paint. Each block guards its own errors.
+  const loadSecondaryDashboard = async (user, userDocData, { startDate, endDate, tMiles }) => {
+    // Pending/linked parents
+    if (userDocData) {
+      try {
         const allParentIds = [...(userDocData.linkedParentIds || []), ...(userDocData.pendingParentIds || [])];
         const uniqueParentIds = [...new Set(allParentIds)];
         if (uniqueParentIds.length > 0) {
-          const pDocs = await Promise.all(
-            uniqueParentIds.map(pid => getDoc(doc(db, 'users', pid)))
-          );
-          const parentData = pDocs
-            .filter(d => d.exists())
-            .map(d => ({ id: d.id, ...d.data() }));
-          setPendingParents(parentData);
+          const pDocs = await Promise.all(uniqueParentIds.map(pid => getDoc(doc(db, 'users', pid))));
+          setPendingParents(pDocs.filter(d => d.exists()).map(d => ({ id: d.id, ...d.data() })));
         } else {
           setPendingParents([]);
         }
-      }
+      } catch (e) { console.warn('Parents load failed:', e); }
+    }
 
-      // Check if daily wellness check-in has been done
+    // Daily wellness check-in done today?
+    try {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const checkinSnap = await getDocs(query(collection(db, 'checkins'), where('userId', '==', user.uid)));
+      const doneToday = checkinSnap.docs.some(d => {
+        const ts = d.data().date;
+        const dt = ts && ts.toDate ? ts.toDate() : new Date(ts);
+        return dt >= todayStart;
+      });
+      setTodayCheckinDone(doneToday);
+    } catch (e) {
+      console.warn('Check-in query failed:', e);
+      setTodayCheckinDone(false);
+    }
+
+    // Latest weekly check-in (drives the "send this week" prompt + "coach replied" card).
+    try {
+      setLatestWeeklyCheckin(await getLatestWeeklyCheckin(user.uid));
+    } catch (e) {
+      console.warn('Weekly check-in query failed:', e);
+      setLatestWeeklyCheckin(null);
+    }
+
+    // Daily message modal
+    if (userData.schoolId) {
       try {
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-        const checkinSnap = await getDocs(query(
-          collection(db, 'checkins'),
-          where('userId', '==', user.uid)
-        ));
-        const doneToday = checkinSnap.docs.some(d => {
-          const ts = d.data().date;
-          const dt = ts && ts.toDate ? ts.toDate() : new Date(ts);
-          return dt >= todayStart;
-        });
-        setTodayCheckinDone(doneToday);
-      } catch (e) {
-        console.warn('Check-in query failed:', e);
-        setTodayCheckinDone(false);
-      }
+        const today = new Date().toISOString().split('T')[0];
+        const msgDoc = await getDoc(doc(db, 'dailyMessages', userData.schoolId + '_' + today));
+        if (msgDoc.exists()) {
+          setDailyMessage(msgDoc.data());
+          if (userDocData?.lastSeenMessageDate !== today) {
+            setMessageModalVisible(true);
+            await updateDoc(doc(db, 'users', user.uid), { lastSeenMessageDate: today });
+          }
+        } else { setDailyMessage(null); }
+      } catch (e) { console.warn('Daily message load:', e); }
+    }
 
-      // Latest weekly check-in (drives both the "send this week" prompt and the
-      // "coach replied" card on the home screen).
-      try {
-        const latest = await getLatestWeeklyCheckin(user.uid);
-        setLatestWeeklyCheckin(latest);
-      } catch (e) {
-        console.warn('Weekly check-in query failed:', e);
-        setLatestWeeklyCheckin(null);
-      }
+    if (userData.status === 'approved' && userData.schoolId) {
+      // Upcoming workouts and team leaderboard are independent — run in parallel.
+      const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
 
-      if (userData.schoolId) {
-        try {
-          const today = new Date().toISOString().split('T')[0];
-          const msgDoc = await getDoc(doc(db, 'dailyMessages', userData.schoolId + '_' + today));
-          if (msgDoc.exists()) {
-            setDailyMessage(msgDoc.data());
-            const userDoc2 = await getDoc(doc(db, 'users', user.uid));
-            if (userDoc2.data()?.lastSeenMessageDate !== today) {
-              setMessageModalVisible(true);
-              await updateDoc(doc(db, 'users', user.uid), { lastSeenMessageDate: today });
-            }
-          } else { setDailyMessage(null); }
-        } catch (e) { console.warn('Daily message load:', e); }
-      }
+      getDocs(query(collection(db, 'events'), where('schoolId', '==', userData.schoolId), where('category', '==', 'Training'), where('date', '>=', todayStart), orderBy('date', 'asc'), limit(3)))
+        .then(wSnap => setUpcomingWorkouts(wSnap.docs.map(d => ({ id: d.id, ...d.data() }))))
+        .catch(e => console.warn('Upcoming workouts:', e));
 
-      if (userData.status === 'approved' && userData.schoolId) {
-        try {
-          const todayStart = new Date(); todayStart.setHours(0,0,0,0);
-          const wSnap = await getDocs(query(collection(db, 'events'), where('schoolId', '==', userData.schoolId), where('category', '==', 'Training'), where('date', '>=', todayStart), orderBy('date', 'asc'), limit(3)));
-          setUpcomingWorkouts(wSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-        } catch (e) { console.warn('Upcoming workouts:', e); }
-
+      // Team leaderboard — the heaviest read (every teammate's runs). Kept fully
+      // off the critical path so it never delays the athlete's own dashboard.
+      (async () => {
         try {
           const athleteSnap = await getDocs(query(collection(db, 'users'), where('schoolId', '==', userData.schoolId), where('role', '==', 'athlete'), where('status', '==', 'approved')));
           const athletes = athleteSnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -373,11 +384,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
           const otherIds = athletes.filter(a => a.id !== user.uid).map(a => a.id);
           if (otherIds.length > 0) {
             try {
-              const { byField } = await batchDocsByIds({
-                collectionName: 'runs',
-                field: 'userId',
-                ids: otherIds,
-              });
+              const { byField } = await batchDocsByIds({ collectionName: 'runs', field: 'userId', ids: otherIds });
               for (const id of otherIds) {
                 const athleteRuns = byField[id] || [];
                 const filtered = athleteRuns.filter(r => {
@@ -397,26 +404,21 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
           }
           setTeamMiles(milesMap);
         } catch (e) { console.warn('Team athletes:', e); }
-      }
-    } catch (error) { console.error('Dashboard load error:', error); }
+      })();
+    }
 
-    // Count unread feed posts (single-field query to avoid composite index requirement)
+    // Unread feed badge (single-field query to avoid a composite index)
     try {
       if (userData.schoolId) {
-        const freshUserDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
-        const lastSeenChannels = freshUserDoc.data()?.lastSeenChannels || {};
-        if (!lastSeenChannels.whole_team && freshUserDoc.data()?.lastSeenFeed) {
-          lastSeenChannels.whole_team = freshUserDoc.data().lastSeenFeed;
+        const lastSeenChannels = userDocData?.lastSeenChannels || {};
+        if (!lastSeenChannels.whole_team && userDocData?.lastSeenFeed) {
+          lastSeenChannels.whole_team = userDocData.lastSeenFeed;
         }
-        // Build set of channels this athlete belongs to
         const myChannelKeys = new Set(['whole_team']);
         if (userData.groupId) myChannelKeys.add(`group_${userData.groupId}`);
         if (userData.gender) myChannelKeys.add(userData.gender);
 
-        const postsSnap = await getDocs(query(
-          collection(db, 'teamPosts'),
-          where('schoolId', '==', userData.schoolId)
-        ));
+        const postsSnap = await getDocs(query(collection(db, 'teamPosts'), where('schoolId', '==', userData.schoolId)));
         let totalUnread = 0;
         postsSnap.docs.forEach(d => {
           const data = d.data();

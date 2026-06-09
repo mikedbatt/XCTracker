@@ -280,7 +280,17 @@ preserved and resumable. Patterns when working in web-touched code:
   "Add to Home Screen" hint; it's mounted app-wide in `AppNavigator`.
 - **Firestore offline persistence:** `firebaseConfig.js` uses
   `initializeFirestore(... persistentLocalCache ...)` on web (IndexedDB; falls
-  back to default if unavailable). Native caches by default.
+  back to default if unavailable). Native caches by default. Also sets
+  `experimentalAutoDetectLongPolling: true` — the default WebChannel transport
+  can hang ~30s before falling back on mobile/school/proxy networks, which
+  showed up as a very slow first dashboard load; auto-detect picks the working
+  transport up front. Don't remove it without testing on a real phone network.
+- **Progressive dashboard load:** `AthleteDashboard.loadDashboard` awaits only
+  the athlete's OWN data (user/school/group/runs) then clears the spinner;
+  secondary data (team leaderboard, feed badge, prompts) loads in
+  `loadSecondaryDashboard` WITHOUT being awaited, so a large team query can't
+  block first paint. The team leaderboard downloads every teammate's runs — keep
+  it off the critical path. Apply the same split to any heavy dashboard read.
 - **Lazy-loaded screens (bundle):** `SeasonReview`, `CoachAnalytics`,
   `AthleteAnalytics` are `React.lazy` + `<Suspense>` in the dashboards. The
   post-auth screens (the three dashboards + onboarding screens) are also
