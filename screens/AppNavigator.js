@@ -12,6 +12,7 @@ import { BRAND, NEUTRAL } from '../constants/design';
 import { confirmDestructive } from '../utils/confirmDialog';
 import WebMaxWidth from '../components/WebMaxWidth';
 import InstallPrompt from '../components/InstallPrompt';
+import UpdateBanner from '../components/UpdateBanner';
 import { registerWebPush } from '../utils/webPush';
 
 // Configure how notifications appear when app is in foreground
@@ -302,6 +303,7 @@ export default function AppNavigator() {
       <Suspense fallback={<View style={styles.loading}><ActivityIndicator size="large" color={BRAND} /></View>}>
         <AppNavigatorInner />
       </Suspense>
+      <UpdateBanner />
       <InstallPrompt />
     </View>
   );

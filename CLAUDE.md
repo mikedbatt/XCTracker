@@ -345,6 +345,12 @@ preserved and resumable. Patterns when working in web-touched code:
   Web uses FCM via `utils/webPush.js` + `webPushToken`. Cloud Functions fan
   out to both tokens per user. Requires `EXPO_PUBLIC_FIREBASE_VAPID_KEY`.
   iOS web push only works once the PWA is installed to the home screen (16.4+).
+- **PWA auto-update:** an installed PWA keeps serving the build it opened with
+  until a full navigation. `utils/pwaUpdate.js` (mounted via
+  `components/UpdateBanner.js` in `AppNavigator`) detects a new deploy by
+  re-fetching `index.html` on focus/visibility and comparing the content-hashed
+  `entry-<hash>.js`; it shows a "tap to update" banner that clears SW caches and
+  reloads. This is how testers reliably get the latest after a `firebase deploy`.
 - **Service worker:** `public/firebase-messaging-sw.js` is the single app SW
   (one per `/` scope). It now does double duty: (1) `install`/`activate`/`fetch`
   handlers for **installability + offline app shell** (network-first navigations,

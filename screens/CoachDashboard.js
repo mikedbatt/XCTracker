@@ -635,8 +635,11 @@ export default function CoachDashboard({ userData }) {
 
   // ── Share leaderboard ────────────────────────────────────────────────────
   const handleShareLeaderboard = async () => {
+    // Share the version the coach is currently viewing (with or without
+    // cross-training), not always the total.
+    const shareMiles = leaderboardCT ? athleteMiles : athleteRunMiles;
     const sorted = [...filteredAthletes]
-      .sort((a, b) => (athleteMiles[b.id] || 0) - (athleteMiles[a.id] || 0));
+      .sort((a, b) => (shareMiles[b.id] || 0) - (shareMiles[a.id] || 0));
 
     if (sorted.length === 0) {
       Alert.alert('Nothing to share', 'No athlete data for this timeframe.');
@@ -658,19 +661,20 @@ export default function CoachDashboard({ userData }) {
         lines.push('');
         lines.push(`── ${group.name}${group.weeklyMilesTarget ? ` (${group.weeklyMilesTarget} mi/wk target)` : ''} ──`);
         groupAthletes.forEach((a, i) => {
-          const miles = Number(athleteMiles[a.id] || 0).toFixed(2);
+          const miles = Number(shareMiles[a.id] || 0).toFixed(2);
           lines.push(`${i + 1}. ${a.firstName} ${a.lastName} — ${miles} mi`);
         });
       });
     } else {
       lines = sorted.map((a, i) => {
-        const miles = Number(athleteMiles[a.id] || 0).toFixed(2);
+        const miles = Number(shareMiles[a.id] || 0).toFixed(2);
         return `${i + 1}. ${a.firstName} ${a.lastName} — ${miles} mi`;
       });
     }
 
+    const milesLabel = hasTeamXT ? (leaderboardCT ? ' (incl. cross-training)' : ' (running only)') : '';
     const message = [
-      `${school?.name || 'Team'} Leaderboard${groupName ? ' — ' + groupName : ''} — ${period}`,
+      `${school?.name || 'Team'} Leaderboard${groupName ? ' — ' + groupName : ''} — ${period}${milesLabel}`,
       '',
       ...lines,
       '',
@@ -813,7 +817,9 @@ export default function CoachDashboard({ userData }) {
 
   const renderAthleteCard = (athlete, index) => {
     const miles = leaderMiles[athlete.id];
-    const xtCredit = Math.round(((athleteMiles[athlete.id] || 0) - (athleteRunMiles[athlete.id] || 0)) * 10) / 10;
+    const runM = athleteRunMiles[athlete.id] || 0;
+    const totM = athleteMiles[athlete.id] || 0;
+    const xtCredit = Math.round((totM - runM) * 10) / 10;
     const isTop = index < 3;
     return (
       <TouchableOpacity
@@ -837,13 +843,27 @@ export default function CoachDashboard({ userData }) {
           </View>
           <Text style={styles.athleteSub} numberOfLines={1}>{formatLastRun(athlete.id)}</Text>
         </View>
-        <View style={styles.athleteMilesBox}>
-          <Text style={styles.athleteMilesNum}>{miles != null ? miles.toFixed(1) : '—'}</Text>
-          <Text style={styles.athleteMilesLabel}>MILES</Text>
-          {leaderboardCT && xtCredit > 0 && (
-            <Text style={styles.athleteXtLabel}>+{xtCredit} XT</Text>
-          )}
-        </View>
+        {hasTeamXT ? (
+          <View style={styles.athleteMilesBox}>
+            <View style={styles.milesLine}>
+              <Text style={styles.milesLineLabel}>RUN</Text>
+              <Text style={[styles.milesLineVal, !leaderboardCT && styles.milesLineValActive]}>{runM.toFixed(1)}</Text>
+            </View>
+            <View style={styles.milesLine}>
+              <Text style={styles.milesLineLabel}>XT</Text>
+              <Text style={styles.milesLineVal}>{xtCredit > 0 ? `+${xtCredit.toFixed(1)}` : '—'}</Text>
+            </View>
+            <View style={styles.milesLine}>
+              <Text style={styles.milesLineLabel}>TOT</Text>
+              <Text style={[styles.milesLineVal, leaderboardCT && styles.milesLineValActive]}>{totM.toFixed(1)}</Text>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.athleteMilesBox}>
+            <Text style={styles.athleteMilesNum}>{miles != null ? miles.toFixed(1) : '—'}</Text>
+            <Text style={styles.athleteMilesLabel}>MILES</Text>
+          </View>
+        )}
         <Text style={styles.chevron}>›</Text>
       </TouchableOpacity>
     );
@@ -2866,6 +2886,10 @@ const styles = StyleSheet.create({
     color: SIGNAL.color.cyan,
     marginTop: 1,
   },
+  milesLine: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'flex-end', gap: 5 },
+  milesLineLabel: { fontFamily: SIGNAL.font.body, fontSize: 8.5, color: SIGNAL.color.mute2, width: 22, textAlign: 'right' },
+  milesLineVal: { fontFamily: SIGNAL.font.bodySemi, fontSize: 12.5, color: SIGNAL.color.inkSoft, minWidth: 36, textAlign: 'right' },
+  milesLineValActive: { fontFamily: SIGNAL.font.bodyBold, color: SIGNAL.color.indigo },
   xtToggle: {
     paddingVertical: 5, paddingHorizontal: 12,
     borderRadius: SIGNAL.radius.chip,

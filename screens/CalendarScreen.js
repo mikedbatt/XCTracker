@@ -68,6 +68,20 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
 
   useEffect(() => { loadItems(); }, []);
 
+  // Re-filter the selected day's items when the override loads (it may arrive
+  // after the day was tapped). On a coach-modified day, hide the group Training
+  // workout so only the modification shows.
+  useEffect(() => {
+    if (!selectedDate) return;
+    const covered = !!myOverride && myOverride.startDate <= selectedDate && selectedDate <= myOverride.endDate;
+    setSelectedItems(allItems.filter(item => {
+      const d = item.date?.toDate?.();
+      if (!(d && toLocalISODate(d) === selectedDate)) return false;
+      if (covered && (item.category || 'Training') === 'Training') return false;
+      return true;
+    }));
+  }, [myOverride, selectedDate, allItems]);
+
   // Auto-open add modal with prefill from workout library
   useEffect(() => {
     if (autoOpenAdd && !loading) {
