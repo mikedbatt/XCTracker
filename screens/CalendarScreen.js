@@ -20,6 +20,7 @@ import { BRAND, SIGNAL } from '../constants/design';
 import { CATEGORIES, SIGNAL_TYPE_COLORS, TYPE_COLORS, WORKOUT_PACE_ZONE } from '../constants/training';
 import { formatPace } from '../utils/vdotUtils';
 import { toLocalISODate } from '../utils/dateUtils';
+import { isCrossTraining, activityMeta } from '../utils/activityMiles';
 import { confirmDestructive } from '../utils/confirmDialog';
 import DatePickerField from './DatePickerField';
 import RunDetailModal from './RunDetailModal';
@@ -507,9 +508,13 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
                       onPress={() => { setSelectedRunDetail(run); setRunDetailVisible(true); }}
                       activeOpacity={0.7}
                     >
-                      <View style={styles.runDayDot} />
+                      {isCrossTraining(run)
+                        ? <Ionicons name={activityMeta(run).icon} size={16} color={SIGNAL.color.cyan} style={{ marginRight: 4 }} />
+                        : <View style={styles.runDayDot} />}
                       <View style={styles.runDayInfo}>
-                        <Text style={styles.runDayMiles}>{run.miles} miles</Text>
+                        <Text style={styles.runDayMiles}>
+                          {run.miles} {isCrossTraining(run) ? `${activityMeta(run).label.toLowerCase()} mi` : 'miles'}
+                        </Text>
                         <Text style={styles.runDayDetail}>
                           {run.duration ? run.duration : ''}
                         </Text>

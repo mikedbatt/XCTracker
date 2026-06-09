@@ -19,6 +19,7 @@ import { auth, db } from '../firebaseConfig';
 import { SIGNAL } from '../constants/design';
 import { SIGNAL_TYPE_COLORS } from '../constants/training';
 import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020, formatMinutes } from '../utils/vdotUtils';
+import { isCrossTraining, activityMeta, creditForRun } from '../utils/activityMiles';
 import { confirmDestructive } from '../utils/confirmDialog';
 import DatePickerField from './DatePickerField';
 
@@ -333,7 +334,12 @@ export default function RunDetailModal({
             <View style={styles.heroRow}>
               <View style={styles.heroLeft}>
                 <Text style={styles.heroMiles}>{run.miles}</Text>
-                <Text style={styles.heroMilesLabel}>MILES</Text>
+                <Text style={styles.heroMilesLabel}>
+                  {isCrossTraining(run) ? `${activityMeta(run).label.toUpperCase()} MI` : 'MILES'}
+                </Text>
+                {isCrossTraining(run) && (
+                  <Text style={styles.heroXtCredit}>+{creditForRun(run)} mi credit</Text>
+                )}
               </View>
               {run.duration ? (
                 <View style={styles.heroRightCol}>
@@ -552,6 +558,13 @@ const styles = StyleSheet.create({
     color: SIGNAL.color.mute,
     letterSpacing: 1.43,
     marginLeft: 8,
+  },
+  heroXtCredit: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 11,
+    color: SIGNAL.color.cyan,
+    marginLeft: 8,
+    marginTop: 2,
   },
   heroRightCol: {
     alignItems: 'flex-end',

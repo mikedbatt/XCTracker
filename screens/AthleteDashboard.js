@@ -30,7 +30,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { auth, db } from '../firebaseConfig';
 import { bottomInset } from '../utils/safeArea';
-import { aggregateMiles, isCrossTraining, creditForRun, CROSS_TRAINING_TYPES, DEFAULT_CT_FACTORS } from '../utils/activityMiles';
+import { aggregateMiles, isCrossTraining, creditForRun, activityMeta, CROSS_TRAINING_TYPES, DEFAULT_CT_FACTORS } from '../utils/activityMiles';
 import { toLocalISODate } from '../utils/dateUtils';
 import { autoSyncStrava } from '../stravaConfig';
 import { BRAND, EFFORT_COLORS as DESIGN_EFFORT_COLORS, EFFORT_LABELS as DESIGN_EFFORT_LABELS, SIGNAL } from '../constants/design';
@@ -1401,15 +1401,22 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
               >
                 <View style={styles.runLeft}>
                   <View style={styles.runMilesRow}>
+                    {isCrossTraining(run) && (
+                      <Ionicons name={activityMeta(run).icon} size={14} color={SIGNAL.color.cyan} style={{ marginRight: 3 }} />
+                    )}
                     <Text style={styles.runMilesNum}>{run.miles}</Text>
                     <Text style={styles.runMilesUnit}>mi</Text>
                   </View>
                   <Text style={styles.runDate}>{dateStr}</Text>
-                  {isCrossTraining(run) && (
+                  {isCrossTraining(run) ? (
                     <View style={styles.xtChip}>
                       <Text style={styles.xtChipText}>
-                        {(CROSS_TRAINING_TYPES.find(t => t.key === run.activityType)?.label || 'XT')} · +{creditForRun(run, school?.crossTrainingFactors || DEFAULT_CT_FACTORS)} mi
+                        {activityMeta(run).label} · +{creditForRun(run, school?.crossTrainingFactors || DEFAULT_CT_FACTORS)} mi
                       </Text>
+                    </View>
+                  ) : (
+                    <View style={styles.runChip}>
+                      <Text style={styles.runChipText}>Run</Text>
                     </View>
                   )}
                 </View>
@@ -2194,6 +2201,12 @@ const styles = StyleSheet.create({
     backgroundColor: `${SIGNAL.color.cyan}${SIGNAL.tint.chip}`,
   },
   xtChipText: { fontFamily: SIGNAL.font.bodySemi, fontSize: 9.5, color: SIGNAL.color.cyan },
+  runChip: {
+    alignSelf: 'flex-start', marginTop: 4,
+    paddingVertical: 2, paddingHorizontal: 7, borderRadius: SIGNAL.radius.chip,
+    backgroundColor: `${SIGNAL.color.lime}${SIGNAL.tint.chip}`,
+  },
+  runChipText: { fontFamily: SIGNAL.font.bodySemi, fontSize: 9.5, color: SIGNAL.color.lime },
   overrideCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     marginHorizontal: 14, marginTop: 8,

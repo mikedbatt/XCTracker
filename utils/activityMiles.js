@@ -27,13 +27,20 @@ export const DEFAULT_CT_FACTORS = {
 // The cross-training activity types, in display order. `run` is handled
 // separately (it's the default, not a cross-training type).
 export const CROSS_TRAINING_TYPES = [
-  { key: 'bike',       label: 'Bike',        unit: 'mi' },
-  { key: 'swim',       label: 'Swim',        unit: 'mi' },
-  { key: 'arc',        label: 'Arc Trainer', unit: 'mi' },
-  { key: 'elliptical', label: 'Elliptical',  unit: 'mi' },
-  { key: 'pool_run',   label: 'Pool Run',    unit: 'mi' },
-  { key: 'other',      label: 'Other',       unit: 'mi' },
+  { key: 'bike',       label: 'Bike',        unit: 'mi', icon: 'bicycle-outline' },
+  { key: 'swim',       label: 'Swim',        unit: 'mi', icon: 'water-outline' },
+  { key: 'arc',        label: 'Arc Trainer', unit: 'mi', icon: 'fitness-outline' },
+  { key: 'elliptical', label: 'Elliptical',  unit: 'mi', icon: 'fitness-outline' },
+  { key: 'pool_run',   label: 'Pool Run',    unit: 'mi', icon: 'water-outline' },
+  { key: 'other',      label: 'Other',       unit: 'mi', icon: 'fitness-outline' },
 ];
+
+// Label + icon for a run/activity doc ('run' or a cross-training type).
+export function activityMeta(run) {
+  if (!isCrossTraining(run)) return { label: 'Run', icon: 'walk-outline' };
+  const t = CROSS_TRAINING_TYPES.find(x => x.key === run.activityType);
+  return { label: t?.label || 'Cross-train', icon: t?.icon || 'fitness-outline' };
+}
 
 // True when a run doc represents cross-training (anything other than running).
 export function isCrossTraining(run) {

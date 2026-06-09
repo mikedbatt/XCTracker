@@ -546,6 +546,16 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
                 To switch schools, sign out and sign up again with a different school join code.
               </Text>
             </View>
+
+            {/* Sign out */}
+            <TouchableOpacity
+              style={styles.destructiveBtn}
+              onPress={handleSignOut}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.destructiveBtnText}>Sign out</Text>
+            </TouchableOpacity>
+            <Text style={styles.actionHint}>You'll need your email and password to sign back in.</Text>
           </>
         )}
 
@@ -688,16 +698,6 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
               )}
 
               <LegalLinks />
-
-              {/* Sign out — destructive, always shown */}
-              <TouchableOpacity
-                style={styles.destructiveBtn}
-                onPress={handleSignOut}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.destructiveBtnText}>Sign out</Text>
-              </TouchableOpacity>
-              <Text style={styles.actionHint}>You'll need your email and password to sign back in.</Text>
             </View>
           </>
         )}
