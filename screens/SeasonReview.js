@@ -267,13 +267,18 @@ export default function SeasonReview({ season, school, userData, athletes = [], 
       });
     }
     const mostImprovedId = Object.entries(athleteImprovement).sort((a, b) => b[1] - a[1])[0];
-    const mostImproved = mostImprovedId ? { athlete: athletes.find(a => a.id === mostImprovedId[0]), improvement: mostImprovedId[1] } : null;
+    // Guard against the top athlete no longer being on the roster (e.g. a past
+    // season's athletes have graduated/left) — find() would return undefined and
+    // the render would crash on `.athlete.firstName`.
+    const mostImprovedAthlete = mostImprovedId ? athletes.find(a => a.id === mostImprovedId[0]) : null;
+    const mostImproved = mostImprovedAthlete ? { athlete: mostImprovedAthlete, improvement: mostImprovedId[1] } : null;
 
     // Most consistent (most check-ins)
     const checkinCounts = {};
     allCheckins.forEach(c => { checkinCounts[c.userId] = (checkinCounts[c.userId] || 0) + 1; });
     const topCheckinId = Object.entries(checkinCounts).sort((a, b) => b[1] - a[1])[0];
-    const mostConsistent = topCheckinId ? { athlete: athletes.find(a => a.id === topCheckinId[0]), count: topCheckinId[1] } : null;
+    const topCheckinAthlete = topCheckinId ? athletes.find(a => a.id === topCheckinId[0]) : null;
+    const mostConsistent = topCheckinAthlete ? { athlete: topCheckinAthlete, count: topCheckinId[1] } : null;
 
     // Team Health
     const injuryRate = allCheckins.length > 0 ? Math.round((allCheckins.filter(c => c.injury).length / allCheckins.length) * 100) : 0;
