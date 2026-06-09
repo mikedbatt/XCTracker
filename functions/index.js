@@ -264,6 +264,28 @@ async function fetchStravaActivity(accessToken, activityId) {
   return resp.json();
 }
 
+// Paginated list of the athlete's activities since `afterTimestamp` (unix secs).
+// Port of fetchStravaActivities in stravaConfig.js, but runs server-side so it
+// isn't CORS-blocked like the browser. Caps at 10 pages (500 activities).
+async function fetchStravaActivitiesServer(accessToken, afterTimestamp) {
+  const all = [];
+  for (let page = 1; page <= 10; page++) {
+    let url = `https://www.strava.com/api/v3/athlete/activities?per_page=50&page=${page}`;
+    if (afterTimestamp) url += `&after=${afterTimestamp}`;
+    const resp = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!resp.ok) {
+      // 429 = rate limited; return what we have so the caller can still import it.
+      if (resp.status === 429) break;
+      throw new Error(`Strava activities fetch failed (${resp.status})`);
+    }
+    const batch = await resp.json();
+    if (!batch || batch.length === 0) break;
+    all.push(...batch);
+    if (batch.length < 50) break;
+  }
+  return all;
+}
+
 async function fetchStravaPaceStream(accessToken, activityId) {
   const url = `https://www.strava.com/api/v3/activities/${activityId}/streams?keys=time,velocity_smooth&key_by_type=true`;
   const resp = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
@@ -372,6 +394,106 @@ exports.processStravaEvent = functions
     } catch (e) {
       console.error('processStravaEvent failed:', e);
       try { await snap.ref.update({ status: 'error', error: String((e && e.message) || e) }); } catch (_) {}
+    }
+  });
+
+// ── Strava backfill (server-side history import) ─────────────────────────────
+// The browser can't pull activity history directly (Strava's data API is
+// CORS-blocked), so the web app calls this endpoint to import the last N days
+// server-side. Native could use it too, but currently keeps its client poller.
+//
+// Auth: requires the caller's Firebase ID token in the Authorization header and
+// only ever touches THAT user's own runs — so it stays on onRequest (consistent
+// with the other Strava endpoints) without exposing anyone else's data.
+// Dedupe + atomic totalMiles increment mirror the webhook so history import and
+// the event-driven webhook can't double-count the same activity.
+exports.stravaBackfill = functions
+  .runWith({ maxInstances: 10, timeoutSeconds: 300 })
+  .https.onRequest(async (req, res) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
+    if (req.method !== 'POST') { res.status(405).json({ error: 'Method Not Allowed' }); return; }
+
+    // Verify the Firebase ID token → the uid we'll import for.
+    const authHeader = req.headers.authorization || '';
+    const m = authHeader.match(/^Bearer (.+)$/);
+    if (!m) { res.status(401).json({ error: 'Missing auth token' }); return; }
+    let uid;
+    try {
+      const decoded = await admin.auth().verifyIdToken(m[1]);
+      uid = decoded.uid;
+    } catch (e) {
+      res.status(401).json({ error: 'Invalid auth token' }); return;
+    }
+
+    // Clamp the window to 1–90 days (Strava history we're willing to pull).
+    const days = Math.min(Math.max(parseInt(req.body && req.body.days, 10) || 60, 1), 90);
+
+    try {
+      const userRef = db.collection('users').doc(uid);
+      const userSnap = await userRef.get();
+      if (!userSnap.exists) { res.status(404).json({ error: 'User not found' }); return; }
+      const user = userSnap.data();
+      if (!user.stravaAccessToken) { res.status(400).json({ error: 'Strava not connected' }); return; }
+
+      const accessToken = await getValidStravaToken(userRef, user);
+      const after = Math.floor((Date.now() - days * 86400000) / 1000);
+      const activities = await fetchStravaActivitiesServer(accessToken, after);
+
+      let imported = 0;
+      let skipped = 0;
+      let milesImported = 0;
+      let streamsRateLimited = false; // once true, import miles-only for the rest
+
+      for (const activity of activities) {
+        const run = stravaActivityToRunServer(activity, uid, user.schoolId);
+        if (!run) { skipped++; continue; }
+
+        const runRef = db.collection('runs').doc(`strava_${uid}_${activity.id}`);
+        const existing = await runRef.get();
+        const isNew = !existing.exists;
+
+        // Pace zones from the athlete's stored VDOT paces, unless we've started
+        // hitting Strava rate limits (then just import the mileage).
+        let paceZoneSeconds = null;
+        if (user.trainingPaces && !streamsRateLimited) {
+          const stream = await fetchStravaPaceStream(accessToken, activity.id);
+          if (stream) paceZoneSeconds = calcPaceZoneBreakdown(stream, user.trainingPaces);
+          else streamsRateLimited = true; // null can mean 429 — stop hammering streams
+          await new Promise(r => setTimeout(r, 120)); // gentle pacing under the rate limit
+        }
+
+        await runRef.set({
+          ...run,
+          ...(paceZoneSeconds ? { paceZoneSeconds, hasPaceData: true } : { hasPaceData: false }),
+        }, { merge: true });
+
+        if (isNew) {
+          milesImported += run.miles;
+          imported++;
+        } else {
+          skipped++;
+        }
+      }
+
+      // Atomic increment so backfill can't clobber concurrent webhook writes.
+      if (milesImported > 0) {
+        await userRef.update({
+          totalMiles: admin.firestore.FieldValue.increment(Math.round(milesImported * 10) / 10),
+        });
+      }
+
+      res.json({
+        imported,
+        skipped,
+        miles: Math.round(milesImported * 10) / 10,
+        partial: streamsRateLimited, // true → some runs imported without pace zones
+      });
+    } catch (e) {
+      console.error('stravaBackfill failed:', e);
+      res.status(500).json({ error: String((e && e.message) || e) });
     }
   });
 

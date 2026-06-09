@@ -5,7 +5,7 @@ import * as SecureStore from 'expo-secure-store';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 import { BRAND, NEUTRAL } from '../constants/design';
@@ -23,14 +23,18 @@ Notifications.setNotificationHandler({
   }),
 });
 
-import AssistantJoinScreen from '../screens/AssistantJoinScreen';
-import AthleteDashboard from '../screens/AthleteDashboard';
-import AthleteJoinScreen from '../screens/AthleteJoinScreen';
-import CoachDashboard from '../screens/CoachDashboard';
-import CoachSetupScreen from '../screens/CoachSetupScreen';
+// LoginScreen stays eager — it's the first paint for logged-out visitors, so it
+// must not wait on a second chunk. Everything past auth is lazy-loaded so the
+// initial bundle (and time-to-first-paint) stays small; the SW caches each
+// chunk after first load, so returning users get them instantly.
 import LoginScreen from '../screens/LoginScreen';
-import ParentDashboard from '../screens/ParentDashboard';
-import ParentLinkScreen from '../screens/ParentLinkScreen';
+const AssistantJoinScreen = lazy(() => import('../screens/AssistantJoinScreen'));
+const AthleteDashboard    = lazy(() => import('../screens/AthleteDashboard'));
+const AthleteJoinScreen   = lazy(() => import('../screens/AthleteJoinScreen'));
+const CoachDashboard      = lazy(() => import('../screens/CoachDashboard'));
+const CoachSetupScreen    = lazy(() => import('../screens/CoachSetupScreen'));
+const ParentDashboard     = lazy(() => import('../screens/ParentDashboard'));
+const ParentLinkScreen    = lazy(() => import('../screens/ParentLinkScreen'));
 
 // Register for push notifications and save token to Firestore.
 // On native: expo-notifications → expoPushToken.
@@ -295,7 +299,9 @@ function AppNavigatorInner() {
 export default function AppNavigator() {
   return (
     <View style={{ flex: 1 }}>
-      <AppNavigatorInner />
+      <Suspense fallback={<View style={styles.loading}><ActivityIndicator size="large" color={BRAND} /></View>}>
+        <AppNavigatorInner />
+      </Suspense>
       <InstallPrompt />
     </View>
   );

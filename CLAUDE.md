@@ -163,6 +163,14 @@ stravaConfig.js   # Strava OAuth + activity sync (client side)
     app is registered out-of-band via curl to
     `https://www.strava.com/api/v3/push_subscriptions` (the webhook is inert
     until then). Client polling (`autoSyncStrava`) stays as a safety net.
+  - **Strava backfill** — `stravaBackfill` (`onRequest`) imports the last N days
+    (1–90, default 60) of history **server-side** so the web app can pull past
+    runs the browser can't (Strava data API is CORS-blocked). Auth'd by the
+    caller's Firebase ID token (verified via `admin.auth().verifyIdToken`), only
+    ever touches that user's own runs. Dedupes by run doc id + atomic
+    `totalMiles` increment like the webhook, so backfill and webhook can't
+    double-count. Client helper: `backfillStravaRuns(days)` in `stravaConfig.js`;
+    surfaced as the web "Import last 60 days" button in `StravaConnect`.
   - **Push notifications** (Expo SDK for native + FCM admin SDK for web —
     `sendWebPushNotifications` helper fans out per-user).
   - **Scheduled jobs:** `dailyCheckinReminder` (4 PM ET daily),
@@ -274,8 +282,15 @@ preserved and resumable. Patterns when working in web-touched code:
   `initializeFirestore(... persistentLocalCache ...)` on web (IndexedDB; falls
   back to default if unavailable). Native caches by default.
 - **Lazy-loaded screens (bundle):** `SeasonReview`, `CoachAnalytics`,
-  `AthleteAnalytics` are `React.lazy` + `<Suspense>` in the dashboards — keep heavy
-  on-demand screens out of the initial bundle.
+  `AthleteAnalytics` are `React.lazy` + `<Suspense>` in the dashboards. The
+  post-auth screens (the three dashboards + onboarding screens) are also
+  `React.lazy` in `AppNavigator` — only `LoginScreen` is eager, so first paint
+  doesn't wait on dashboard code. Keeps cold-load JS down; the SW caches each
+  chunk after first load. Wrap any new heavy/post-auth screen the same way.
+- **Inverted lists on web:** `FlatList inverted` mis-renders on react-native-web
+  (cells flip + mirror — "upside down and backwards"). Branch it off on web
+  (`inverted={Platform.OS !== 'web'}`) and render top-down instead — see
+  `TeamFeed.js`. Don't ship an inverted list to web.
 - **Auth persistence:** `firebaseConfig.js` branches via Platform —
   `browserLocalPersistence` on web, AsyncStorage on native. Don't import
   `getReactNativePersistence` unconditionally — it has no DOM backing.

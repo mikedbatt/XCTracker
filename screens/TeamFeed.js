@@ -354,28 +354,35 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
           data={posts}
           keyExtractor={item => item.id}
           renderItem={renderPost}
-          inverted
+          // `inverted` mis-renders on react-native-web (cells flip + mirror —
+          // "upside down and backwards"). On web render a normal top-down list
+          // (posts are already newest-first); keep the native chat-style invert.
+          inverted={Platform.OS !== 'web'}
           contentContainerStyle={styles.listContent}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={SIGNAL.color.indigo} />
           }
           ListEmptyComponent={
-            <View style={styles.emptyCard}>
+            <View style={[styles.emptyCard, Platform.OS === 'web' && styles.emptyCardWeb]}>
               <Text style={styles.emptyTitle}>No posts yet</Text>
               <Text style={styles.emptySub}>
                 Be the first to post something to the team feed.
               </Text>
             </View>
           }
-          ListFooterComponent={
-            posts.length > 0 ? (
-              <View style={styles.daySeparator}>
-                <View style={styles.daySeparatorLine} />
-                <Text style={styles.daySeparatorLabel}>TODAY</Text>
-                <View style={styles.daySeparatorLine} />
-              </View>
-            ) : null
-          }
+          // The "TODAY" separator sits visually above the posts. In an inverted
+          // list that's the footer; in a normal (web) list it's the header.
+          {...(posts.length > 0
+            ? {
+                [Platform.OS === 'web' ? 'ListHeaderComponent' : 'ListFooterComponent']: (
+                  <View style={styles.daySeparator}>
+                    <View style={styles.daySeparatorLine} />
+                    <Text style={styles.daySeparatorLabel}>TODAY</Text>
+                    <View style={styles.daySeparatorLine} />
+                  </View>
+                ),
+              }
+            : {})}
         />
       )}
 
@@ -506,7 +513,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 60,
     paddingHorizontal: 40,
-    transform: [{ scaleY: -1 }],
+    transform: [{ scaleY: -1 }], // counter the native inverted-list flip
+  },
+  emptyCardWeb: {
+    transform: [{ scaleY: 1 }], // web list isn't inverted — no counter-flip
   },
   emptyTitle: {
     fontFamily: SIGNAL.font.bodySemi,

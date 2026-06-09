@@ -22,6 +22,7 @@ import { auth, db } from '../firebaseConfig';
 import { BRAND, SIGNAL, STRAVA_ORANGE } from '../constants/design';
 import {
   STRAVA_CONFIG,
+  backfillStravaRuns,
   connectStravaWithCode,
   fetchStravaActivities,
   fetchStravaStreams,
@@ -272,6 +273,29 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
     setSyncing(false);
   };
 
+  // Web history import — runs server-side (browser→Strava is CORS-blocked).
+  const handleBackfill = async (days = 60) => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const result = await backfillStravaRuns(days);
+      setLastSyncDate(new Date());
+      setSyncResult({
+        imported: result.imported,
+        skipped: result.skipped,
+        miles: result.miles,
+        message: result.imported > 0
+          ? `${result.imported} run${result.imported !== 1 ? 's' : ''} imported (${result.miles} miles)${result.partial ? ' — pace zones for some runs will fill in later' : ''}`
+          : 'No new runs found in that window — you\'re up to date!',
+      });
+      if (result.imported > 0) onSynced && onSynced();
+    } catch (e) {
+      console.error('Backfill error:', e);
+      Alert.alert('Import failed', 'Could not import your Strava history. Please try again in a minute.');
+    }
+    setSyncing(false);
+  };
+
   const handleDisconnect = () => {
     Alert.alert(
       'Disconnect Strava?',
@@ -364,15 +388,31 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
               </View>
             )}
 
-            {/* Sync: manual pull on native; automatic (webhook) on web. */}
+            {/* Sync: web imports history server-side + auto-syncs new runs;
+                native pulls directly from the client. */}
             {isWeb ? (
-              <View style={[styles.card, styles.resultCard, { borderLeftColor: SIGNAL.color.emerald }]}>
-                <Text style={[styles.resultTitle, { color: SIGNAL.color.emerald }]}>Syncing automatically</Text>
-                <Text style={styles.resultMessage}>
-                  New Strava runs sync on their own — there's nothing to tap. Each run
-                  appears in your log shortly after you finish and upload it to Strava.
+              <>
+                <TouchableOpacity
+                  style={[styles.primaryBtn, syncing && styles.btnDisabled]}
+                  onPress={() => handleBackfill(60)}
+                  disabled={syncing}
+                  activeOpacity={0.85}
+                >
+                  {syncing
+                    ? <ActivityIndicator color={SIGNAL.color.white} />
+                    : (
+                      <>
+                        <Ionicons name="download-outline" size={18} color={SIGNAL.color.white} style={{ marginRight: 8 }} />
+                        <Text style={styles.primaryBtnText}>Import last 60 days</Text>
+                      </>
+                    )
+                  }
+                </TouchableOpacity>
+                <Text style={styles.helperText}>
+                  Pulls your recent Strava history now. After that, new runs sync
+                  automatically — there's nothing to tap.
                 </Text>
-              </View>
+              </>
             ) : (
               <>
                 <TouchableOpacity

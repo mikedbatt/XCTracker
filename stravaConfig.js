@@ -61,6 +61,31 @@ export async function connectStravaWithCode(uid, code, redirectUri) {
   return tokenData;
 }
 
+// ── Server-side history backfill (web) ───────────────────────────────────────
+// The browser can't pull Strava history directly (CORS), so we ask the
+// stravaBackfill Cloud Function to import the last `days` days server-side.
+// Authenticated with the user's Firebase ID token. Returns
+// { imported, skipped, miles, partial }.
+export async function backfillStravaRuns(days = 60) {
+  const { auth } = await import('./firebaseConfig');
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not signed in');
+  const idToken = await user.getIdToken();
+  const response = await fetch(`${FUNCTIONS_BASE}/stravaBackfill`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${idToken}`,
+    },
+    body: JSON.stringify({ days }),
+  });
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Backfill failed: ${err}`);
+  }
+  return response.json();
+}
+
 // ── Fetch ALL activities from Strava with pagination ──────────────────────────
 export async function fetchStravaActivities(accessToken, afterTimestamp = null) {
   const allActivities = [];
