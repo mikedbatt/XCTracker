@@ -60,7 +60,7 @@ try {
 }
 
 // ── Installability + offline app shell ───────────────────────────────────────
-const CACHE = 'teambase-shell-v1';
+const CACHE = 'teambase-shell-v2';
 
 // Precache the app shell so navigations work offline. skipWaiting() activates
 // this SW immediately rather than waiting for all tabs to close.
@@ -72,12 +72,18 @@ self.addEventListener('install', (event) => {
   })());
 });
 
-// Drop caches from older deploys, then take control of open pages immediately.
+// Drop caches from older deploys, take control of open pages, then force any
+// open window to reload onto the new build. This bootstraps an installed PWA
+// onto the latest version (incl. the in-app auto-updater) without the user
+// having to delete + reinstall — as soon as a new SW activates, open windows
+// reload to fresh content.
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
     await Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)));
     await self.clients.claim();
+    const wins = await self.clients.matchAll({ type: 'window' });
+    for (const w of wins) { try { await w.navigate(w.url); } catch (e) { /* ignore */ } }
   })());
 });
 

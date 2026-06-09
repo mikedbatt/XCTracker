@@ -26,10 +26,28 @@ export function registerServiceWorker() {
   };
   const swUrl = '/firebase-messaging-sw.js?' + new URLSearchParams(cfg).toString();
 
+  // Reload once when a new service worker takes control (it activates + claims
+  // on deploy) so the page swaps to the fresh build.
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloading) return;
+    reloading = true;
+    window.location.reload();
+  });
+
   // Register after load so the SW install never competes with first paint.
   const register = () => {
     navigator.serviceWorker
       .register(swUrl)
+      .then((reg) => {
+        // Proactively check for a new SW whenever the app regains focus — this
+        // is what makes an installed PWA pick up a deploy on reopen.
+        const checkForUpdate = () => { reg.update().catch(() => {}); };
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') checkForUpdate();
+        });
+        window.addEventListener('focus', checkForUpdate);
+      })
       .catch((e) => console.warn('Service worker registration failed:', e));
   };
 
