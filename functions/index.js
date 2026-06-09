@@ -264,23 +264,37 @@ async function fetchStravaActivity(accessToken, activityId) {
   return resp.json();
 }
 
-// Paginated list of the athlete's activities since `afterTimestamp` (unix secs).
-// Port of fetchStravaActivities in stravaConfig.js, but runs server-side so it
-// isn't CORS-blocked like the browser. Caps at 10 pages (500 activities).
+// Activities within the last `afterTimestamp` (unix secs), NEWEST FIRST.
+//
+// IMPORTANT: we deliberately do NOT pass Strava's `after` param. With `after`,
+// Strava returns activities in ASCENDING order (oldest first), so the most
+// recent runs land on the LAST page — and if a later page gets rate-limited
+// (429), the recent runs are exactly what gets dropped. Instead we use Strava's
+// default DESCENDING order (newest first) and stop once we walk past the window.
+// A partial fetch then keeps the recent runs, which matter most; older
+// stragglers can be picked up by re-running the import.
 async function fetchStravaActivitiesServer(accessToken, afterTimestamp) {
   const all = [];
   for (let page = 1; page <= 10; page++) {
-    let url = `https://www.strava.com/api/v3/athlete/activities?per_page=50&page=${page}`;
-    if (afterTimestamp) url += `&after=${afterTimestamp}`;
+    const url = `https://www.strava.com/api/v3/athlete/activities?per_page=50&page=${page}`;
     const resp = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
     if (!resp.ok) {
-      // 429 = rate limited; return what we have so the caller can still import it.
+      // 429 = rate limited; return what we have (the most recent runs).
       if (resp.status === 429) break;
       throw new Error(`Strava activities fetch failed (${resp.status})`);
     }
     const batch = await resp.json();
     if (!batch || batch.length === 0) break;
-    all.push(...batch);
+
+    // Keep only activities within the window; stop once we pass the cutoff
+    // (the list is newest-first, so everything after is older still).
+    let reachedCutoff = false;
+    for (const act of batch) {
+      const startSecs = Math.floor(new Date(act.start_date).getTime() / 1000);
+      if (!afterTimestamp || startSecs >= afterTimestamp) all.push(act);
+      else reachedCutoff = true;
+    }
+    if (reachedCutoff) { return all; }
     if (batch.length < 50) break;
   }
   return all;

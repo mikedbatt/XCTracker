@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { addDoc, collection, deleteDoc, doc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -30,6 +30,20 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
   const [showTip,     setShowTip]     = useState(false);
   const [imageUri,    setImageUri]    = useState(null);
   const inputRef = useRef(null);
+  const listRef = useRef(null);
+  // Whether the user is scrolled to the bottom (newest). Starts true so the
+  // first load lands on the newest post; flips false when they scroll up to
+  // read history so incoming posts don't yank them back down.
+  const atBottomRef = useRef(true);
+
+  // Web renders a normal top-down list (no `inverted`), so reverse the
+  // newest-first posts to oldest-first → newest ends up at the BOTTOM, like a
+  // chat. Native keeps newest-first + `inverted` (same visual result).
+  const isWebFeed = Platform.OS === 'web';
+  const listData = useMemo(
+    () => (isWebFeed ? posts.slice().reverse() : posts),
+    [posts, isWebFeed],
+  );
 
   const primaryColor = school?.primaryColor || BRAND;
   const isCoach = userData.role === 'admin_coach' || userData.role === 'assistant_coach';
@@ -359,13 +373,26 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
         </View>
       ) : (
         <FlatList
-          data={posts}
+          ref={listRef}
+          data={listData}
           keyExtractor={item => item.id}
           renderItem={renderPost}
           // `inverted` mis-renders on react-native-web (cells flip + mirror —
           // "upside down and backwards"). On web render a normal top-down list
-          // (posts are already newest-first); keep the native chat-style invert.
-          inverted={Platform.OS !== 'web'}
+          // with oldest-first data (newest at the bottom, chat-style); keep the
+          // native chat-style invert.
+          inverted={!isWebFeed}
+          // Web chat behavior: keep the newest (bottom) in view as posts/images
+          // arrive, but only when the user is already at the bottom — don't yank
+          // them down while they're scrolled up reading history.
+          onScroll={isWebFeed ? (e) => {
+            const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
+            atBottomRef.current = contentOffset.y + layoutMeasurement.height >= contentSize.height - 48;
+          } : undefined}
+          scrollEventThrottle={16}
+          onContentSizeChange={() => {
+            if (isWebFeed && atBottomRef.current) listRef.current?.scrollToEnd({ animated: false });
+          }}
           contentContainerStyle={styles.listContent}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={SIGNAL.color.indigo} />

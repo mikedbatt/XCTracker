@@ -171,6 +171,10 @@ stravaConfig.js   # Strava OAuth + activity sync (client side)
     `totalMiles` increment like the webhook, so backfill and webhook can't
     double-count. Client helper: `backfillStravaRuns(days)` in `stravaConfig.js`;
     surfaced as the web "Import last 60 days" button in `StravaConnect`.
+    GOTCHA: `fetchStravaActivitiesServer` fetches **newest-first** and filters
+    the window client-side — it does NOT pass Strava's `after` param, which
+    flips the response to oldest-first and would drop the most recent runs if a
+    later page is rate-limited (429) mid-import. Don't re-add `after`.
   - **Push notifications** (Expo SDK for native + FCM admin SDK for web —
     `sendWebPushNotifications` helper fans out per-user).
   - **Scheduled jobs:** `dailyCheckinReminder` (4 PM ET daily),
@@ -308,7 +312,9 @@ preserved and resumable. Patterns when working in web-touched code:
 - **Inverted lists on web:** `FlatList inverted` mis-renders on react-native-web
   (cells flip + mirror — "upside down and backwards"). Branch it off on web
   (`inverted={Platform.OS !== 'web'}`) and render top-down instead — see
-  `TeamFeed.js`. Don't ship an inverted list to web.
+  `TeamFeed.js`. Don't ship an inverted list to web. For chat order (newest at
+  the bottom) on web, reverse the newest-first data to oldest-first and
+  `scrollToEnd` when the user is already at the bottom (tracked via `onScroll`).
 - **Auth persistence:** `firebaseConfig.js` branches via Platform —
   `browserLocalPersistence` on web, AsyncStorage on native. Don't import
   `getReactNativePersistence` unconditionally — it has no DOM backing.
