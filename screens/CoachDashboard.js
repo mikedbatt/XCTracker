@@ -843,11 +843,11 @@ export default function CoachDashboard({ userData }) {
           </View>
           <Text style={styles.athleteSub} numberOfLines={1}>{formatLastRun(athlete.id)}</Text>
         </View>
-        {hasTeamXT ? (
+        {hasTeamXT && leaderboardCT ? (
           <View style={styles.athleteMilesBox}>
             <View style={styles.milesLine}>
               <Text style={styles.milesLineLabel}>RUN</Text>
-              <Text style={[styles.milesLineVal, !leaderboardCT && styles.milesLineValActive]}>{runM.toFixed(1)}</Text>
+              <Text style={styles.milesLineVal}>{runM.toFixed(1)}</Text>
             </View>
             <View style={styles.milesLine}>
               <Text style={styles.milesLineLabel}>XT</Text>

@@ -535,6 +535,30 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
             ) : upcomingItems.map(item => {
               const d = item.date?.toDate?.();
               const { dow, day } = upcomingDateParts(d);
+              // On a coach-modified day, replace the team workout with the
+              // athlete's modification (cross-training / rest).
+              const iso = d ? toLocalISODate(d) : null;
+              if (iso && overrideCovers(iso) && (item.category || 'Training') === 'Training') {
+                const isRest = myOverride.type === 'rest';
+                const oc = isRest ? SIGNAL.color.mute : SIGNAL.color.cyan;
+                return (
+                  <View key={item.id} style={styles.upcomingCard}>
+                    <View style={styles.upcomingDateCol}>
+                      <Text style={styles.upcomingDow}>{dow}</Text>
+                      <Text style={styles.upcomingDay}>{day}</Text>
+                    </View>
+                    <View style={styles.upcomingDivider} />
+                    <View style={[styles.typePill, { backgroundColor: `${oc}${SIGNAL.tint.chip}` }]}>
+                      <View style={[styles.typePillDot, { backgroundColor: oc }]} />
+                      <Text style={[styles.typePillText, { color: oc }]}>{isRest ? 'Rest' : 'Cross Train'}</Text>
+                    </View>
+                    <View style={styles.upcomingInfo}>
+                      <Text style={styles.workoutTitle} numberOfLines={1}>{isRest ? 'No workout — rest (coach)' : 'Cross-training (coach)'}</Text>
+                      {myOverride.note && <Text style={styles.workoutDesc} numberOfLines={1}>{myOverride.note}</Text>}
+                    </View>
+                  </View>
+                );
+              }
               const c = getColor(item);
               const itemMiles = item.baseMiles || null;
               return (
