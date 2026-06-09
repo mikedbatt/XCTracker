@@ -13,7 +13,7 @@ import {
 import { SIGNAL } from '../constants/design';
 import { auth, db } from '../firebaseConfig';
 import { PACE_ZONES, calcPaceZoneBreakdown, formatMinutes } from '../utils/vdotUtils';
-import { aggregateMiles, isCrossTraining, DEFAULT_CT_FACTORS } from '../utils/activityMiles';
+import { aggregateMiles, isCrossTraining, creditForRun, activityMeta, DEFAULT_CT_FACTORS } from '../utils/activityMiles';
 import RunDetailModal from './RunDetailModal';
 
 export default function TeammateProfile({ athlete, school, onBack }) {
@@ -208,8 +208,24 @@ export default function TeammateProfile({ athlete, school, onBack }) {
                 onPress={() => { setSelectedRun(run); setRunDetailVisible(true); }}
               >
                 <View style={styles.runMilesCol}>
-                  <Text style={styles.runMiles}>{run.miles} mi</Text>
+                  <View style={styles.runMilesRow}>
+                    {isCrossTraining(run) && (
+                      <Ionicons name={activityMeta(run).icon} size={13} color={SIGNAL.color.cyan} style={{ marginRight: 3 }} />
+                    )}
+                    <Text style={styles.runMiles}>{run.miles} mi</Text>
+                  </View>
                   <Text style={styles.runDate}>{runDate}</Text>
+                  {isCrossTraining(run) ? (
+                    <View style={styles.xtChip}>
+                      <Text style={styles.xtChipText}>
+                        {activityMeta(run).label} · +{creditForRun(run, ctFactors)} mi
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={styles.runChip}>
+                      <Text style={styles.runChipText}>Run</Text>
+                    </View>
+                  )}
                 </View>
                 <View style={styles.runMidCol}>
                   {run.duration && <Text style={styles.runDuration}>{run.duration}</Text>}
@@ -428,7 +444,8 @@ const styles = StyleSheet.create({
   runRowLast: {
     borderBottomWidth: 0,
   },
-  runMilesCol: { minWidth: 72 },
+  runMilesCol: { minWidth: 84 },
+  runMilesRow: { flexDirection: 'row', alignItems: 'center' },
   runMiles: {
     fontSize: SIGNAL.size.bodyLg,
     fontFamily: SIGNAL.font.bodySemi,
@@ -440,6 +457,18 @@ const styles = StyleSheet.create({
     color: SIGNAL.color.mute,
     marginTop: 2,
   },
+  xtChip: {
+    alignSelf: 'flex-start', marginTop: 4,
+    paddingVertical: 2, paddingHorizontal: 7, borderRadius: SIGNAL.radius.chip,
+    backgroundColor: `${SIGNAL.color.cyan}${SIGNAL.tint.chip}`,
+  },
+  xtChipText: { fontFamily: SIGNAL.font.bodySemi, fontSize: 9.5, color: SIGNAL.color.cyan },
+  runChip: {
+    alignSelf: 'flex-start', marginTop: 4,
+    paddingVertical: 2, paddingHorizontal: 7, borderRadius: SIGNAL.radius.chip,
+    backgroundColor: `${SIGNAL.color.lime}${SIGNAL.tint.chip}`,
+  },
+  runChipText: { fontFamily: SIGNAL.font.bodySemi, fontSize: 9.5, color: SIGNAL.color.lime },
   runMidCol: {
     flex: 1,
     flexDirection: 'row',
