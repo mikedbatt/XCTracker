@@ -321,11 +321,20 @@ preserved and resumable. Patterns when working in web-touched code:
   block first paint. The team leaderboard downloads every teammate's runs — keep
   it off the critical path. Apply the same split to any heavy dashboard read.
 - **Lazy-loaded screens (bundle):** `SeasonReview`, `CoachAnalytics`,
-  `AthleteAnalytics` are `React.lazy` + `<Suspense>` in the dashboards. The
-  post-auth screens (the three dashboards + onboarding screens) are also
-  `React.lazy` in `AppNavigator` — only `LoginScreen` is eager, so first paint
-  doesn't wait on dashboard code. Keeps cold-load JS down; the SW caches each
-  chunk after first load. Wrap any new heavy/post-auth screen the same way.
+  `AthleteAnalytics` are lazy + `<Suspense>` in the dashboards. The post-auth
+  screens (the three dashboards + onboarding screens) are also lazy in
+  `AppNavigator` — only `LoginScreen` is eager, so first paint doesn't wait on
+  dashboard code. Keeps cold-load JS down; the SW caches each chunk after first
+  load. Wrap any new heavy/post-auth screen the same way. **Use
+  `lazyWithReload` from `utils/lazyWithReload.js`, not bare `React.lazy`** — a
+  client running a stale `index.html` requests a content-hashed chunk
+  (`CoachDashboard-<hash>.js`) that a newer deploy already replaced; Firebase's
+  catch-all rewrite then serves `index.html` (HTML, 200) for the missing `.js`,
+  the browser parses HTML as JS (`SyntaxError: Unexpected token '<'`), the import
+  rejects, and with no error boundary under `<Suspense>` the app freezes on the
+  purple splash. `lazyWithReload` catches that and does ONE throttled
+  `location.reload()` to pull the fresh shell + hashes. (Surfaced via a Sentry
+  alert 2026-06-09.)
 - **Bottom safe area (iOS PWA):** `Platform.OS` is `'web'` (not `'ios'`) in the
   installed PWA, so the old `Platform.OS === 'ios' ? N : M` bottom padding never
   reserved the home-indicator inset — bottom bars left a gray gap. Use
@@ -355,7 +364,13 @@ preserved and resumable. Patterns when working in web-touched code:
   (one per `/` scope). It now does double duty: (1) `install`/`activate`/`fetch`
   handlers for **installability + offline app shell** (network-first navigations,
   cache-first hashed `/_expo/static/**`), and (2) background web push (wrapped in
-  try/catch so a missing push config can't break installability). Registered
+  try/catch so a missing push config can't break installability). The
+  `/_expo/static/**` branch **guards on Content-Type** — it never caches or
+  serves an HTML response under a `.js`/`.css` URL. (Firebase's SPA rewrite
+  returns `index.html` with a 200 for a since-deleted hashed chunk; caching that
+  poisoned the cache and made the `Unexpected token '<'` crash sticky. Pair with
+  `lazyWithReload` above.) Bump the `CACHE` name (currently `teambase-shell-v3`)
+  to force the activate handler to purge the prior cache. Registered
   eagerly at startup by `utils/registerServiceWorker.js` (called from
   `app/index.tsx`) so it's present for first-time visitors regardless of
   login/push. `utils/webPush.js` re-registers the same URL (idempotent) when push

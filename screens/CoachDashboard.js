@@ -15,7 +15,7 @@ import {
   updateDoc,
   where
 } from 'firebase/firestore';
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator, Alert,
   KeyboardAvoidingView,
@@ -59,10 +59,11 @@ import { calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
 import { useStaleRefresh } from '../hooks/useStaleRefresh';
 import { getRunDate, toLocalISODate } from '../utils/dateUtils';
 import { getWeekAnchor } from '../utils/weeklyCheckinUtils';
+import { lazyWithReload } from '../utils/lazyWithReload';
 
 // Lazy-loaded (heavy, opened on demand) — kept out of the initial bundle.
-const CoachAnalytics = lazy(() => import('../screens/CoachAnalytics'));
-const SeasonReview   = lazy(() => import('../screens/SeasonReview'));
+const CoachAnalytics = lazyWithReload(() => import('../screens/CoachAnalytics'));
+const SeasonReview   = lazyWithReload(() => import('../screens/SeasonReview'));
 
 // ── Daily message templates by phase (written as coach → athletes) ────────────
 const PHASE_TIPS = {

@@ -13,7 +13,7 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore';
-import React, { memo, lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import React, { memo, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert,
   Animated,
@@ -31,6 +31,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { auth, db } from '../firebaseConfig';
 import { bottomInset } from '../utils/safeArea';
 import { aggregateMiles, isCrossTraining, creditForRun, activityMeta, CROSS_TRAINING_TYPES, DEFAULT_CT_FACTORS } from '../utils/activityMiles';
+import { lazyWithReload } from '../utils/lazyWithReload';
 import { toLocalISODate } from '../utils/dateUtils';
 import { autoSyncStrava } from '../stravaConfig';
 import { BRAND, EFFORT_COLORS as DESIGN_EFFORT_COLORS, EFFORT_LABELS as DESIGN_EFFORT_LABELS, SIGNAL } from '../constants/design';
@@ -69,8 +70,8 @@ const EFFORT_COLORS = DESIGN_EFFORT_COLORS;
 const MemoCalendarScreen   = memo(CalendarScreen);
 // Lazy-loaded on web to keep them out of the initial bundle (they're heavy and
 // only opened on demand). Suspense fallback below covers the brief first load.
-const SeasonReview         = lazy(() => import('./SeasonReview'));
-const AthleteAnalytics     = lazy(() => import('./AthleteAnalytics'));
+const SeasonReview         = lazyWithReload(() => import('./SeasonReview'));
+const AthleteAnalytics     = lazyWithReload(() => import('./AthleteAnalytics'));
 const MemoAthleteAnalytics = memo(AthleteAnalytics);
 const MemoChannelList      = memo(ChannelList);
 

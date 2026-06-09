@@ -60,11 +60,15 @@ try {
 }
 
 // ── Installability + offline app shell ───────────────────────────────────────
-const CACHE = 'teambase-shell-v2';
+// v3: previous versions could cache a Firebase SPA-rewrite HTML response under a
+// hashed .js URL (see the content-type guard in the fetch handler below), which
+// poisoned the cache and threw "Unexpected token '<'". Bumping the cache name
+// makes the activate handler delete the old (possibly poisoned) cache.
+const CACHE = 'teambase-shell-v3';
 // Bump SW_BUILD to ship a service-worker change that force-reloads open PWAs
-// (via the navigate-on-activate below) WITHOUT clearing the asset cache — so the
-// forced reload stays fast. CACHE name stays the same so cached bundles persist.
-const SW_BUILD = 4;
+// (via the navigate-on-activate below). Renaming CACHE above also purges the
+// prior cache on activate.
+const SW_BUILD = 5;
 
 // Precache the app shell so navigations work offline. skipWaiting() activates
 // this SW immediately rather than waiting for all tabs to close.
@@ -119,10 +123,16 @@ self.addEventListener('fetch', (event) => {
 
   if (url.pathname.startsWith('/_expo/static/')) {
     event.respondWith((async () => {
+      const isHtml = (resp) => (resp.headers.get('Content-Type') || '').includes('text/html');
       const cached = await caches.match(request);
-      if (cached) return cached;
+      // Ignore a poisoned cache entry: an HTML response previously stored under a
+      // .js/.css URL (from a Firebase SPA rewrite of a since-deleted chunk).
+      if (cached && !isHtml(cached)) return cached;
       const res = await fetch(request);
-      if (res.ok) {
+      // Firebase Hosting returns index.html (status 200, text/html) for a missing
+      // content-hashed asset. Caching that under a .js URL poisons the cache and
+      // yields "SyntaxError: Unexpected token '<'". Only cache real assets.
+      if (res.ok && !isHtml(res)) {
         const cache = await caches.open(CACHE);
         cache.put(request, res.clone());
       }

@@ -5,7 +5,7 @@ import * as SecureStore from 'expo-secure-store';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 import { BRAND, NEUTRAL } from '../constants/design';
@@ -14,6 +14,7 @@ import WebMaxWidth from '../components/WebMaxWidth';
 import InstallPrompt from '../components/InstallPrompt';
 import UpdateBanner from '../components/UpdateBanner';
 import { registerWebPush } from '../utils/webPush';
+import { lazyWithReload } from '../utils/lazyWithReload';
 
 // Configure how notifications appear when app is in foreground
 Notifications.setNotificationHandler({
@@ -29,13 +30,13 @@ Notifications.setNotificationHandler({
 // initial bundle (and time-to-first-paint) stays small; the SW caches each
 // chunk after first load, so returning users get them instantly.
 import LoginScreen from '../screens/LoginScreen';
-const AssistantJoinScreen = lazy(() => import('../screens/AssistantJoinScreen'));
-const AthleteDashboard    = lazy(() => import('../screens/AthleteDashboard'));
-const AthleteJoinScreen   = lazy(() => import('../screens/AthleteJoinScreen'));
-const CoachDashboard      = lazy(() => import('../screens/CoachDashboard'));
-const CoachSetupScreen    = lazy(() => import('../screens/CoachSetupScreen'));
-const ParentDashboard     = lazy(() => import('../screens/ParentDashboard'));
-const ParentLinkScreen    = lazy(() => import('../screens/ParentLinkScreen'));
+const AssistantJoinScreen = lazyWithReload(() => import('../screens/AssistantJoinScreen'));
+const AthleteDashboard    = lazyWithReload(() => import('../screens/AthleteDashboard'));
+const AthleteJoinScreen   = lazyWithReload(() => import('../screens/AthleteJoinScreen'));
+const CoachDashboard      = lazyWithReload(() => import('../screens/CoachDashboard'));
+const CoachSetupScreen    = lazyWithReload(() => import('../screens/CoachSetupScreen'));
+const ParentDashboard     = lazyWithReload(() => import('../screens/ParentDashboard'));
+const ParentLinkScreen    = lazyWithReload(() => import('../screens/ParentLinkScreen'));
 
 // Register for push notifications and save token to Firestore.
 // On native: expo-notifications → expoPushToken.
