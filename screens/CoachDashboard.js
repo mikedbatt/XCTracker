@@ -34,6 +34,7 @@ import { bottomInset } from '../utils/safeArea';
 import { SIGNAL } from '../constants/design';
 import AthleteDetailScreen from '../screens/AthleteDetailScreen';
 import AttendanceScreen from '../screens/AttendanceScreen';
+import CrossTrainingSettings from '../screens/CrossTrainingSettings';
 import CoachProfile from '../screens/CoachProfile';
 import CalendarScreen from '../screens/CalendarScreen';
 import { SIGNAL_TYPE_COLORS } from '../constants/training';
@@ -51,6 +52,7 @@ import TrainingHub from '../screens/TrainingHub';
 import WorkoutDetailModal from '../screens/WorkoutDetailModal';
 import { ACWR_STATUS, calcACWR } from '../utils/acwrUtils';
 import { batchDocsByIds } from '../utils/batchDocsByIds';
+import { aggregateMiles, isCrossTraining, DEFAULT_CT_FACTORS } from '../utils/activityMiles';
 import { computeVolumeCompliance, getCurrentWeekPace, getAthleteWeeklyTarget } from '../utils/complianceUtils';
 import { computeOvertraining } from '../utils/overtrainingUtils';
 import { calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
@@ -196,6 +198,9 @@ export default function CoachDashboard({ userData }) {
   const [addFromDashboard,    setAddFromDashboard]    = useState(false);
   const [pendingWorkout,      setPendingWorkout]      = useState(null);
   const [selectedAthlete,     setSelectedAthlete]     = useState(null);
+  const [athleteRunMiles,     setAthleteRunMiles]     = useState({}); // running-only (leaderboard toggle)
+  const [leaderboardCT,       setLeaderboardCT]       = useState(true);
+  const [activeOverrides,     setActiveOverrides]     = useState({}); // athleteId → active workout override
   const [selectedTimeframe,   setSelectedTimeframe]   = useState(TIMEFRAMES[0]);
   const [genderFilter,        setGenderFilter]        = useState('all');
   const [overtTrainingAlerts, setOvertTrainingAlerts] = useState({});
@@ -408,16 +413,31 @@ export default function CoachDashboard({ userData }) {
 
       setOvertTrainingAlerts(Object.fromEntries(alertsEntries));
 
+      // Active workout overrides (coach injury modifications), keyed by athlete.
+      let overrideMap = {};
+      try {
+        const todayISO = toLocalISODate(new Date());
+        const ovSnap = await getDocs(query(collection(db, 'workoutOverrides'), where('schoolId', '==', userData.schoolId)));
+        ovSnap.docs.forEach(d => {
+          const o = d.data();
+          if (o.endDate && o.endDate >= todayISO) overrideMap[o.athleteId] = o;
+        });
+        setActiveOverrides(overrideMap);
+      } catch (e) { console.warn('Load overrides:', e); }
+
       // ── Phase 3: Process athlete run data client-side (no network) ──
       const runsByAthlete = runsResult.byField;
 
-      const milesMap         = {};
+      const milesMap         = {};   // with cross-training credit
+      const runMilesMap      = {};   // running only (leaderboard "Runs only" toggle)
       const weeklyMilesMap   = {};
       const threeWeekAvgMap  = {};
       const weekBreakdownMap = {};
       const paceEasyPctMap   = {};
       const lastRunDateMap   = {};
       const acwrMap          = {};
+      const factors = schoolData?.crossTrainingFactors || DEFAULT_CT_FACTORS;
+      const weekMiles = (runs) => aggregateMiles(runs, factors).totalMiles; // with-CT
 
       for (const athlete of approvedAthletes) {
         try {
@@ -440,16 +460,16 @@ export default function CoachDashboard({ userData }) {
             if (cutoffEnd && d > cutoffEnd) return false;
             return true;
           });
-          milesMap[athlete.id] = Math.round(filtered.reduce((s, r) => s + (r.miles || 0), 0) * 10) / 10;
+          const filteredAgg = aggregateMiles(filtered, factors);
+          milesMap[athlete.id]    = filteredAgg.totalMiles;       // with cross-training credit
+          runMilesMap[athlete.id] = filteredAgg.runningMiles;     // running only
 
           // Current week miles
           const weekFiltered = allRuns.filter(r => {
             const d = getRunDate(r);
             return d && d >= weekStart;
           });
-          weeklyMilesMap[athlete.id] = Math.round(
-            weekFiltered.reduce((s, r) => s + (r.miles || 0), 0) * 10
-          ) / 10;
+          weeklyMilesMap[athlete.id] = weekMiles(weekFiltered);
 
           // 3-week average weekly miles
           const week1Start = new Date(weekStart); // current week (incomplete)
@@ -457,14 +477,11 @@ export default function CoachDashboard({ userData }) {
           const week3Start = new Date(weekStart); week3Start.setDate(week3Start.getDate() - 14);
           const week4Start = new Date(weekStart); week4Start.setDate(week4Start.getDate() - 21);
 
-          const w1 = allRuns.filter(r => { const d = getRunDate(r); return d && d >= week1Start; })
-            .reduce((s, r) => s + (r.miles || 0), 0);
-          const w2 = allRuns.filter(r => { const d = getRunDate(r); return d && d >= week2Start && d < week1Start; })
-            .reduce((s, r) => s + (r.miles || 0), 0);
-          const w3 = allRuns.filter(r => { const d = getRunDate(r); return d && d >= week3Start && d < week2Start; })
-            .reduce((s, r) => s + (r.miles || 0), 0);
-          const w4 = allRuns.filter(r => { const d = getRunDate(r); return d && d >= week4Start && d < week3Start; })
-            .reduce((s, r) => s + (r.miles || 0), 0);
+          // Weekly sums count cross-training credit (per the compliance decision).
+          const w1 = weekMiles(allRuns.filter(r => { const d = getRunDate(r); return d && d >= week1Start; }));
+          const w2 = weekMiles(allRuns.filter(r => { const d = getRunDate(r); return d && d >= week2Start && d < week1Start; }));
+          const w3 = weekMiles(allRuns.filter(r => { const d = getRunDate(r); return d && d >= week3Start && d < week2Start; }));
+          const w4 = weekMiles(allRuns.filter(r => { const d = getRunDate(r); return d && d >= week4Start && d < week3Start; }));
 
           threeWeekAvgMap[athlete.id] = Math.round(((w1 + w2 + w3) / 3) * 10) / 10;
           // Store last 3 COMPLETED weeks (skip current incomplete week)
@@ -475,24 +492,28 @@ export default function CoachDashboard({ userData }) {
           };
 
           try {
+            // Pace + ACWR (training load) are RUNNING-only — exclude cross-training.
+            const runningRuns = allRuns.filter(r => !isCrossTraining(r));
             const thirtyDaysAgo = new Date(now - 30 * 86400000);
-            const recentRuns = allRuns.filter(r => {
+            const recentRuns = runningRuns.filter(r => {
               const d = getRunDate(r);
               return d && d >= thirtyDaysAgo;
             });
             paceEasyPctMap[athlete.id] = calcAthletePaceEasyPct(recentRuns, athlete.trainingPaces);
-            acwrMap[athlete.id] = calcACWR(allRuns, now);
+            acwrMap[athlete.id] = calcACWR(runningRuns, now);
           } catch (e) { console.warn('Pace easy %% calc failed for athlete:', e); }
 
         } catch (e) {
           console.warn('Athlete data error:', e);
           milesMap[athlete.id]        = 0;
+          runMilesMap[athlete.id]     = 0;
           weeklyMilesMap[athlete.id]  = 0;
           threeWeekAvgMap[athlete.id] = 0;
         }
       }
 
       setAthleteMiles(milesMap);
+      setAthleteRunMiles(runMilesMap);
       setAthleteWeeklyMiles(weeklyMilesMap);
       setAthlete3WeekAvg(threeWeekAvgMap);
       setAthleteWeeklyBreakdown(weekBreakdownMap);
@@ -500,8 +521,14 @@ export default function CoachDashboard({ userData }) {
       setAthleteLastRunDate(lastRunDateMap);
       setAthleteACWR(acwrMap);
 
-      // Compliance computation
+      // Compliance computation. An athlete on a coach 'rest' modification isn't
+      // "under target" — pull them out of the under-target flag (cross-training
+      // overrides already count toward volume via earned credit miles).
       const compliance = computeVolumeCompliance(approvedAthletes, loadedGroups, threeWeekAvgMap, weekBreakdownMap);
+      const restIds = new Set(Object.values(overrideMap).filter(o => o.type === 'rest').map(o => o.athleteId));
+      if (restIds.size && compliance.underTarget) {
+        compliance.underTarget = compliance.underTarget.filter(a => !restIds.has(a.id));
+      }
       setComplianceData(compliance);
 
       // Pace compliance computation
@@ -755,6 +782,10 @@ export default function CoachDashboard({ userData }) {
     return true;
   });
 
+  // Leaderboard miles: with cross-training credit, or running-only when toggled.
+  const leaderMiles = leaderboardCT ? athleteMiles : athleteRunMiles;
+  const hasTeamXT = filteredAthletes.some(a => (athleteMiles[a.id] || 0) !== (athleteRunMiles[a.id] || 0));
+
   const teamWeeklyMiles = Math.round(
     filteredAthletes.reduce((s, a) => s + (athleteWeeklyMiles[a.id] || 0), 0) * 10
   ) / 10;
@@ -781,7 +812,8 @@ export default function CoachDashboard({ userData }) {
   };
 
   const renderAthleteCard = (athlete, index) => {
-    const miles = athleteMiles[athlete.id];
+    const miles = leaderMiles[athlete.id];
+    const xtCredit = Math.round(((athleteMiles[athlete.id] || 0) - (athleteRunMiles[athlete.id] || 0)) * 10) / 10;
     const isTop = index < 3;
     return (
       <TouchableOpacity
@@ -808,6 +840,9 @@ export default function CoachDashboard({ userData }) {
         <View style={styles.athleteMilesBox}>
           <Text style={styles.athleteMilesNum}>{miles != null ? miles.toFixed(1) : '—'}</Text>
           <Text style={styles.athleteMilesLabel}>MILES</Text>
+          {leaderboardCT && xtCredit > 0 && (
+            <Text style={styles.athleteXtLabel}>+{xtCredit} XT</Text>
+          )}
         </View>
         <Text style={styles.chevron}>›</Text>
       </TouchableOpacity>
@@ -843,6 +878,10 @@ export default function CoachDashboard({ userData }) {
 
   // Injury / illness alert
   const injuredAthletes = athletes.filter(a => overtTrainingAlerts[a.id]?.todayInjury || overtTrainingAlerts[a.id]?.todayIllness);
+  // Injured athletes whose workout the coach has already modified drop into a
+  // "managed" list so the coach can see who still needs attention.
+  const needsAttentionInjured = injuredAthletes.filter(a => !activeOverrides[a.id]);
+  const managedInjured = injuredAthletes.filter(a => activeOverrides[a.id]);
   const injuryStatus = injuredAthletes.length > 0 ? 'alert' : 'ok';
   const injuryGradient = injuryStatus === 'alert'
     ? [SIGNAL.color.coral, SIGNAL.color.effort10]
@@ -1363,7 +1402,9 @@ export default function CoachDashboard({ userData }) {
                   </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={[styles.triageTitle, { color: SIGNAL.color.coral }]}>
-                      {injuredAthletes.length} reporting injury or illness
+                      {needsAttentionInjured.length > 0
+                        ? `${needsAttentionInjured.length} reporting injury or illness`
+                        : 'Injuries — all managed'}
                     </Text>
                   </View>
                   <Ionicons name={injuryCardExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={SIGNAL.color.coral} />
@@ -1377,11 +1418,11 @@ export default function CoachDashboard({ userData }) {
                       end={{ x: 1, y: 1 }}
                       style={styles.heroPill}
                     >
-                      <Text style={styles.heroPillNum}>{injuredAthletes.length}</Text>
-                      <Text style={styles.heroPillSub}>athletes need attention</Text>
+                      <Text style={styles.heroPillNum}>{needsAttentionInjured.length}</Text>
+                      <Text style={styles.heroPillSub}>{needsAttentionInjured.length === 1 ? 'athlete needs attention' : 'athletes need attention'}</Text>
                     </LinearGradient>
 
-                    {injuredAthletes.map(athlete => {
+                    {needsAttentionInjured.map(athlete => {
                       const alerts = overtTrainingAlerts[athlete.id];
                       const inj = alerts?.todayInjury;
                       const ill = alerts?.todayIllness;
@@ -1429,6 +1470,35 @@ export default function CoachDashboard({ userData }) {
                         </TouchableOpacity>
                       );
                     })}
+
+                    {/* Managed injured — workout already modified by the coach */}
+                    {managedInjured.length > 0 && (
+                      <>
+                        <Text style={styles.managedHeader}>Managed ({managedInjured.length})</Text>
+                        {managedInjured.map(athlete => {
+                          const ov = activeOverrides[athlete.id];
+                          return (
+                            <TouchableOpacity
+                              key={athlete.id}
+                              style={styles.injuryRow}
+                              onPress={() => setSelectedAthlete(athlete)}
+                              activeOpacity={0.85}
+                            >
+                              <View style={[styles.injuryAvatar, { backgroundColor: athlete.avatarColor || SIGNAL.color.indigo }]}>
+                                <Text style={styles.injuryAvatarText}>{athlete.firstName?.[0]}{athlete.lastName?.[0]}</Text>
+                              </View>
+                              <View style={{ flex: 1, minWidth: 0 }}>
+                                <Text style={styles.injuryName}>{athlete.firstName} {athlete.lastName}</Text>
+                                <Text style={[styles.injuryRec, { color: SIGNAL.color.cyan }]}>
+                                  {ov?.type === 'rest' ? 'Rest' : 'Cross-training'} until {ov?.endDate}
+                                </Text>
+                              </View>
+                              <Text style={styles.chevron}>›</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </>
+                    )}
                   </View>
                 )}
               </View>
@@ -1703,6 +1773,24 @@ export default function CoachDashboard({ userData }) {
           </View>
         )}
 
+        {hasTeamXT && (
+          <View style={[styles.chipRow, { marginTop: 4 }]}>
+            {[['with', 'With XT', true], ['runs', 'Runs only', false]].map(([k, l, val]) => {
+              const active = leaderboardCT === val;
+              return (
+                <TouchableOpacity
+                  key={k}
+                  style={[styles.xtToggle, active && styles.xtToggleActive]}
+                  onPress={() => setLeaderboardCT(val)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.xtToggleText, active && styles.xtToggleTextActive]}>{l}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+
         {refreshing && (
           <View style={styles.refreshingRow}>
             <ActivityIndicator size="small" color={SIGNAL.color.indigo} />
@@ -1722,7 +1810,7 @@ export default function CoachDashboard({ userData }) {
               const groupAthletes = athletes
                 .filter(a => group.id ? a.groupId === group.id : !a.groupId)
                 .filter(a => genderFilter === 'all' || a.gender === genderFilter)
-                .sort((a, b) => (athleteMiles[b.id] || 0) - (athleteMiles[a.id] || 0));
+                .sort((a, b) => (leaderMiles[b.id] || 0) - (leaderMiles[a.id] || 0));
               if (groupAthletes.length === 0) return null;
               return (
                 <View key={group.id || 'unassigned'} style={styles.groupSection}>
@@ -1735,7 +1823,7 @@ export default function CoachDashboard({ userData }) {
             })
           ) : (
             [...filteredAthletes]
-              .sort((a, b) => (athleteMiles[b.id] || 0) - (athleteMiles[a.id] || 0))
+              .sort((a, b) => (leaderMiles[b.id] || 0) - (leaderMiles[a.id] || 0))
               .map((athlete, index) => renderAthleteCard(athlete, index))
           )}
         </View>
@@ -1812,6 +1900,17 @@ export default function CoachDashboard({ userData }) {
           <AttendanceScreen
             userData={userData}
             athletes={athletes}
+            onClose={() => { setTrainingSection('hub'); loadDashboard(); }}
+          />
+        </View>
+      )}
+      {/* Training > Cross Training */}
+      {trainingSection === 'crosstraining' && (
+        <View style={[styles.subScreen, { bottom: navHeight }]}>
+          <CrossTrainingSettings
+            school={school}
+            schoolId={userData.schoolId}
+            onSaved={(factors) => setSchool(prev => ({ ...(prev || {}), crossTrainingFactors: factors }))}
             onClose={() => { setTrainingSection('hub'); loadDashboard(); }}
           />
         </View>
@@ -2443,6 +2542,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 3,
   },
+  managedHeader: {
+    ...SIGNAL.style.eyebrow,
+    color: SIGNAL.color.cyan,
+    marginTop: 14,
+    marginBottom: 4,
+  },
 
   // ── Weekly check-in card ───────────────────────────────────────────────────
   weeklySectionHead: {
@@ -2747,6 +2852,21 @@ const styles = StyleSheet.create({
     color: SIGNAL.color.mute,
     letterSpacing: 0.72,
   },
+  athleteXtLabel: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: 9,
+    color: SIGNAL.color.cyan,
+    marginTop: 1,
+  },
+  xtToggle: {
+    paddingVertical: 5, paddingHorizontal: 12,
+    borderRadius: SIGNAL.radius.chip,
+    backgroundColor: SIGNAL.color.white,
+    borderWidth: 1, borderColor: SIGNAL.color.line,
+  },
+  xtToggleActive: { backgroundColor: SIGNAL.color.indigo, borderColor: SIGNAL.color.indigo },
+  xtToggleText: { fontFamily: SIGNAL.font.bodySemi, fontSize: 11, color: SIGNAL.color.inkSoft },
+  xtToggleTextActive: { color: '#fff' },
   chevron: {
     fontSize: 18,
     color: SIGNAL.color.mute2,

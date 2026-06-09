@@ -252,6 +252,17 @@ service cloud.firestore {
       allow update: if isCoachAtSchool(resource.data.schoolId);
     }
 
+    // ── Workout overrides (per-athlete injury modification) ───────────────────
+    // Doc ID = athleteId (one active "break" per athlete). A coach replaces an
+    // athlete's prescribed workout with cross-training or rest for a date range.
+    // Open read (matches runs/checkins/attendance convention — athlete reads own,
+    // coaches read the team); only a coach at the school can write/clear.
+    match /workoutOverrides/{athleteId} {
+      allow read:   if isSignedIn();
+      allow create, update: if isCoachAtSchool(request.resource.data.schoolId);
+      allow delete: if isCoachAtSchool(resource.data.schoolId);
+    }
+
     // ── Strava webhook event queue ────────────────────────────────────────────
     // Written and consumed ONLY by Cloud Functions (Admin SDK bypasses rules).
     // Clients must never touch it. The catch-all below would already deny this;

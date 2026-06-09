@@ -30,6 +30,8 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { auth, db } from '../firebaseConfig';
 import { bottomInset } from '../utils/safeArea';
+import { aggregateMiles, isCrossTraining, creditForRun, CROSS_TRAINING_TYPES, DEFAULT_CT_FACTORS } from '../utils/activityMiles';
+import { toLocalISODate } from '../utils/dateUtils';
 import { autoSyncStrava } from '../stravaConfig';
 import { BRAND, EFFORT_COLORS as DESIGN_EFFORT_COLORS, EFFORT_LABELS as DESIGN_EFFORT_LABELS, SIGNAL } from '../constants/design';
 import { batchDocsByIds } from '../utils/batchDocsByIds';
@@ -89,6 +91,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
   const [recentRuns,           setRecentRuns]           = useState([]);
   const [weekRuns,             setWeekRuns]             = useState([]);
   const [upcomingWorkouts,     setUpcomingWorkouts]     = useState([]);
+  const [myOverride,           setMyOverride]           = useState(null); // coach workout modification
   const [teamAthletes,         setTeamAthletes]         = useState([]);
   const [weeklyMiles,          setWeeklyMiles]          = useState(0);
   const [weeklyTarget,         setWeeklyTarget]         = useState(null);
@@ -151,6 +154,13 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
   const [runDate,      setRunDate]      = useState(new Date());
   const [savingRun,    setSavingRun]    = useState(false);
   const [editingRunId, setEditingRunId] = useState(null);
+  const [activityType, setActivityType] = useState('run'); // 'run' or a cross-training key
+  // Split of the timeframe + week totals into running vs cross-training credit.
+  const [milesSplit,     setMilesSplit]     = useState({ running: 0, xtCredit: 0 });
+  const [weekMilesSplit, setWeekMilesSplit] = useState({ running: 0, xtCredit: 0 });
+  // Team running-only miles (for the leaderboard "Runs only" toggle).
+  const [teamRunMiles, setTeamRunMiles] = useState({});
+  const [leaderboardCT, setLeaderboardCT] = useState(true); // true = include cross-training
   const [myGroup,      setMyGroup]      = useState(null);
   const [leaderboardFilter, setLeaderboardFilter] = useState('all');
   // Bottom nav height is measured at runtime so the sub-screen overlay sits
@@ -282,21 +292,29 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
         return true;
       });
       setRecentRuns(runs);
-      const tMiles = runs.reduce((s, r) => s + (r.miles || 0), 0);
-      setTotalMiles(Math.round(tMiles * 10) / 10);
+      // Cross-training counts toward the total as running-equivalent credit
+      // miles; the split is kept for the run/cross-training display.
+      const factors = currentSchool?.crossTrainingFactors || DEFAULT_CT_FACTORS;
+      const agg = aggregateMiles(runs, factors);
+      setTotalMiles(agg.totalMiles);
+      setMilesSplit({ running: agg.runningMiles, xtCredit: agg.xtCreditMiles });
+      const tMiles = agg.totalMiles;
+      const tRunMiles = agg.runningMiles;
 
       // This-week runs (independent of the timeframe picker)
       if (weekRunsSnap) {
         const wRunDocs = weekRunsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         setWeekRuns(wRunDocs);
-        const wMiles = wRunDocs.reduce((s, r) => s + (r.miles || 0), 0);
-        setWeeklyMiles(Math.round(wMiles * 10) / 10);
+        const wAgg = aggregateMiles(wRunDocs, factors);
+        setWeeklyMiles(wAgg.totalMiles);
+        setWeekMilesSplit({ running: wAgg.runningMiles, xtCredit: wAgg.xtCreditMiles });
       } else {
         // Fallback: derive from the timeframe runs if the week query failed
         const wFiltered = runs.filter(r => { const d = r.date?.toDate?.(); return d && d >= weekStart; });
         setWeekRuns(wFiltered);
-        const wMiles = wFiltered.reduce((s, r) => s + (r.miles || 0), 0);
-        setWeeklyMiles(Math.round(wMiles * 10) / 10);
+        const wAgg = aggregateMiles(wFiltered, factors);
+        setWeeklyMiles(wAgg.totalMiles);
+        setWeekMilesSplit({ running: wAgg.runningMiles, xtCredit: wAgg.xtCreditMiles });
       }
 
       setStravaLinked(!!userDocData?.stravaAccessToken);
@@ -304,14 +322,14 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
       // ── Background: everything below updates the UI as it arrives but does NOT
       // gate the spinner. loadDashboard returns now → first paint happens with
       // the athlete's own data; secondary cards fill in a beat later. ──
-      loadSecondaryDashboard(user, userDocData, { startDate, endDate, tMiles });
+      loadSecondaryDashboard(user, userDocData, { startDate, endDate, tMiles, tRunMiles, factors });
     } catch (error) { console.error('Dashboard load error:', error); }
   };
 
   // Secondary dashboard data — parents, prompts, team leaderboard, feed badge.
   // Intentionally NOT awaited by loadDashboard so a large team query can't block
   // first paint. Each block guards its own errors.
-  const loadSecondaryDashboard = async (user, userDocData, { startDate, endDate, tMiles }) => {
+  const loadSecondaryDashboard = async (user, userDocData, { startDate, endDate, tMiles, tRunMiles, factors }) => {
     // Pending/linked parents
     if (userDocData) {
       try {
@@ -373,6 +391,16 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
         .then(wSnap => setUpcomingWorkouts(wSnap.docs.map(d => ({ id: d.id, ...d.data() }))))
         .catch(e => console.warn('Upcoming workouts:', e));
 
+      // Coach workout modification (injury): active if endDate is today or later.
+      getDoc(doc(db, 'workoutOverrides', user.uid))
+        .then(snap => {
+          if (!snap.exists()) { setMyOverride(null); return; }
+          const o = snap.data();
+          const todayISO = toLocalISODate(new Date());
+          setMyOverride(o.endDate && o.endDate >= todayISO ? o : null);
+        })
+        .catch(e => console.warn('Override load:', e));
+
       // Team leaderboard — the heaviest read (every teammate's runs). Kept fully
       // off the critical path so it never delays the athlete's own dashboard.
       (async () => {
@@ -380,8 +408,10 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
           const athleteSnap = await getDocs(query(collection(db, 'users'), where('schoolId', '==', userData.schoolId), where('role', '==', 'athlete'), where('status', '==', 'approved')));
           const athletes = athleteSnap.docs.map(d => ({ id: d.id, ...d.data() }));
           setTeamAthletes(athletes);
-          const milesMap = {};
+          const milesMap = {};      // with cross-training credit
+          const runMilesMap = {};   // running only (leaderboard "Runs only" toggle)
           milesMap[user.uid] = tMiles;
+          runMilesMap[user.uid] = tRunMiles ?? tMiles;
           const otherIds = athletes.filter(a => a.id !== user.uid).map(a => a.id);
           if (otherIds.length > 0) {
             try {
@@ -396,14 +426,17 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
                   if (endDate && rd > endDate) return false;
                   return true;
                 });
-                milesMap[id] = Math.round(filtered.reduce((s, r) => s + (r.miles || 0), 0) * 10) / 10;
+                const a = aggregateMiles(filtered, factors);
+                milesMap[id] = a.totalMiles;
+                runMilesMap[id] = a.runningMiles;
               }
             } catch (e) {
               console.warn('Failed to batch-load team miles:', e);
-              otherIds.forEach(id => { milesMap[id] = 0; });
+              otherIds.forEach(id => { milesMap[id] = 0; runMilesMap[id] = 0; });
             }
           }
           setTeamMiles(milesMap);
+          setTeamRunMiles(runMilesMap);
         } catch (e) { console.warn('Team athletes:', e); }
       })();
     }
@@ -484,13 +517,28 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
         Alert.alert('Updated! ✅', 'Your run has been updated.');
         setEditingRunId(null);
       } else {
-        // Wellness check-ins are now handled via the daily card, not per-run
-        await addDoc(collection(db, 'runs'), { userId: user.uid, schoolId: userData.schoolId || null, miles: milesFloat, duration: duration || null, effort, notes: notes || null, source: 'manual', date: runDate });
-        await updateDoc(doc(db, 'users', user.uid), { totalMiles: Math.round(((totalMiles || 0) + milesFloat) * 10) / 10 });
-        Alert.alert('Run logged! 🏃', miles + ' miles saved. Great work!');
+        const ct = activityType !== 'run';
+        const factors = school?.crossTrainingFactors || DEFAULT_CT_FACTORS;
+        const base = {
+          userId: user.uid, schoolId: userData.schoolId || null,
+          miles: milesFloat, duration: duration || null, effort, notes: notes || null,
+          source: 'manual', date: runDate, activityType,
+        };
+        if (ct) {
+          // Cross-training: store the running-equivalent credit (snapshot) and
+          // DON'T touch totalMiles (which stays running-only).
+          const factor = factors[activityType] ?? DEFAULT_CT_FACTORS[activityType] ?? 0;
+          const creditMiles = Math.round(milesFloat * factor * 10) / 10;
+          await addDoc(collection(db, 'runs'), { ...base, creditMiles, factorAtLog: factor });
+          Alert.alert('Cross-training logged! 🚴', `${milesFloat} ${activityType} mi = ${creditMiles} mi credit.`);
+        } else {
+          await addDoc(collection(db, 'runs'), base);
+          await updateDoc(doc(db, 'users', user.uid), { totalMiles: Math.round(((totalMiles || 0) + milesFloat) * 10) / 10 });
+          Alert.alert('Run logged! 🏃', miles + ' miles saved. Great work!');
+        }
       }
       setLogModalVisible(false); setPendingWellness(null);
-      setMiles(''); setDuration(''); setEffort(5); setNotes(''); setRunDate(new Date());
+      setMiles(''); setDuration(''); setEffort(5); setNotes(''); setRunDate(new Date()); setActivityType('run');
       loadDashboard();
     } catch (error) { console.error(error); Alert.alert('Error', 'Could not save run. Please try again.'); }
     setSavingRun(false);
@@ -505,7 +553,10 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
         try {
           const { deleteDoc, doc: firestoreDoc } = await import('firebase/firestore');
           await deleteDoc(firestoreDoc(db, 'runs', run.id));
-          await updateDoc(doc(db, 'users', auth.currentUser.uid), { totalMiles: Math.max(0, Math.round(((totalMiles || 0) - (run.miles || 0)) * 10) / 10) });
+          // totalMiles is running-only — only decrement for actual runs.
+          if (!isCrossTraining(run)) {
+            await updateDoc(doc(db, 'users', auth.currentUser.uid), { totalMiles: Math.max(0, Math.round(((totalMiles || 0) - (run.miles || 0)) * 10) / 10) });
+          }
           Alert.alert('Deleted', 'Run removed.');
           setRunDetailVisible(false); setSelectedRun(null); loadDashboard();
         } catch { Alert.alert('Error', 'Could not delete run.'); }
@@ -540,7 +591,10 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
   const overPct = rawPct > 1 ? Math.round((rawPct - 1) * 100) : 0;
   const isOverWarning = hasTarget && rawPct > 1.1;   // >110% — red warning
   const isOverBuffer = hasTarget && rawPct > 1 && rawPct <= 1.1;  // 100-110% — gentle note
-  const sortedTeam = [...teamAthletes].sort((a, b) => (teamMiles[b.id] || 0) - (teamMiles[a.id] || 0));
+  // Leaderboard miles: with cross-training credit, or running-only when toggled.
+  const leaderboardMiles = leaderboardCT ? teamMiles : teamRunMiles;
+  const hasTeamXT = teamAthletes.some(a => (teamMiles[a.id] || 0) !== (teamRunMiles[a.id] || 0));
+  const sortedTeam = [...teamAthletes].sort((a, b) => (leaderboardMiles[b.id] || 0) - (leaderboardMiles[a.id] || 0));
   const myRank = sortedTeam.findIndex(a => a.id === auth.currentUser?.uid) + 1;
 
   // Pace zones — compute from runs that have rawPaceStream data
@@ -553,6 +607,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
     if (!trainingPaces) return { breakdown: null, analysis: null };
     const combined = { e: 0, m: 0, t: 0, i: 0, r: 0 };
     for (const r of runs) {
+      if (isCrossTraining(r)) continue; // cross-training has no running pace
       const zones = calcPaceZoneSecondsForRun(r, trainingPaces);
       if (zones) Object.keys(zones).forEach(k => { combined[k] += zones[k]; });
     }
@@ -1041,6 +1096,21 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
           <Ionicons name="chevron-forward" size={11} color={SIGNAL.color.mute2} />
         </TouchableOpacity>
 
+        {/* ── Coach workout modification (injury) ── */}
+        {isApproved && myOverride && (
+          <View style={styles.overrideCard}>
+            <Ionicons name={myOverride.type === 'rest' ? 'bed-outline' : 'bicycle-outline'} size={20} color={SIGNAL.color.cyan} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.overrideCardTitle}>
+                {myOverride.type === 'rest' ? 'Rest — no workout' : 'Cross-training'} (coach)
+              </Text>
+              <Text style={styles.overrideCardSub}>
+                Through {myOverride.endDate}{myOverride.note ? ` · ${myOverride.note}` : ''}
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* ── Upcoming workouts ── */}
         {isApproved && upcomingWorkouts.length > 0 && (
           <>
@@ -1142,6 +1212,23 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
                   })}
                 </View>
               )}
+              {hasTeamXT && (
+                <View style={styles.pillRow}>
+                  {[['with', 'With XT', true], ['runs', 'Runs only', false]].map(([k, l, val]) => {
+                    const active = leaderboardCT === val;
+                    return (
+                      <TouchableOpacity
+                        key={k}
+                        style={[styles.pill, active && styles.pillActive]}
+                        onPress={() => setLeaderboardCT(val)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.pillText, active && styles.pillTextActive]}>{l}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
               {refreshing && (
                 <View style={styles.refreshingRow}>
                   <ActivityIndicator size="small" color={SIGNAL.color.indigo} />
@@ -1151,7 +1238,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
               <View style={styles.sectionBody}>
                 {displayTeam.slice(0, 5).map((athlete, index) => {
                   const isMe = athlete.id === auth.currentUser?.uid;
-                  const m = teamMiles[athlete.id] || 0;
+                  const m = leaderboardMiles[athlete.id] || 0;
                   return (
                     <View key={athlete.id}>
                       <TouchableOpacity
@@ -1244,8 +1331,13 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
         {/* ── My runs ── */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>
-            My <Text style={styles.sectionTitleAccent}>runs</Text>
+            My <Text style={styles.sectionTitleAccent}>activity</Text>
           </Text>
+          {milesSplit.xtCredit > 0 && (
+            <Text style={styles.sectionSub}>
+              {totalMiles} mi · {milesSplit.running} run + {milesSplit.xtCredit} cross-train
+            </Text>
+          )}
         </View>
         <View style={styles.sectionBody}>
           {recentRuns.length === 0 ? (
@@ -1268,6 +1360,13 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
                     <Text style={styles.runMilesUnit}>mi</Text>
                   </View>
                   <Text style={styles.runDate}>{dateStr}</Text>
+                  {isCrossTraining(run) && (
+                    <View style={styles.xtChip}>
+                      <Text style={styles.xtChipText}>
+                        {(CROSS_TRAINING_TYPES.find(t => t.key === run.activityType)?.label || 'XT')} · +{creditForRun(run, school?.crossTrainingFactors || DEFAULT_CT_FACTORS)} mi
+                      </Text>
+                    </View>
+                  )}
                 </View>
                 <View style={styles.runMiddle}>
                   {run.duration && <Text style={styles.runDuration}>{run.duration}</Text>}
@@ -1433,24 +1532,62 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.logModal}>
             <View style={styles.logModalHeader}>
-              <TouchableOpacity onPress={() => { setLogModalVisible(false); setEditingRunId(null); }}>
+              <TouchableOpacity onPress={() => { setLogModalVisible(false); setEditingRunId(null); setActivityType('run'); }}>
                 <Text style={styles.logModalCancel}>Cancel</Text>
               </TouchableOpacity>
-              <Text style={styles.logModalTitle}>{editingRunId ? 'Edit run' : 'Log a run'}</Text>
+              <Text style={styles.logModalTitle}>{editingRunId ? 'Edit run' : 'Log a workout'}</Text>
               <View style={{ width: 60 }} />
             </View>
             <ScrollView style={styles.logModalScroll} keyboardShouldPersistTaps="handled">
-              <DatePickerField label="Run date" value={runDate} onChange={setRunDate} primaryColor={SIGNAL.color.indigo} maximumDate={new Date()} />
-              <Text style={styles.logLabel}>Miles *</Text>
-              <TextInput
-                style={styles.logInput}
-                placeholder="e.g. 5.2"
-                placeholderTextColor={SIGNAL.color.mute2}
-                value={miles}
-                onChangeText={setMiles}
-                keyboardType="decimal-pad"
-                returnKeyType="next"
-              />
+              <DatePickerField label="Date" value={runDate} onChange={setRunDate} primaryColor={SIGNAL.color.indigo} maximumDate={new Date()} />
+
+              {/* Activity type — Run (default) or a cross-training type */}
+              <Text style={styles.logLabel}>Activity</Text>
+              <View style={styles.activityRow}>
+                {[{ key: 'run', label: 'Run' }, ...CROSS_TRAINING_TYPES].map(opt => {
+                  const active = activityType === opt.key;
+                  return (
+                    <TouchableOpacity
+                      key={opt.key}
+                      style={[styles.activityPill, active && styles.activityPillActive]}
+                      onPress={() => setActivityType(opt.key)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.activityPillText, active && styles.activityPillTextActive]}>{opt.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {(() => {
+                const ct = activityType !== 'run';
+                const label = ct
+                  ? (CROSS_TRAINING_TYPES.find(t => t.key === activityType)?.label || 'Cross-training')
+                  : 'Run';
+                const factors = school?.crossTrainingFactors || DEFAULT_CT_FACTORS;
+                const factor = factors[activityType] ?? DEFAULT_CT_FACTORS[activityType] ?? 0;
+                const milesNum = parseFloat(miles);
+                const credit = ct && !isNaN(milesNum) ? Math.round(milesNum * factor * 10) / 10 : null;
+                return (
+                  <>
+                    <Text style={styles.logLabel}>{ct ? `${label} miles *` : 'Miles *'}</Text>
+                    <TextInput
+                      style={styles.logInput}
+                      placeholder="e.g. 5.2"
+                      placeholderTextColor={SIGNAL.color.mute2}
+                      value={miles}
+                      onChangeText={setMiles}
+                      keyboardType="decimal-pad"
+                      returnKeyType="next"
+                    />
+                    {ct && credit != null && (
+                      <Text style={styles.creditPreview}>
+                        {milesNum} {label.toLowerCase()} mi = {credit} mi credit (×{factor})
+                      </Text>
+                    )}
+                  </>
+                );
+              })()}
               <Text style={styles.logLabel}>Duration (optional)</Text>
               <TextInput
                 style={styles.logInput}
@@ -2004,6 +2141,21 @@ const styles = StyleSheet.create({
     fontFamily: SIGNAL.font.body, fontSize: 10, color: SIGNAL.color.mute, marginLeft: 2,
   },
   runDate: { fontFamily: SIGNAL.font.body, fontSize: 10.5, color: SIGNAL.color.mute, marginTop: 1 },
+  xtChip: {
+    alignSelf: 'flex-start', marginTop: 4,
+    paddingVertical: 2, paddingHorizontal: 7, borderRadius: SIGNAL.radius.chip,
+    backgroundColor: `${SIGNAL.color.cyan}${SIGNAL.tint.chip}`,
+  },
+  xtChipText: { fontFamily: SIGNAL.font.bodySemi, fontSize: 9.5, color: SIGNAL.color.cyan },
+  overrideCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    marginHorizontal: 14, marginTop: 8,
+    backgroundColor: `${SIGNAL.color.cyan}${SIGNAL.tint.chip}`,
+    borderRadius: SIGNAL.radius.card, padding: 14,
+    borderWidth: 1, borderColor: `${SIGNAL.color.cyan}40`,
+  },
+  overrideCardTitle: { fontFamily: SIGNAL.font.bodySemi, fontSize: 14, color: SIGNAL.color.ink },
+  overrideCardSub: { fontFamily: SIGNAL.font.body, fontSize: 12, color: SIGNAL.color.mute, marginTop: 2 },
   runMiddle: { flex: 1 },
   runDuration: { fontFamily: SIGNAL.font.mono, fontSize: 12, color: SIGNAL.color.inkSoft },
   runRight: { alignItems: 'flex-end' },
@@ -2114,6 +2266,20 @@ const styles = StyleSheet.create({
   logLabel: {
     fontFamily: SIGNAL.font.bodySemi, fontSize: 12, color: SIGNAL.color.inkSoft,
     marginTop: 4, marginBottom: 8,
+  },
+  activityRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  activityPill: {
+    paddingVertical: 7, paddingHorizontal: 13,
+    borderRadius: SIGNAL.radius.chip,
+    backgroundColor: SIGNAL.color.white,
+    borderWidth: 1, borderColor: SIGNAL.color.line,
+  },
+  activityPillActive: { backgroundColor: SIGNAL.color.indigo, borderColor: SIGNAL.color.indigo },
+  activityPillText: { fontFamily: SIGNAL.font.bodySemi, fontSize: 12.5, color: SIGNAL.color.inkSoft },
+  activityPillTextActive: { color: '#fff' },
+  creditPreview: {
+    fontFamily: SIGNAL.font.bodyMedium, fontSize: 12.5, color: SIGNAL.color.cyan,
+    marginTop: -8, marginBottom: 16, letterSpacing: SIGNAL.letter.bodyTight,
   },
   logInput: {
     backgroundColor: SIGNAL.color.white,

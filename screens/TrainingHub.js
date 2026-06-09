@@ -99,6 +99,12 @@ export default function TrainingHub({ school, athletes, pendingAthletes: pending
       title: 'Attendance',
       subtitle: 'Take roll for today\'s practice',
     },
+    {
+      key: 'crosstraining',
+      icon: 'bicycle-outline',
+      title: 'Cross Training',
+      subtitle: 'Set mile-equivalent credit for bike, swim, etc.',
+    },
   ];
 
   return (

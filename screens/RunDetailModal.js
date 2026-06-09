@@ -195,21 +195,30 @@ export default function RunDetailModal({
     setSaving(true);
     try {
       const newMiles = parseFloat(editMiles);
-      const diff     = newMiles - (run.miles || 0);
-      await updateDoc(doc(db, 'runs', run.id), {
+      const isCT = run.activityType && run.activityType !== 'run';
+      const updates = {
         miles:     newMiles,
         duration:  normalizedDuration || null,
         effort:    editEffort,
         notes:     editNotes || null,
         date:      editDate,
-      });
-      if (diff !== 0) {
-        const userDoc = await getDoc(doc(db, 'users', run.userId));
-        if (userDoc.exists()) {
-          const current = userDoc.data().totalMiles || 0;
-          await updateDoc(doc(db, 'users', run.userId), {
-            totalMiles: Math.max(0, Math.round((current + diff) * 10) / 10),
-          });
+      };
+      // Cross-training: recompute the credit snapshot; never touch running totalMiles.
+      if (isCT) {
+        const factor = typeof run.factorAtLog === 'number' ? run.factorAtLog : 0;
+        updates.creditMiles = Math.round(newMiles * factor * 10) / 10;
+      }
+      await updateDoc(doc(db, 'runs', run.id), updates);
+      if (!isCT) {
+        const diff = newMiles - (run.miles || 0);
+        if (diff !== 0) {
+          const userDoc = await getDoc(doc(db, 'users', run.userId));
+          if (userDoc.exists()) {
+            const current = userDoc.data().totalMiles || 0;
+            await updateDoc(doc(db, 'users', run.userId), {
+              totalMiles: Math.max(0, Math.round((current + diff) * 10) / 10),
+            });
+          }
         }
       }
       setIsEditing(false);
@@ -228,12 +237,15 @@ export default function RunDetailModal({
         setDeleting(true);
         try {
           await deleteDoc(doc(db, 'runs', run.id));
-          const userDoc = await getDoc(doc(db, 'users', run.userId));
-          if (userDoc.exists()) {
-            const current = userDoc.data().totalMiles || 0;
-            await updateDoc(doc(db, 'users', run.userId), {
-              totalMiles: Math.max(0, Math.round((current - (run.miles || 0)) * 10) / 10),
-            });
+          // totalMiles is running-only — skip for cross-training.
+          if (!(run.activityType && run.activityType !== 'run')) {
+            const userDoc = await getDoc(doc(db, 'users', run.userId));
+            if (userDoc.exists()) {
+              const current = userDoc.data().totalMiles || 0;
+              await updateDoc(doc(db, 'users', run.userId), {
+                totalMiles: Math.max(0, Math.round((current - (run.miles || 0)) * 10) / 10),
+              });
+            }
           }
           onDeleted && onDeleted();
           onClose();

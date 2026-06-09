@@ -130,7 +130,26 @@ stravaConfig.js   # Strava OAuth + activity sync (client side)
 - `utils/acwrUtils.js` — Acute:Chronic Workload Ratio. Injury-risk metric
   comparing last-7-day miles to 28-day average. Sweet spot 0.8–1.3; >1.5 is
   a spike. Used on CoachDashboard's Injury Risk card and in the overtraining
-  alert system.
+  alert system. ACWR + pace math is **running-only** — exclude cross-training.
+- `utils/activityMiles.js` — **single source of truth** for splitting run/activity
+  docs into running vs cross-training. A run doc has `activityType` ('run' or a
+  cross-training key: bike/swim/arc/elliptical/pool_run/other); cross-training
+  stores raw `miles` + a snapshot `creditMiles` (= miles × the school's
+  `crossTrainingFactors[type]` at log time). `aggregateMiles(runs, factors)` →
+  `{ runningMiles, xtMiles, xtCreditMiles, totalMiles }` (totalMiles = running +
+  XT credit). Every mileage sum routes through this so raw cross-training miles
+  never count as running. Cross-training credit **counts toward the weekly
+  target/compliance**; `users.totalMiles` stays running-only; pace zones + ACWR
+  exclude cross-training. Coach sets the factors in the Program-tab "Cross
+  Training" card (`screens/CrossTrainingSettings.js`). Leaderboards toggle
+  with/without XT.
+- **Workout overrides** (`workoutOverrides/{athleteId}`) — per-athlete injury
+  modification. A coach replaces an injured athlete's workout with
+  `cross_training` or `rest` for a date range (`startDate`/`endDate`, active when
+  `endDate >= todayISO`) from `AthleteDetailScreen` ("Modify workout"). Injured
+  athletes with an active override move to a "Managed" list on CoachDashboard's
+  injury card; a `rest` override suppresses the under-target compliance flag.
+  Athletes see their modification on AthleteDashboard.
 - `utils/confirmDialog.js` — `confirmDestructive({title, message, confirmLabel,
   onConfirm})`. **Use this instead of `Alert.alert([...buttons])`** — the
   multi-button native Alert is broken on web (collapses to OK-only via

@@ -1,24 +1,28 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { collection, getDocs, orderBy, query, where } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { BRAND, SIGNAL } from '../constants/design';
-import { db } from '../firebaseConfig';
+import { auth, db } from '../firebaseConfig';
 import { getActiveSeason, getPhaseForSeason, generateVolumeCurve } from './SeasonPlanner';
 import { formatTime, calcPace, formatPace } from '../utils/raceUtils';
 import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
 import RunDetailModal from './RunDetailModal';
-import { getMondayISO, getRunDate, groupRunsByWeek } from '../utils/dateUtils';
+import DatePickerField from './DatePickerField';
+import { getMondayISO, getRunDate, groupRunsByWeek, toLocalISODate } from '../utils/dateUtils';
 import { computeOvertraining } from '../utils/overtrainingUtils';
+import { confirmDestructive } from '../utils/confirmDialog';
 
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -38,9 +42,71 @@ export default function AthleteDetailScreen({ athlete, school, groups, onBack, p
   const [athleteGroup, setAthleteGroup] = useState(null);
   const [attendance, setAttendance] = useState([]);
 
+  // Workout override (coach modifies an injured athlete's plan)
+  const [override, setOverride] = useState(null);
+  const [modifyVisible, setModifyVisible] = useState(false);
+  const [ovType, setOvType] = useState('cross_training');
+  const [ovStart, setOvStart] = useState(new Date());
+  const [ovDays, setOvDays] = useState(7);
+  const [ovNote, setOvNote] = useState('');
+  const [savingOverride, setSavingOverride] = useState(false);
+
   const primaryColor = school?.primaryColor || BRAND;
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); loadOverride(); }, []);
+
+  const loadOverride = async () => {
+    try {
+      const snap = await getDoc(doc(db, 'workoutOverrides', athlete.id));
+      if (snap.exists()) {
+        const o = snap.data();
+        // Only treat as active if it hasn't ended yet.
+        const today = toLocalISODate(new Date());
+        setOverride(o.endDate && o.endDate >= today ? o : null);
+      } else {
+        setOverride(null);
+      }
+    } catch (e) { console.warn('Load override failed:', e); }
+  };
+
+  const saveOverride = async () => {
+    setSavingOverride(true);
+    try {
+      const startISO = toLocalISODate(ovStart);
+      const end = new Date(ovStart); end.setDate(end.getDate() + (ovDays - 1));
+      const endISO = toLocalISODate(end);
+      const data = {
+        athleteId: athlete.id,
+        schoolId: athlete.schoolId || school?.id || null,
+        type: ovType,
+        startDate: startISO,
+        endDate: endISO,
+        note: ovNote.trim() || null,
+        setBy: auth.currentUser?.uid || null,
+        setByName: null,
+        createdAt: serverTimestamp(),
+      };
+      await setDoc(doc(db, 'workoutOverrides', athlete.id), data);
+      setOverride(data);
+      setModifyVisible(false);
+      setOvNote('');
+    } catch (e) { console.warn('Save override failed:', e); }
+    setSavingOverride(false);
+  };
+
+  const clearOverride = () => {
+    confirmDestructive({
+      title: 'Clear modification?',
+      message: 'This athlete will go back to their regular group workouts.',
+      confirmLabel: 'Clear',
+      onConfirm: async () => {
+        try {
+          await deleteDoc(doc(db, 'workoutOverrides', athlete.id));
+          setOverride(null);
+        } catch (e) { console.warn('Clear override failed:', e); }
+      },
+    });
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -388,16 +454,30 @@ export default function AthleteDetailScreen({ athlete, school, groups, onBack, p
             </View>
           )}
 
-          {/* Coach action bar (Message + Adjust plan) */}
+          {/* Coach action bar (Message + Modify workout) */}
           {!parentMode && (
-            <View style={styles.actionBar}>
-              <TouchableOpacity style={styles.primaryBtn} activeOpacity={0.85}>
-                <Text style={styles.primaryBtnText}>Message</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.outlineBtn} activeOpacity={0.85}>
-                <Text style={styles.outlineBtnText}>Adjust plan</Text>
-              </TouchableOpacity>
-            </View>
+            <>
+              <View style={styles.actionBar}>
+                <TouchableOpacity style={styles.primaryBtn} activeOpacity={0.85}>
+                  <Text style={styles.primaryBtnText}>Message</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.outlineBtn} activeOpacity={0.85} onPress={() => setModifyVisible(true)}>
+                  <Text style={styles.outlineBtnText}>Modify workout</Text>
+                </TouchableOpacity>
+              </View>
+              {override && (
+                <View style={styles.overrideBanner}>
+                  <Ionicons name={override.type === 'rest' ? 'bed-outline' : 'bicycle-outline'} size={16} color={SIGNAL.color.cyan} />
+                  <Text style={styles.overrideBannerText}>
+                    {override.type === 'rest' ? 'Rest' : 'Cross-training'} until {override.endDate}
+                    {override.note ? ` · ${override.note}` : ''}
+                  </Text>
+                  <TouchableOpacity onPress={clearOverride} hitSlop={8}>
+                    <Text style={styles.overrideClear}>Clear</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </>
           )}
 
           {/* ── 1. Mileage Volume ── */}
@@ -859,6 +939,57 @@ export default function AthleteDetailScreen({ athlete, school, groups, onBack, p
         primaryColor={primaryColor}
         trainingPaces={athlete.trainingPaces || null}
       />
+
+      {/* Modify workout (coach) */}
+      <Modal visible={modifyVisible} transparent animationType="fade" onRequestClose={() => setModifyVisible(false)}>
+        <View style={styles.ovOverlay}>
+          <View style={styles.ovSheet}>
+            <Text style={styles.ovTitle}>Modify {athlete.firstName}'s workout</Text>
+
+            <Text style={styles.ovLabel}>Replace with</Text>
+            <View style={styles.ovRow}>
+              {[['cross_training', 'Cross Training'], ['rest', 'No Workout']].map(([k, l]) => {
+                const active = ovType === k;
+                return (
+                  <TouchableOpacity key={k} style={[styles.ovPill, active && styles.ovPillActive]} onPress={() => setOvType(k)} activeOpacity={0.8}>
+                    <Text style={[styles.ovPillText, active && styles.ovPillTextActive]}>{l}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <DatePickerField label="Starting" value={ovStart} onChange={setOvStart} primaryColor={SIGNAL.color.indigo} />
+
+            <Text style={styles.ovLabel}>For how long</Text>
+            <View style={styles.ovRow}>
+              {[['3 days', 3], ['1 week', 7], ['2 weeks', 14], ['3 weeks', 21]].map(([l, d]) => {
+                const active = ovDays === d;
+                return (
+                  <TouchableOpacity key={d} style={[styles.ovPill, active && styles.ovPillActive]} onPress={() => setOvDays(d)} activeOpacity={0.8}>
+                    <Text style={[styles.ovPillText, active && styles.ovPillTextActive]}>{l}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={styles.ovLabel}>Note (optional)</Text>
+            <TextInput
+              style={styles.ovInput}
+              value={ovNote}
+              onChangeText={setOvNote}
+              placeholder="e.g. Achilles — bike only"
+              placeholderTextColor={SIGNAL.color.mute2}
+            />
+
+            <TouchableOpacity style={styles.ovSaveBtn} onPress={saveOverride} disabled={savingOverride} activeOpacity={0.85}>
+              {savingOverride ? <ActivityIndicator color="#fff" /> : <Text style={styles.ovSaveText}>Apply modification</Text>}
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.ovCancel} onPress={() => setModifyVisible(false)}>
+              <Text style={styles.ovCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -956,6 +1087,46 @@ const styles = StyleSheet.create({
     height: 28,
     backgroundColor: SIGNAL.color.line,
   },
+
+  // ── Workout override ──────────────────────────────────────────────────────
+  overrideBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: `${SIGNAL.color.cyan}${SIGNAL.tint.chip}`,
+    borderRadius: SIGNAL.radius.control, paddingVertical: 10, paddingHorizontal: 12,
+    marginTop: SIGNAL.space[3],
+  },
+  overrideBannerText: { flex: 1, fontFamily: SIGNAL.font.bodySemi, fontSize: 12.5, color: SIGNAL.color.inkSoft },
+  overrideClear: { fontFamily: SIGNAL.font.bodySemi, fontSize: 12.5, color: SIGNAL.color.coral },
+  ovOverlay: {
+    flex: 1, backgroundColor: 'rgba(11,13,18,0.45)',
+    justifyContent: 'center', alignItems: 'center', padding: SIGNAL.space.screen,
+  },
+  ovSheet: {
+    width: '100%', maxWidth: 440, backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.sheet, padding: SIGNAL.space[6], ...SIGNAL.border.hairline,
+  },
+  ovTitle: { fontFamily: SIGNAL.font.bodySemi, fontSize: SIGNAL.size.heading, color: SIGNAL.color.ink, marginBottom: SIGNAL.space[4] },
+  ovLabel: { fontFamily: SIGNAL.font.bodySemi, fontSize: 12, color: SIGNAL.color.inkSoft, marginBottom: 8, marginTop: 4 },
+  ovRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: SIGNAL.space[4] },
+  ovPill: {
+    paddingVertical: 8, paddingHorizontal: 14, borderRadius: SIGNAL.radius.chip,
+    backgroundColor: SIGNAL.color.white, borderWidth: 1, borderColor: SIGNAL.color.line,
+  },
+  ovPillActive: { backgroundColor: SIGNAL.color.indigo, borderColor: SIGNAL.color.indigo },
+  ovPillText: { fontFamily: SIGNAL.font.bodySemi, fontSize: 12.5, color: SIGNAL.color.inkSoft },
+  ovPillTextActive: { color: '#fff' },
+  ovInput: {
+    backgroundColor: SIGNAL.color.paper, borderRadius: SIGNAL.radius.control,
+    borderWidth: 1, borderColor: SIGNAL.color.line, paddingHorizontal: 14, paddingVertical: 12,
+    fontFamily: SIGNAL.font.body, fontSize: 15, color: SIGNAL.color.ink, marginBottom: SIGNAL.space[5],
+  },
+  ovSaveBtn: {
+    backgroundColor: SIGNAL.color.indigo, borderRadius: SIGNAL.radius.button,
+    paddingVertical: 15, alignItems: 'center', justifyContent: 'center',
+  },
+  ovSaveText: { fontFamily: SIGNAL.font.bodyBold, fontSize: SIGNAL.size.bodyLg, color: SIGNAL.color.white },
+  ovCancel: { alignItems: 'center', paddingVertical: 12, marginTop: 4 },
+  ovCancelText: { fontFamily: SIGNAL.font.bodyMedium, fontSize: 13.5, color: SIGNAL.color.mute },
 
   // ── Parent header ────────────────────────────────────────────────────────
   parentHeader: {
