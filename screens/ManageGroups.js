@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { addDoc, collection, deleteDoc, doc, getDocs, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
-  ActionSheetIOS, ActivityIndicator, Alert, Platform,
+  ActionSheetIOS, ActivityIndicator, Alert, Modal, Platform,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
@@ -18,6 +18,9 @@ export default function ManageGroups({ schoolId, athletes, onClose }) {
   const [athleteStats, setAthleteStats] = useState({});
   const [activeTab, setActiveTab] = useState('groups');
   const [sortBy, setSortBy] = useState('volume');
+  // Athlete currently being assigned to a group (drives the picker modal on
+  // web/Android — iOS uses the native ActionSheet).
+  const [assigningAthlete, setAssigningAthlete] = useState(null);
 
   useEffect(() => {
     loadGroups();
@@ -120,42 +123,34 @@ export default function ManageGroups({ schoolId, athletes, onClose }) {
     });
   };
 
-  const handleAssignAthlete = (athlete) => {
-    const options = [...groups.map(g => g.name), 'Unassigned', 'Cancel'];
-    const cancelIndex = options.length - 1;
+  // Persist a group assignment for an athlete (groupId === null → Unassigned).
+  const assignToGroup = async (athlete, groupId) => {
+    try {
+      await updateDoc(doc(db, 'users', athlete.id), { groupId });
+      athlete.groupId = groupId;
+      setGroups([...groups]);
+    } catch (e) {
+      console.warn('Failed to assign athlete to group:', e);
+    }
+    setAssigningAthlete(null);
+  };
 
+  const handleAssignAthlete = (athlete) => {
     if (Platform.OS === 'ios') {
+      const options = [...groups.map(g => g.name), 'Unassigned', 'Cancel'];
+      const cancelIndex = options.length - 1;
       ActionSheetIOS.showActionSheetWithOptions(
         { options, cancelButtonIndex: cancelIndex, title: `${athlete.firstName} ${athlete.lastName}` },
-        async (index) => {
+        (index) => {
           if (index === cancelIndex) return;
           const groupId = index < groups.length ? groups[index].id : null;
-          await updateDoc(doc(db, 'users', athlete.id), { groupId });
-          athlete.groupId = groupId;
-          setGroups([...groups]);
+          assignToGroup(athlete, groupId);
         }
       );
     } else {
-      Alert.alert(
-        `${athlete.firstName} ${athlete.lastName}`,
-        'Assign to group:',
-        [
-          ...groups.map(g => ({
-            text: g.name,
-            onPress: async () => {
-              await updateDoc(doc(db, 'users', athlete.id), { groupId: g.id });
-              athlete.groupId = g.id;
-              setGroups([...groups]);
-            },
-          })),
-          { text: 'Unassigned', onPress: async () => {
-            await updateDoc(doc(db, 'users', athlete.id), { groupId: null });
-            athlete.groupId = null;
-            setGroups([...groups]);
-          }},
-          { text: 'Cancel', style: 'cancel' },
-        ]
-      );
+      // Web/Android: Alert-as-picker is dropped on react-native-web, so open a
+      // real modal picker instead.
+      setAssigningAthlete(athlete);
     }
   };
 
@@ -327,11 +322,111 @@ export default function ManageGroups({ schoolId, athletes, onClose }) {
 
         <View style={{ height: 60 }} />
       </ScrollView>
+
+      {/* Group picker (web/Android) — replaces the web-broken Alert action sheet */}
+      <Modal
+        visible={!!assigningAthlete}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAssigningAthlete(null)}
+      >
+        <TouchableOpacity
+          style={styles.pickerOverlay}
+          activeOpacity={1}
+          onPress={() => setAssigningAthlete(null)}
+        >
+          <View style={styles.pickerSheet}>
+            <Text style={styles.pickerTitle}>
+              Assign {assigningAthlete?.firstName} {assigningAthlete?.lastName}
+            </Text>
+            <ScrollView style={{ maxHeight: 320 }}>
+              {groups.map(g => {
+                const selected = assigningAthlete?.groupId === g.id;
+                return (
+                  <TouchableOpacity
+                    key={g.id}
+                    style={styles.pickerRow}
+                    onPress={() => assignToGroup(assigningAthlete, g.id)}
+                  >
+                    <Text style={[styles.pickerRowText, selected && styles.pickerRowTextSelected]}>{g.name}</Text>
+                    {selected && <Ionicons name="checkmark" size={18} color={SIGNAL.color.indigo} />}
+                  </TouchableOpacity>
+                );
+              })}
+              <TouchableOpacity
+                style={styles.pickerRow}
+                onPress={() => assignToGroup(assigningAthlete, null)}
+              >
+                <Text style={[styles.pickerRowText, !assigningAthlete?.groupId && styles.pickerRowTextSelected]}>
+                  Unassigned
+                </Text>
+                {!assigningAthlete?.groupId && <Ionicons name="checkmark" size={18} color={SIGNAL.color.indigo} />}
+              </TouchableOpacity>
+            </ScrollView>
+            <TouchableOpacity style={styles.pickerCancel} onPress={() => setAssigningAthlete(null)}>
+              <Text style={styles.pickerCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  // ── Group picker modal ──────────────────────────────────────────────────
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(11,13,18,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SIGNAL.space.screen,
+  },
+  pickerSheet: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: SIGNAL.color.white,
+    borderRadius: SIGNAL.radius.sheet,
+    padding: SIGNAL.space[5],
+    ...SIGNAL.border.hairline,
+  },
+  pickerTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: SIGNAL.size.bodyLg,
+    color: SIGNAL.color.ink,
+    letterSpacing: SIGNAL.letter.bodyTight,
+    marginBottom: SIGNAL.space[3],
+  },
+  pickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: SIGNAL.space[4],
+    borderBottomWidth: 1,
+    borderBottomColor: SIGNAL.color.line,
+  },
+  pickerRowText: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: SIGNAL.size.bodyLg,
+    color: SIGNAL.color.inkSoft,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+  pickerRowTextSelected: {
+    fontFamily: SIGNAL.font.bodySemi,
+    color: SIGNAL.color.indigo,
+  },
+  pickerCancel: {
+    marginTop: SIGNAL.space[4],
+    paddingVertical: SIGNAL.space[3],
+    alignItems: 'center',
+  },
+  pickerCancelText: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: SIGNAL.size.body,
+    color: SIGNAL.color.mute,
+    letterSpacing: SIGNAL.letter.bodyTight,
+  },
+
   container: {
     flex: 1,
     backgroundColor: SIGNAL.color.paper2,

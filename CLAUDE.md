@@ -334,7 +334,14 @@ preserved and resumable. Patterns when working in web-touched code:
   sync with `firebaseConfig.js`.
 - **Confirmation dialogs:** use `confirmDestructive` from
   `utils/confirmDialog.js` — never `Alert.alert([...buttons])` directly. The
-  multi-button Alert is silently broken on web.
+  multi-button Alert is silently broken on web (the button array is dropped, so
+  any `onPress` — including the one doing the work or navigating — never fires).
+  Same trap for `Alert.alert` used as a picker/action-sheet: build a real
+  `<Modal>` (see the group picker in `ManageGroups`).
+- **Date pickers:** use `screens/DatePickerField.js` — it Platform-branches to a
+  native HTML `<input type="date|time|datetime-local">` on web (the
+  `@react-native-community/datetimepicker` it uses on iOS/Android has NO web
+  support and silently renders nothing). Don't use `DateTimePicker` directly.
 - **Image picker / save:** use `utils/imageHelpers.js` — never call
   expo-image-picker / expo-media-library directly.
 - **SecureStore:** wrap calls in try/catch when shared between native and web.

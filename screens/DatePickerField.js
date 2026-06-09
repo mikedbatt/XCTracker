@@ -44,6 +44,57 @@ export default function DatePickerField({
     if (!value) onChange(new Date());
   };
 
+  // Web: @react-native-community/datetimepicker has NO web support, so the
+  // trigger silently did nothing on the PWA. Use the browser's native date/time
+  // input instead (renders as a real DOM <input> under react-native-web).
+  if (Platform.OS === 'web') {
+    const pad = (n) => String(n).padStart(2, '0');
+    const toDateStr = (d) => (d ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` : '');
+    const toTimeStr = (d) => (d ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : '');
+    const inputType = mode === 'time' ? 'time' : mode === 'datetime' ? 'datetime-local' : 'date';
+    const inputValue = !value ? '' : (mode === 'time' ? toTimeStr(date) : toDateStr(date));
+
+    const onWebChange = (e) => {
+      const v = e.target.value;
+      if (!v) return;
+      if (mode === 'time') {
+        const [hh, mm] = v.split(':').map(Number);
+        const nd = new Date(toValidDate(value) || new Date());
+        nd.setHours(hh, mm, 0, 0);
+        onChange(nd);
+      } else {
+        // Parse yyyy-mm-dd as a LOCAL date (avoids the UTC off-by-one).
+        const [y, m, d] = v.split('-').map(Number);
+        onChange(new Date(y, m - 1, d));
+      }
+    };
+
+    return (
+      <View style={styles.container}>
+        {label && <Text style={styles.label}>{label}</Text>}
+        <input
+          type={inputType}
+          value={inputValue}
+          onChange={onWebChange}
+          min={mode !== 'time' && minDate ? toDateStr(minDate) : undefined}
+          max={mode !== 'time' && maxDate ? toDateStr(maxDate) : undefined}
+          style={{
+            width: '100%',
+            boxSizing: 'border-box',
+            backgroundColor: NEUTRAL.card,
+            border: `1.5px solid ${value ? BRAND : NEUTRAL.input}`,
+            borderRadius: RADIUS.md,
+            padding: `${SPACE.lg - 2}px`,
+            fontSize: FONT_SIZE.md,
+            color: value ? BRAND_DARK : NEUTRAL.muted,
+            fontFamily: 'inherit',
+            outline: 'none',
+          }}
+        />
+      </View>
+    );
+  }
+
   const formatDate = (d) => {
     if (!value) return 'Tap to select date';
     return d.toLocaleDateString('en-US', {
