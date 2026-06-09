@@ -1,14 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  collection, doc, getDocs, query, updateDoc, where,
+  collection, deleteField, doc, getDocs, query, updateDoc, where,
 } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
   Alert, Platform, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
-import { db } from '../firebaseConfig';
+import { auth, db } from '../firebaseConfig';
 import { SIGNAL } from '../constants/design';
 import { confirmDestructive } from '../utils/confirmDialog';
 import DatePickerField from './DatePickerField';
@@ -49,6 +49,8 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
   const [editingIdx, setEditingIdx] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [expandedIdx, setExpandedIdx] = useState(null);
+  // Only the head coach (school creator) may delete seasons.
+  const isHeadCoach = !!school?.adminCoachId && school.adminCoachId === auth.currentUser?.uid;
 
   // Season form fields
   const [sport, setSport] = useState('cross_country');
@@ -176,16 +178,29 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
   };
 
   const handleDelete = (idx) => {
+    if (!isHeadCoach) {
+      Alert.alert('Head coach only', 'Only the head coach can delete a season.');
+      return;
+    }
+    const target = seasons[idx];
     confirmDestructive({
       title: 'Delete season?',
-      message: `Remove ${seasons[idx].name}?`,
+      message: `Remove ${target.name}? This can't be undone (the volume plan for this season is also cleared).`,
       confirmLabel: 'Delete',
       onConfirm: async () => {
         const updated = seasons.filter((_, i) => i !== idx);
         setSeasons(updated);
         if (expandedIdx === idx) setExpandedIdx(null);
         try {
-          await updateDoc(doc(db, 'schools', schoolId), { seasons: updated });
+          const patch = { seasons: updated };
+          // A season can be synthesized from the school's legacy
+          // seasonStart/championshipDate fields — if the deleted one matches
+          // those, clear them too so it doesn't reappear on reload.
+          if (toISO(school?.seasonStart) && toISO(school.seasonStart) === toISO(target.seasonStart)) {
+            patch.seasonStart = deleteField();
+            patch.championshipDate = deleteField();
+          }
+          await updateDoc(doc(db, 'schools', schoolId), patch);
           onSaved && onSaved({ seasons: updated });
         } catch { Alert.alert('Error', 'Could not delete. Please try again.'); }
       },
@@ -685,9 +700,11 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
                             <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(idx)} activeOpacity={0.85}>
                               <Text style={styles.editBtnText}>Edit</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDelete(idx)} activeOpacity={0.85}>
-                              <Text style={styles.deleteBtnText}>Delete</Text>
-                            </TouchableOpacity>
+                            {isHeadCoach && (
+                              <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDelete(idx)} activeOpacity={0.85}>
+                                <Text style={styles.deleteBtnText}>Delete</Text>
+                              </TouchableOpacity>
+                            )}
                           </View>
                         </View>
                       </TouchableOpacity>
