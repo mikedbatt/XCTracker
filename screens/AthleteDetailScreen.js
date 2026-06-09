@@ -4,6 +4,7 @@ import { collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, serverTime
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   Platform,
   ScrollView,
@@ -90,7 +91,12 @@ export default function AthleteDetailScreen({ athlete, school, groups, onBack, p
       setOverride(data);
       setModifyVisible(false);
       setOvNote('');
-    } catch (e) { console.warn('Save override failed:', e); }
+      Alert.alert('Workout modified',
+        `${athlete.firstName} is set to ${ovType === 'rest' ? 'rest' : 'cross-training'} through ${endISO}.`);
+    } catch (e) {
+      console.warn('Save override failed:', e);
+      Alert.alert('Could not save', `The modification did not save: ${e?.message || e}. Please try again.`);
+    }
     setSavingOverride(false);
   };
 
