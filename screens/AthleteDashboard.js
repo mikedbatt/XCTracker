@@ -1292,9 +1292,13 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
                           const xt = Math.round((tot - run) * 10) / 10;
                           return (
                             <View style={styles.leaderMilesCol}>
-                              <View style={styles.leaderMilesLine}><Text style={styles.leaderMilesLineLabel}>RUN</Text><Text style={styles.leaderMilesLineVal}>{run.toFixed(1)}</Text></View>
-                              <View style={styles.leaderMilesLine}><Text style={styles.leaderMilesLineLabel}>XT</Text><Text style={styles.leaderMilesLineVal}>{xt > 0 ? `+${xt.toFixed(1)}` : '—'}</Text></View>
-                              <View style={styles.leaderMilesLine}><Text style={styles.leaderMilesLineLabel}>TOT</Text><Text style={[styles.leaderMilesLineVal, styles.leaderMilesLineActive]}>{tot.toFixed(1)}</Text></View>
+                              <View style={styles.leaderMilesWrap}>
+                                <Text style={[styles.leaderMiles, { color: isMe ? SIGNAL.color.indigo : SIGNAL.color.ink }]}>{tot.toFixed(1)}</Text>
+                                <Text style={styles.leaderMilesUnit}> mi</Text>
+                              </View>
+                              {xt > 0 && (
+                                <Text style={styles.leaderBreakout}>{run.toFixed(1)} run · +{xt.toFixed(1)} xt</Text>
+                              )}
                             </View>
                           );
                         })() : (
@@ -2151,10 +2155,7 @@ const styles = StyleSheet.create({
   },
   leaderMilesUnit: { fontFamily: SIGNAL.font.body, fontSize: 10, color: SIGNAL.color.mute },
   leaderMilesCol: { alignItems: 'flex-end' },
-  leaderMilesLine: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'flex-end', gap: 5 },
-  leaderMilesLineLabel: { fontFamily: SIGNAL.font.body, fontSize: 8.5, color: SIGNAL.color.mute2, width: 22, textAlign: 'right' },
-  leaderMilesLineVal: { fontFamily: SIGNAL.font.bodySemi, fontSize: 12.5, color: SIGNAL.color.inkSoft, minWidth: 34, textAlign: 'right' },
-  leaderMilesLineActive: { fontFamily: SIGNAL.font.bodyBold, color: SIGNAL.color.indigo },
+  leaderBreakout: { fontFamily: SIGNAL.font.body, fontSize: 9.5, color: SIGNAL.color.mute, marginTop: 1 },
 
   // ── Empty state ─────────────────────────────────────────────────────────────
   emptyCard: {

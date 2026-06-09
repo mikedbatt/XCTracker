@@ -845,18 +845,11 @@ export default function CoachDashboard({ userData }) {
         </View>
         {hasTeamXT && leaderboardCT ? (
           <View style={styles.athleteMilesBox}>
-            <View style={styles.milesLine}>
-              <Text style={styles.milesLineLabel}>RUN</Text>
-              <Text style={styles.milesLineVal}>{runM.toFixed(1)}</Text>
-            </View>
-            <View style={styles.milesLine}>
-              <Text style={styles.milesLineLabel}>XT</Text>
-              <Text style={styles.milesLineVal}>{xtCredit > 0 ? `+${xtCredit.toFixed(1)}` : '—'}</Text>
-            </View>
-            <View style={styles.milesLine}>
-              <Text style={styles.milesLineLabel}>TOT</Text>
-              <Text style={[styles.milesLineVal, leaderboardCT && styles.milesLineValActive]}>{totM.toFixed(1)}</Text>
-            </View>
+            <Text style={styles.athleteMilesNum}>{totM.toFixed(1)}</Text>
+            <Text style={styles.athleteMilesLabel}>TOTAL</Text>
+            {xtCredit > 0 && (
+              <Text style={styles.athleteBreakout}>{runM.toFixed(1)} run · +{xtCredit.toFixed(1)} xt</Text>
+            )}
           </View>
         ) : (
           <View style={styles.athleteMilesBox}>
@@ -2886,10 +2879,7 @@ const styles = StyleSheet.create({
     color: SIGNAL.color.cyan,
     marginTop: 1,
   },
-  milesLine: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'flex-end', gap: 5 },
-  milesLineLabel: { fontFamily: SIGNAL.font.body, fontSize: 8.5, color: SIGNAL.color.mute2, width: 22, textAlign: 'right' },
-  milesLineVal: { fontFamily: SIGNAL.font.bodySemi, fontSize: 12.5, color: SIGNAL.color.inkSoft, minWidth: 36, textAlign: 'right' },
-  milesLineValActive: { fontFamily: SIGNAL.font.bodyBold, color: SIGNAL.color.indigo },
+  athleteBreakout: { fontFamily: SIGNAL.font.body, fontSize: 9.5, color: SIGNAL.color.mute, marginTop: 2 },
   xtToggle: {
     paddingVertical: 5, paddingHorizontal: 12,
     borderRadius: SIGNAL.radius.chip,
