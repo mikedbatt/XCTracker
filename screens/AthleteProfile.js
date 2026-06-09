@@ -608,11 +608,10 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
                     activeOpacity={0.7}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
-                    <Text style={[
-                      styles.connectionAction,
-                      { color: stravaLinked ? SIGNAL.color.coral : SIGNAL.color.indigo },
-                    ]}>
-                      {stravaLinked ? 'Disconnect' : 'Connect'}
+                    {/* "Manage" (not "Disconnect") — this opens the Strava screen
+                        where Import past runs / disconnect both live. */}
+                    <Text style={[styles.connectionAction, { color: SIGNAL.color.indigo }]}>
+                      {stravaLinked ? 'Manage' : 'Connect'}
                     </Text>
                   </TouchableOpacity>
                 </View>
