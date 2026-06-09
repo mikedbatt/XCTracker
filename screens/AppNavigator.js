@@ -11,6 +11,7 @@ import { auth, db } from '../firebaseConfig';
 import { BRAND, NEUTRAL } from '../constants/design';
 import { confirmDestructive } from '../utils/confirmDialog';
 import WebMaxWidth from '../components/WebMaxWidth';
+import InstallPrompt from '../components/InstallPrompt';
 import { registerWebPush } from '../utils/webPush';
 
 // Configure how notifications appear when app is in foreground
@@ -73,7 +74,7 @@ async function registerForPushNotifications(uid) {
   }
 }
 
-export default function AppNavigator() {
+function AppNavigatorInner() {
   const [user, setUser] = useState(null);
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -286,6 +287,18 @@ export default function AppNavigator() {
     return <WebMaxWidth><ParentDashboard userData={userData} refreshUser={handleOnboardingComplete} /></WebMaxWidth>;
   }
   return <WebMaxWidth><AthleteDashboard userData={userData} refreshUser={handleOnboardingComplete} goToJoinScreen={handleGoToJoinScreen} /></WebMaxWidth>;
+}
+
+// Wrap the navigator so the PWA install banner can overlay any screen (login,
+// onboarding, dashboards). InstallPrompt renders null on native and when the
+// app is already installed, so this wrapper is inert outside the web PWA.
+export default function AppNavigator() {
+  return (
+    <View style={{ flex: 1 }}>
+      <AppNavigatorInner />
+      <InstallPrompt />
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({

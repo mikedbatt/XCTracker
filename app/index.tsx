@@ -20,6 +20,7 @@ import { Platform } from 'react-native';
 import iconFont from '@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf';
 import AppNavigator from '../screens/AppNavigator';
 import { initSentry } from '../utils/sentry';
+import { registerServiceWorker } from '../utils/registerServiceWorker';
 
 // Initialize crash + error monitoring as early as possible so any startup
 // errors get captured. No-op when EXPO_PUBLIC_SENTRY_DSN isn't set.
@@ -42,6 +43,10 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
   } else {
     console.warn('Ionicons font URL could not be resolved from import; icons will render as boxes', iconFont);
   }
+
+  // Register the app service worker eagerly so Android Chrome sees an
+  // installable PWA on the very first visit (not gated on login or push).
+  registerServiceWorker();
 }
 
 // Keep the native splash visible while we load the Signal redesign fonts.

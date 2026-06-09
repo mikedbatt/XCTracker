@@ -264,7 +264,12 @@ preserved and resumable. Patterns when working in web-touched code:
 
 - **PWA / installability:** `public/manifest.json` (standalone, indigo theme) +
   `public/icons/*` (192/512/maskable, currently the full-res `icon.png` — resize
-  as polish) + PWA/apple meta in `app/+html.tsx`. Expo copies `public/` → `dist/`.
+  as polish; the maskable copy isn't safe-zone cropped, so Android may clip the
+  logo edges) + PWA/apple meta in `app/+html.tsx`. Expo copies `public/` → `dist/`.
+  Android Chrome only offers "Install" once a fetch-handling service worker is
+  registered on load — see **Service worker** below. `components/InstallPrompt.js`
+  surfaces an in-app Install button (Android `beforeinstallprompt`) / iOS
+  "Add to Home Screen" hint; it's mounted app-wide in `AppNavigator`.
 - **Firestore offline persistence:** `firebaseConfig.js` uses
   `initializeFirestore(... persistentLocalCache ...)` on web (IndexedDB; falls
   back to default if unavailable). Native caches by default.
@@ -278,9 +283,16 @@ preserved and resumable. Patterns when working in web-touched code:
   Web uses FCM via `utils/webPush.js` + `webPushToken`. Cloud Functions fan
   out to both tokens per user. Requires `EXPO_PUBLIC_FIREBASE_VAPID_KEY`.
   iOS web push only works once the PWA is installed to the home screen (16.4+).
-- **Service worker:** `public/firebase-messaging-sw.js` handles background
-  web push. Firebase config is passed in via URL query string at registration
-  time so values stay in sync with `firebaseConfig.js`.
+- **Service worker:** `public/firebase-messaging-sw.js` is the single app SW
+  (one per `/` scope). It now does double duty: (1) `install`/`activate`/`fetch`
+  handlers for **installability + offline app shell** (network-first navigations,
+  cache-first hashed `/_expo/static/**`), and (2) background web push (wrapped in
+  try/catch so a missing push config can't break installability). Registered
+  eagerly at startup by `utils/registerServiceWorker.js` (called from
+  `app/index.tsx`) so it's present for first-time visitors regardless of
+  login/push. `utils/webPush.js` re-registers the same URL (idempotent) when push
+  is enabled. Firebase config is passed in via URL query string so values stay in
+  sync with `firebaseConfig.js`.
 - **Confirmation dialogs:** use `confirmDestructive` from
   `utils/confirmDialog.js` — never `Alert.alert([...buttons])` directly. The
   multi-button Alert is silently broken on web.

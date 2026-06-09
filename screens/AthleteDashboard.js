@@ -135,6 +135,10 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
   const [zoneExpanded, setZoneExpanded] = useState(false);
   const [dailyWellnessVisible, setDailyWellnessVisible] = useState(false);
   const [weeklyCheckinVisible, setWeeklyCheckinVisible] = useState(false);
+  // True when the modal was opened to COMPOSE this week's message (vs. opened
+  // to READ a coach reply). Determines whether the modal gets this week's doc
+  // (editable) or the latest doc (which may be last week's, locked).
+  const [weeklyComposeMode,    setWeeklyComposeMode]    = useState(false);
   const [latestWeeklyCheckin,  setLatestWeeklyCheckin]  = useState(null);
   const [weeklyCardDismissed,  setWeeklyCardDismissed]  = useState(false);
   const [weeklyHistoryVisible, setWeeklyHistoryVisible] = useState(false);
@@ -886,7 +890,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
               </View>
               <TouchableOpacity
                 style={styles.weeklyReplyBtn}
-                onPress={() => setWeeklyCheckinVisible(true)}
+                onPress={() => { setWeeklyComposeMode(false); setWeeklyCheckinVisible(true); }}
                 activeOpacity={0.85}
               >
                 <Text style={styles.weeklyReplyBtnText}>Read coach&apos;s message</Text>
@@ -924,7 +928,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
                 <Text style={styles.checkinDesc}>Send your coach a quick update — training, school, anything.</Text>
                 <TouchableOpacity
                   style={styles.checkinBtn}
-                  onPress={() => setWeeklyCheckinVisible(true)}
+                  onPress={() => { setWeeklyComposeMode(true); setWeeklyCheckinVisible(true); }}
                   activeOpacity={0.85}
                 >
                   <Text style={styles.checkinBtnText}>Share with coach</Text>
@@ -1340,7 +1344,16 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
       {/* ── Weekly check-in modal ── */}
       <WeeklyCheckIn
         visible={weeklyCheckinVisible}
-        existingCheckin={latestWeeklyCheckin}
+        existingCheckin={(() => {
+          // Reading a coach reply → always the latest doc (may be last week's).
+          if (!weeklyComposeMode) return latestWeeklyCheckin;
+          // Composing → only treat the latest doc as "this week's" when its
+          // anchor matches; otherwise pass null so the input starts fresh and
+          // isn't locked by last week's coach reply.
+          const tz = school?.timezone || 'America/New_York';
+          const anchor = getWeekAnchor(new Date(), tz);
+          return latestWeeklyCheckin?.weekStartISO === anchor ? latestWeeklyCheckin : null;
+        })()}
         onSubmit={async (messageText) => {
           try {
             const tz = school?.timezone || 'America/New_York';

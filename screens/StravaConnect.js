@@ -41,6 +41,10 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
   const [lastSyncDate,  setLastSyncDate]  = useState(null);
 
   const primaryColor = school?.primaryColor || BRAND;
+  // On web, the browser→Strava data API is CORS-blocked, so the client can't
+  // pull activities directly. New runs sync server-side via the Strava webhook
+  // instead, so we hide the manual "Sync now" button (it would only error).
+  const isWeb = Platform.OS === 'web';
 
   useEffect(() => { loadStravaStatus(); }, []);
 
@@ -360,27 +364,39 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
               </View>
             )}
 
-            {/* Sync button (indigo primary action) */}
-            <TouchableOpacity
-              style={[styles.primaryBtn, syncing && styles.btnDisabled]}
-              onPress={() => handleSync()}
-              disabled={syncing}
-              activeOpacity={0.85}
-            >
-              {syncing
-                ? <ActivityIndicator color={SIGNAL.color.white} />
-                : (
-                  <>
-                    <Ionicons name="refresh" size={18} color={SIGNAL.color.white} style={{ marginRight: 8 }} />
-                    <Text style={styles.primaryBtnText}>Sync runs now</Text>
-                  </>
-                )
-              }
-            </TouchableOpacity>
+            {/* Sync: manual pull on native; automatic (webhook) on web. */}
+            {isWeb ? (
+              <View style={[styles.card, styles.resultCard, { borderLeftColor: SIGNAL.color.emerald }]}>
+                <Text style={[styles.resultTitle, { color: SIGNAL.color.emerald }]}>Syncing automatically</Text>
+                <Text style={styles.resultMessage}>
+                  New Strava runs sync on their own — there's nothing to tap. Each run
+                  appears in your log shortly after you finish and upload it to Strava.
+                </Text>
+              </View>
+            ) : (
+              <>
+                <TouchableOpacity
+                  style={[styles.primaryBtn, syncing && styles.btnDisabled]}
+                  onPress={() => handleSync()}
+                  disabled={syncing}
+                  activeOpacity={0.85}
+                >
+                  {syncing
+                    ? <ActivityIndicator color={SIGNAL.color.white} />
+                    : (
+                      <>
+                        <Ionicons name="refresh" size={18} color={SIGNAL.color.white} style={{ marginRight: 8 }} />
+                        <Text style={styles.primaryBtnText}>Sync runs now</Text>
+                      </>
+                    )
+                  }
+                </TouchableOpacity>
 
-            <Text style={styles.helperText}>
-              Syncs all running activities from the past 90 days on first sync, then only new runs after that.
-            </Text>
+                <Text style={styles.helperText}>
+                  Syncs all running activities from the past 90 days on first sync, then only new runs after that.
+                </Text>
+              </>
+            )}
 
             {/* What gets imported */}
             <View style={styles.card}>
