@@ -7,6 +7,7 @@ import {
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
+import { bottomInset } from '../utils/safeArea';
 import { SIGNAL } from '../constants/design';
 import { CATEGORIES, SIGNAL_TYPE_COLORS, TYPE_COLORS, WORKOUT_INTENSITY } from '../constants/training';
 import { getPhaseForSeason } from './SeasonPlanner';
@@ -1543,7 +1544,7 @@ const styles = StyleSheet.create({
     borderTopColor: SIGNAL.color.line,
     paddingHorizontal: SIGNAL.space.screen,
     paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? 28 : 14,
+    paddingBottom: bottomInset(14, 28),
   },
   totalsRow: {
     flexDirection: 'row',

@@ -29,6 +29,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { auth, db } from '../firebaseConfig';
+import { bottomInset } from '../utils/safeArea';
 import { autoSyncStrava } from '../stravaConfig';
 import { BRAND, EFFORT_COLORS as DESIGN_EFFORT_COLORS, EFFORT_LABELS as DESIGN_EFFORT_LABELS, SIGNAL } from '../constants/design';
 import { batchDocsByIds } from '../utils/batchDocsByIds';
@@ -2035,7 +2036,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.96)',
     borderTopWidth: 1, borderTopColor: SIGNAL.color.line,
     paddingTop: 10,
-    paddingBottom: Platform.OS === 'ios' ? 22 : 10,
+    paddingBottom: bottomInset(10, 22),
     zIndex: 20,
   },
   bottomNavBtn: { flex: 1, alignItems: 'center', gap: 4 },

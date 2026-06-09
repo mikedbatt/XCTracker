@@ -23,6 +23,7 @@ import {
   TouchableOpacity, View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
+import { bottomInset } from '../utils/safeArea';
 import { SIGNAL } from '../constants/design';
 import DatePickerField from './DatePickerField';
 
@@ -494,7 +495,7 @@ const styles = StyleSheet.create({
     right: 0,
     paddingHorizontal: SIGNAL.space.screen,
     paddingTop: SIGNAL.space[4],
-    paddingBottom: Platform.OS === 'ios' ? 34 : SIGNAL.space[5],
+    paddingBottom: bottomInset(SIGNAL.space[5], 34),
     backgroundColor: SIGNAL.color.white,
     borderTopWidth: 1,
     borderTopColor: SIGNAL.color.line,

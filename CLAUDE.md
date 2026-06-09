@@ -271,9 +271,11 @@ installable PWA** (see `[[project_pwa_beta_pivot]]` in memory); native is
 preserved and resumable. Patterns when working in web-touched code:
 
 - **PWA / installability:** `public/manifest.json` (standalone, indigo theme) +
-  `public/icons/*` (192/512/maskable, currently the full-res `icon.png` — resize
-  as polish; the maskable copy isn't safe-zone cropped, so Android may clip the
-  logo edges) + PWA/apple meta in `app/+html.tsx`. Expo copies `public/` → `dist/`.
+  `public/icons/*` (`icon-192`/`icon-512` "any" + `icon-maskable-512` with the
+  mark scaled to ~84% for safe-zone clearance + `apple-touch-icon` 180²) +
+  PWA/apple meta in `app/+html.tsx`. Expo copies `public/` → `dist/`. Regenerate
+  the icons from the full-res source with `node scripts/gen-icons.js` (uses
+  jimp-compact — no native dep).
   Android Chrome only offers "Install" once a fetch-handling service worker is
   registered on load — see **Service worker** below. `components/InstallPrompt.js`
   surfaces an in-app Install button (Android `beforeinstallprompt`) / iOS
@@ -297,6 +299,12 @@ preserved and resumable. Patterns when working in web-touched code:
   `React.lazy` in `AppNavigator` — only `LoginScreen` is eager, so first paint
   doesn't wait on dashboard code. Keeps cold-load JS down; the SW caches each
   chunk after first load. Wrap any new heavy/post-auth screen the same way.
+- **Bottom safe area (iOS PWA):** `Platform.OS` is `'web'` (not `'ios'`) in the
+  installed PWA, so the old `Platform.OS === 'ios' ? N : M` bottom padding never
+  reserved the home-indicator inset — bottom bars left a gray gap. Use
+  `bottomInset(webBase, iosReserve)` from `utils/safeArea.js` for any
+  bottom-anchored bar (tab nav, action bar, feed input); on web it returns
+  `calc(<base>px + env(safe-area-inset-bottom, 0px))`.
 - **Inverted lists on web:** `FlatList inverted` mis-renders on react-native-web
   (cells flip + mirror — "upside down and backwards"). Branch it off on web
   (`inverted={Platform.OS !== 'web'}`) and render top-down instead — see

@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { SIGNAL } from '../constants/design';
+import { bottomInset } from '../utils/safeArea';
 import { auth, db } from '../firebaseConfig';
 import { confirmDestructive } from '../utils/confirmDialog';
 import LegalLinks from '../components/LegalLinks';
@@ -675,7 +676,7 @@ const styles = StyleSheet.create({
     backgroundColor: SIGNAL.color.white,
     borderTopWidth: 1,
     borderTopColor: SIGNAL.color.line,
-    paddingBottom: Platform.OS === 'ios' ? 24 : SIGNAL.space[2],
+    paddingBottom: bottomInset(SIGNAL.space[2], 24),
     paddingTop: SIGNAL.space[3],
   },
   bottomNavBtn:       { flex: 1, alignItems: 'center', gap: 3 },

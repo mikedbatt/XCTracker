@@ -9,6 +9,7 @@ import {
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
+import { bottomInset } from '../utils/safeArea';
 import { BRAND, SIGNAL } from '../constants/design';
 import { parseTime, formatTime, calcPace } from '../utils/raceUtils';
 
@@ -471,7 +472,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingHorizontal: SIGNAL.space.screen,
     paddingTop: SIGNAL.space[4],
-    paddingBottom: Platform.OS === 'ios' ? 32 : SIGNAL.space[5],
+    paddingBottom: bottomInset(SIGNAL.space[5], 32),
     backgroundColor: SIGNAL.color.white,
     borderTopWidth: 1,
     borderTopColor: SIGNAL.color.line,

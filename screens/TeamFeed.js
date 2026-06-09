@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from '../firebaseConfig';
+import { bottomInset } from '../utils/safeArea';
 import { BRAND, SIGNAL } from '../constants/design';
 import { confirmDestructive } from '../utils/confirmDialog';
 import { pickImageCrossPlatform, saveImageCrossPlatform } from '../utils/imageHelpers';
@@ -686,7 +687,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     paddingHorizontal: 12,
     paddingTop: 10,
-    paddingBottom: Platform.OS === 'ios' ? 26 : 12,
+    paddingBottom: bottomInset(12, 26),
     backgroundColor: SIGNAL.color.white,
     borderTopWidth: 1,
     borderTopColor: SIGNAL.color.line,

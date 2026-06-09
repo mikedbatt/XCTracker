@@ -30,6 +30,7 @@ import {
   View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
+import { bottomInset } from '../utils/safeArea';
 import { SIGNAL } from '../constants/design';
 import AthleteDetailScreen from '../screens/AthleteDetailScreen';
 import AttendanceScreen from '../screens/AttendanceScreen';
@@ -2815,7 +2816,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: SIGNAL.color.line,
     paddingTop: 10,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 10,
+    paddingBottom: bottomInset(10, 24),
     zIndex: 20,
   },
   bottomNavBtn: {
