@@ -64,7 +64,7 @@ const CACHE = 'teambase-shell-v2';
 // Bump SW_BUILD to ship a service-worker change that force-reloads open PWAs
 // (via the navigate-on-activate below) WITHOUT clearing the asset cache — so the
 // forced reload stays fast. CACHE name stays the same so cached bundles persist.
-const SW_BUILD = 3;
+const SW_BUILD = 4;
 
 // Precache the app shell so navigations work offline. skipWaiting() activates
 // this SW immediately rather than waiting for all tabs to close.

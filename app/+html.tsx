@@ -54,7 +54,10 @@ export default function Root({ children }: PropsWithChildren) {
         <meta name="description" content="Team training platform for distance-running programs — log runs, sync from Strava, track pace zones, and see team analytics." />
         {/* iOS home-screen install */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        {/* 'default' (not 'black-translucent') so iOS reserves the status-bar
+            area and lays content out BELOW it — otherwise headers/back buttons
+            render under the notch and become untappable in the installed PWA. */}
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="TeamBase" />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
         <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
