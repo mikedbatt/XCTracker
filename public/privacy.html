@@ -20,9 +20,9 @@
 <body>
 <div class="nav"><a href="/">← Back to XCTracker</a><a href="/terms.html">Terms of Service</a></div>
 <h1>Privacy Policy</h1>
-<div class="updated">Last updated: June 3, 2026</div>
+<div class="updated">Last updated: June 10, 2026</div>
 
-<p>XCTracker ("we," "us") is a training platform for cross country, track, and related team sports. This policy explains what information we collect, how we use it, and the choices you have. By using XCTracker, you agree to the practices described here.</p>
+<p>XCTracker ("we," "us") is a training platform for cross country, track, and related team sports. This policy explains what information we collect, how we use it, your rights, and the choices you have. By using XCTracker, you agree to the practices described here.</p>
 
 <h2>1. Who this policy covers</h2>
 <p>XCTracker is used by three categories of people:</p>
@@ -42,78 +42,130 @@
 </ul>
 
 <h3>Training and wellness data</h3>
+<p>We collect the following information when you use the app. Wellness data (mood, fatigue, injury/illness) is treated as sensitive personal information and is subject to the additional protections described in Section 3.</p>
 <ul>
-  <li>Run records: distance, duration, heart rate (if available), perceived effort, notes, and date.</li>
-  <li>Daily wellness check-ins: sleep quality, leg fatigue, mood, and any reported injury/illness.</li>
+  <li>Run records: distance, duration, pace, perceived effort, notes, and date.</li>
+  <li>Daily wellness check-ins: sleep quality, leg fatigue, mood, and any reported injury or illness.</li>
   <li>Weekly check-ins: a freeform message from athlete to head coach, and the coach's reply.</li>
   <li>Race results and meet history.</li>
   <li>Attendance records.</li>
 </ul>
 
 <h3>Strava integration (optional)</h3>
-<p>If you connect Strava, we receive your activity summaries, average heart rate, and pace data. Raw heart-rate and pace streams are processed in memory to compute training zones and are NOT permanently stored — only the derived per-zone time is saved per run.</p>
+<p>Connecting your Strava account is entirely optional. If you choose to connect Strava, you authorize XCTracker — through Strava's official OAuth flow — to access activity data from your Strava account on your behalf. Specifically:</p>
+<ul>
+  <li><strong>What we receive from Strava:</strong> your Strava athlete ID, and for the activities you sync, summary data (distance, moving time, activity type, start date) and the pace stream for that activity.</li>
+  <li><strong>How we use it:</strong> solely to import your runs into your XCTracker training log and to compute your pace-based training zones. We do not use Strava data for any other purpose.</li>
+  <li><strong>What we store:</strong> the derived per-zone time for each run (a summary). Raw pace streams from Strava are processed in memory to compute your zones and are <strong>NOT</strong> permanently stored. We also store the Strava access tokens needed to keep your runs syncing.</li>
+  <li><strong>What we never do:</strong> we do not sell, rent, license, or share your Strava data with any third party; we do not use Strava data for advertising; and we do not use Strava data to train machine-learning or artificial-intelligence models.</li>
+  <li><strong>Your Strava privacy settings are respected:</strong> we only receive data you have authorized and that your Strava privacy settings permit. You control the connection.</li>
+  <li><strong>Disconnecting:</strong> you may disconnect Strava at any time from your XCTracker profile, or revoke access directly in your Strava account settings. When you disconnect or deauthorize, we delete your stored Strava access tokens and stop syncing. Runs already imported remain in your training log as your own derived training history (they contain no raw Strava data) until you delete those runs or your account.</li>
+</ul>
+<p>Your use of Strava remains governed by <a href="https://www.strava.com/legal/privacy" target="_blank" rel="noopener">Strava's Privacy Policy</a> and <a href="https://www.strava.com/legal/terms" target="_blank" rel="noopener">Terms of Service</a>.</p>
 
 <h3>Photos</h3>
 <p>If you attach a photo to a team feed post, the image is uploaded to our storage so teammates can view it.</p>
 
 <h3>Push notification tokens</h3>
-<p>If you enable notifications, we store a device push token so we can send check-in reminders and coach reply notifications.</p>
+<p>If you enable notifications, we store a device push token to deliver check-in reminders and coach reply notifications.</p>
 
 <h3>Information we do NOT collect</h3>
 <ul>
-  <li>Location data (we do not track where you run).</li>
-  <li>Contact lists or device identifiers beyond the push token.</li>
-  <li>Advertising identifiers — XCTracker has no advertising.</li>
+  <li>Location data — we do not track where you run.</li>
+  <li>Contact lists or device identifiers beyond the push notification token.</li>
+  <li>Advertising identifiers — XCTracker carries no advertising.</li>
 </ul>
 
-<h2>3. How we use information</h2>
+<h2>3. How we use your information</h2>
+
+<h3>Primary purposes</h3>
 <ul>
-  <li>Show you your own training history, wellness trends, and race results.</li>
-  <li>Allow your coach to see your team's data so they can plan workouts and monitor health/injury risk.</li>
-  <li>Send notifications you've opted into (check-in reminders, coach replies, team feed posts).</li>
-  <li>Compute training metrics (heart-rate zones, pace zones, mileage trends).</li>
+  <li>Display your training history, wellness trends, and race results.</li>
+  <li>Allow your coach to view team data for workout planning and health/injury monitoring.</li>
+  <li>Send notifications you have opted into (check-in reminders, coach replies, team feed posts).</li>
+  <li>Compute training metrics such as pace zones and mileage trends.</li>
 </ul>
-<p>We do not sell your data. We do not use your data for advertising. We do not share your data with third parties for marketing.</p>
+
+<h3>Legal basis for processing</h3>
+<p>We process your information on the following legal bases:</p>
+<ul>
+  <li><strong>Performance of contract:</strong> processing necessary to provide the XCTracker service you signed up for (e.g., storing your runs, enabling coach communication).</li>
+  <li><strong>Legitimate interests:</strong> improving the app and maintaining its security, in ways that do not override your fundamental rights.</li>
+  <li><strong>Consent:</strong> for wellness check-in data (mood, fatigue, injury/illness), optional push notifications, and Strava integration. You may withdraw consent at any time without affecting prior processing.</li>
+  <li><strong>Legal obligation:</strong> where processing is required to comply with applicable law (e.g., COPPA parental consent requirements).</li>
+</ul>
+
+<h3>What we do not do</h3>
+<ul>
+  <li>We do not sell your personal information.</li>
+  <li>We do not use your data for advertising or share it with third parties for marketing.</li>
+  <li>We do not use wellness or health data for purposes beyond coaching and safety monitoring within your team.</li>
+  <li>We do not use your data — including Strava data — to train machine-learning or AI models.</li>
+</ul>
 
 <h2>4. Who can see your data</h2>
+<p>Access to your data is strictly limited based on role and relationship:</p>
 <ul>
   <li><strong>You</strong> can always see your own data.</li>
-  <li><strong>Your coach</strong> (head and assistant coaches at your school) can see your runs, wellness check-ins, race results, and attendance.</li>
+  <li><strong>Your coaches</strong> (head and assistant coaches at your school) can see your runs, wellness check-ins, race results, and attendance.</li>
   <li><strong>Only your head coach</strong> can see your private weekly check-in messages. Assistant coaches do not have access to weekly check-in threads.</li>
   <li><strong>Parents/guardians</strong> linked to your account can see your training summary and the team feed. Parents cannot see your private weekly check-in messages.</li>
   <li><strong>Teammates at your school</strong> can see leaderboard rankings (miles totals) and posts you make to the team feed.</li>
 </ul>
 
-<h2>5. Children's privacy</h2>
-<p>XCTracker is used by middle-school and high-school athletes, including users under 13. We comply with the Children's Online Privacy Protection Act (COPPA):</p>
+<h2>5. Children's privacy (COPPA compliance)</h2>
+<p>XCTracker serves middle-school and high-school athletes, including users under 13. We comply with the Children's Online Privacy Protection Act (COPPA):</p>
 <ul>
-  <li>Athletes under 13 cannot create an account through normal signup. A parent or guardian must contact us to set up the account.</li>
-  <li>Athletes under 18 must provide a parent/guardian email at signup; we send a consent email to that address. The athlete can log their own runs immediately but team features (roster, feed, coach communication) unlock only after parental consent.</li>
-  <li>Parents/guardians can request that we delete a minor's account and all associated data at any time by contacting us.</li>
+  <li><strong>Athletes under 13:</strong> accounts for users under 13 are created only by a verified adult (coach or parent/guardian) who contacts us directly. We do not allow under-13 self-registration.</li>
+  <li><strong>Athletes ages 13–17:</strong> may create their own account and use XCTracker without a separate parental-consent step. COPPA governs children under 13; for ages 13–17 we do not collect a parent/guardian email during athlete signup. A parent or guardian can still be linked to an athlete to follow their progress and retains the rights described below.</li>
+  <li><strong>Parental rights:</strong> parents/guardians may at any time (a) review the personal information collected from their minor child, (b) request corrections, or (c) request deletion of the minor's account and all associated data by contacting us.</li>
+  <li><strong>Retention for minors:</strong> upon a verified deletion request from a parent/guardian, a minor's personal data is removed from active systems within 14 days.</li>
 </ul>
 
-<h2>6. Where your data lives</h2>
-<p>XCTracker uses Google Firebase for authentication, database (Firestore), file storage, and push notifications. Data is hosted in Google's secure cloud infrastructure within the United States. We use Firebase's built-in security rules to enforce the access boundaries described above.</p>
-
-<h2>7. Data retention</h2>
-<p>We keep your data for as long as your account is active. If you delete your account, your personal data is removed from our active systems within 30 days. Aggregate, anonymized statistics (e.g., total miles logged across all users) may be retained indefinitely.</p>
-
-<h2>8. Your rights</h2>
-<p>You have the right to:</p>
+<h2>6. Third parties and sub-processors</h2>
+<p>We use the following third-party services that may receive or process personal data on our behalf:</p>
 <ul>
-  <li>Access the data we have about you.</li>
-  <li>Correct inaccurate information.</li>
-  <li>Delete your account and associated data.</li>
-  <li>Disconnect Strava at any time from your profile settings.</li>
-  <li>Turn off push notifications at any time in your device settings.</li>
+  <li><strong>Google Firebase</strong> (Firestore, Authentication, Storage, Cloud Messaging) — provides our database, authentication, file storage, and push notification infrastructure. Data is hosted in Google's secure cloud infrastructure within the United States.</li>
+  <li><strong>Strava</strong> — if you choose to connect your Strava account, we receive only the activity data you authorize (see Section 2). Strava's own Terms of Service and Privacy Policy govern your Strava account.</li>
 </ul>
-<p>To exercise these rights, contact us at the email below.</p>
+<p>We do not share your personal information with any other third parties except as required by law. We do not use third-party analytics or advertising networks.</p>
 
-<h2>9. Changes to this policy</h2>
-<p>We may update this policy as the app evolves. Material changes will be communicated in-app. The "Last updated" date at the top reflects the most recent revision.</p>
+<h2>7. Data security and breach notification</h2>
+<p>We implement reasonable administrative, technical, and physical safeguards to protect your personal information, including Firebase's built-in security rules that enforce the role-based access boundaries described in Section 4.</p>
+<p>In the event of a data breach that poses a risk to your rights or freedoms, we will notify affected users as required by applicable law — generally within 72 hours of discovery for EU/UK residents, and within applicable state-law deadlines for U.S. residents. Notifications will be sent to the email address on your account.</p>
 
-<h2>10. Contact</h2>
-<p>Questions, requests, or concerns about your data: <a href="mailto:mike@healthymindmap.com">mike@healthymindmap.com</a>.</p>
+<h2>8. Data retention</h2>
+<ul>
+  <li><strong>Active accounts:</strong> we retain your data for as long as your account is active.</li>
+  <li><strong>Account deletion:</strong> upon request, your personal data is removed from active systems within 30 days.</li>
+  <li><strong>Minor accounts:</strong> upon a verified parental/guardian deletion request, data is removed within 14 days (see Section 5).</li>
+  <li><strong>Strava data:</strong> stored Strava access tokens are deleted when you disconnect or deauthorize (see Section 2).</li>
+  <li><strong>Aggregate data:</strong> anonymized, non-identifiable statistics (e.g., total platform miles logged) may be retained indefinitely and cannot be linked back to any individual.</li>
+</ul>
+
+<h2>9. Your rights</h2>
+<p>Depending on where you live, you may have the following rights regarding your personal information:</p>
+<ul>
+  <li><strong>Right to access:</strong> request a copy of the data we hold about you.</li>
+  <li><strong>Right to correct:</strong> request correction of inaccurate information.</li>
+  <li><strong>Right to delete:</strong> request deletion of your account and associated data.</li>
+  <li><strong>Right to limit use of sensitive data:</strong> request that we restrict processing of your wellness/health data.</li>
+  <li><strong>Right to data portability:</strong> request your data in a portable format.</li>
+  <li><strong>Right to non-discrimination:</strong> we will not discriminate against you for exercising any of these rights.</li>
+  <li><strong>Disconnect Strava:</strong> remove Strava access at any time from your profile settings.</li>
+  <li><strong>Turn off push notifications:</strong> disable at any time in your device settings.</li>
+</ul>
+<p>California residents have additional rights under the California Privacy Rights Act (CPRA), including the right to opt out of the sale or sharing of personal information. We do not sell or share your personal information as defined by the CPRA.</p>
+<p>To exercise any of these rights, contact us at the address in Section 12.</p>
+
+<h2>10. FERPA notice for school programs</h2>
+<p>If XCTracker is adopted by a school district or school for use in its official athletic program, athletic performance and attendance records may constitute education records under the Family Educational Rights and Privacy Act (FERPA). Coaches using XCTracker in an official school capacity are responsible for ensuring their use complies with applicable educational privacy laws, including FERPA where applicable.</p>
+
+<h2>11. Changes to this policy</h2>
+<p>We may update this policy as the app evolves. Material changes — including any changes to the types of data we collect, how we use it, or who we share it with — will be communicated in-app at least 14 days before taking effect. For any account created for an under-13 athlete by a parent, guardian, or coach, we will notify that adult of material changes before they apply to the account. The "Last updated" date at the top reflects the most recent revision.</p>
+
+<h2>12. Contact</h2>
+<p>Questions, requests, or concerns about your data: <a href="mailto:info@xctracker.com">info@xctracker.com</a>. We aim to respond to all privacy inquiries within 10 business days.</p>
 
 </body>
 </html>

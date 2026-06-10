@@ -34,7 +34,6 @@ export default function LoginScreen({ onAuthSuccess }) {
   const [birthMonth, setBirthMonth] = useState('');
   const [birthDay, setBirthDay] = useState('');
   const [birthYear, setBirthYear] = useState('');
-  const [parentEmail, setParentEmail] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
@@ -106,8 +105,10 @@ export default function LoginScreen({ onAuthSuccess }) {
     if (role !== 'athlete') return { valid: true };
     const age = calculateAge();
     if (age === null) return { valid: false, message: 'Please enter your date of birth.' };
-    if (age < 13) return { valid: false, message: 'Athletes under 13 require special parental consent. Please have a parent or guardian contact us to set up your account.' };
-    if (age < 18 && !parentEmail) return { valid: false, message: 'Athletes under 18 must provide a parent or guardian email address.' };
+    // COPPA: athletes under 13 cannot self-register. A coach or parent/guardian
+    // must set up the account. Athletes 13+ sign up normally (no parental
+    // consent gate).
+    if (age < 13) return { valid: false, message: "Athletes under 13 can't sign up on their own. A parent, guardian, or coach must contact us to set up the account." };
     return { valid: true, age };
   };
 
@@ -155,19 +156,10 @@ export default function LoginScreen({ onAuthSuccess }) {
         if (role === 'athlete') {
           userData.birthdate = `${birthYear}-${birthMonth}-${birthDay}`;
           userData.age = age;
-          userData.isMinor = age < 18;
-          userData.parentEmail = age < 18 ? parentEmail : null;
-          userData.parentConsentGiven = false;
+          userData.isMinor = age < 18; // legal minor flag (informational)
         }
 
         await setDoc(doc(db, 'users', user.uid), userData);
-
-        if (role === 'athlete' && age < 18) {
-          Alert.alert(
-            'Parent Consent Required',
-            `We've sent a consent email to ${parentEmail}. Your parent must approve your account before you can access team features. You can still log your own runs!`
-          );
-        }
 
         if (onAuthSuccess) onAuthSuccess({ uid: user.uid, role, status: userData.status });
 
@@ -222,7 +214,6 @@ export default function LoginScreen({ onAuthSuccess }) {
   };
 
   const age = calculateAge();
-  const showParentEmail = role === 'athlete' && isSignUp && age !== null && age < 18;
 
   const inputStyle = (field) => [
     styles.input,
@@ -432,35 +423,14 @@ export default function LoginScreen({ onAuthSuccess }) {
                   onBlur={() => setFocusedField(null)}
                 />
               </View>
-              {age !== null && age < 18 && (
+              {age !== null && age < 13 && (
                 <View style={styles.minorNotice}>
                   <Ionicons name="information-circle-outline" size={16} color={SIGNAL.color.amber} />
                   <Text style={styles.minorNoticeText}>
-                    Parental consent required for athletes under 18
+                    Athletes under 13 can't sign up here — a parent, guardian, or coach must set up the account. Please contact us.
                   </Text>
                 </View>
               )}
-            </View>
-          )}
-
-          {/* Parent email — minors only */}
-          {showParentEmail && (
-            <View style={styles.subSection}>
-              <Text style={styles.eyebrow}>Parent or guardian email</Text>
-              <TextInput
-                style={inputStyle('pemail')}
-                placeholder="parent@email.com"
-                placeholderTextColor={SIGNAL.color.mute2}
-                value={parentEmail}
-                onChangeText={setParentEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                onFocus={() => setFocusedField('pemail')}
-                onBlur={() => setFocusedField(null)}
-              />
-              <Text style={styles.helperText}>
-                Your parent will receive a consent email before you can access team features.
-              </Text>
             </View>
           )}
         </View>
