@@ -11,16 +11,17 @@ import {
 } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Platform, ScrollView,
+  ActivityIndicator, Alert, Image, Platform, ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../firebaseConfig';
-import { BRAND, SIGNAL, STRAVA_ORANGE } from '../constants/design';
+import { BRAND, SIGNAL } from '../constants/design';
 import { confirmDestructive } from '../utils/confirmDialog';
+import stravaConnectBtn from '../assets/images/strava-connect-orange.png';
 import {
   STRAVA_CONFIG,
   backfillStravaRuns,
@@ -490,15 +491,21 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
               ))}
             </View>
 
-            {/* Official "Connect with Strava" button — Strava orange + logo per
-                Strava brand guidelines. */}
+            {/* Official "Connect with Strava" button — the unmodified asset from
+                Strava's brand pack (1.1-Connect-with-Strava-Buttons), rendered at
+                its native aspect ratio per the brand guidelines (no recolor/stretch). */}
             <TouchableOpacity
-              style={styles.connectBtn}
+              style={styles.connectBtnWrap}
               onPress={handleConnect}
               activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Connect with Strava"
             >
-              <FontAwesome5 name="strava" size={20} color={SIGNAL.color.white} style={{ marginRight: 10 }} />
-              <Text style={styles.connectBtnText}>Connect with Strava</Text>
+              <Image
+                source={stravaConnectBtn}
+                style={styles.connectBtnImg}
+                resizeMode="contain"
+              />
             </TouchableOpacity>
 
             <Text style={styles.helperText}>
@@ -700,21 +707,15 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
 
-  connectBtn: {
-    flexDirection: 'row',
-    backgroundColor: STRAVA_ORANGE,
-    borderRadius: SIGNAL.radius.button,
-    paddingVertical: 16,
-    paddingHorizontal: SIGNAL.space[6],
-    alignItems: 'center',
-    justifyContent: 'center',
+  // Official Strava button: fixed native aspect ratio (474×96 = 237×48 @1x),
+  // centered, never recolored or stretched (brand-guideline compliant).
+  connectBtnWrap: {
+    alignSelf: 'center',
     marginBottom: SIGNAL.space[3],
   },
-  connectBtnText: {
-    fontFamily: SIGNAL.font.bodyBold,
-    fontSize: SIGNAL.size.bodyLg,
-    color: SIGNAL.color.white,
-    letterSpacing: SIGNAL.letter.bodyTight,
+  connectBtnImg: {
+    width: 237,
+    height: 48,
   },
 
   disconnectBtn: {
