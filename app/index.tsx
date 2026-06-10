@@ -21,6 +21,12 @@ import iconFont from '@expo/vector-icons/build/vendor/react-native-vector-icons/
 import AppNavigator from '../screens/AppNavigator';
 import { initSentry } from '../utils/sentry';
 import { registerServiceWorker } from '../utils/registerServiceWorker';
+import { redirectToCanonicalHost } from '../utils/canonicalRedirect';
+
+// Forward legacy Firebase Hosting URLs (*.web.app / *.firebaseapp.com) to the
+// canonical xctracker.com domain before anything else runs. No-op on the
+// canonical host and on native.
+redirectToCanonicalHost();
 
 // Initialize crash + error monitoring as early as possible so any startup
 // errors get captured. No-op when EXPO_PUBLIC_SENTRY_DSN isn't set.

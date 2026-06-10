@@ -32,9 +32,14 @@ for the original spec + implementation deltas log.
 
 ## Tech Stack
 - **Framework:** React Native with Expo (SDK 54) + Expo Router v6
-- **Platforms:** iOS, Android, **and web** (deployed at https://xctracker-a2532.web.app
-  via Firebase Hosting). Web runs on react-native-web; native modules must be
-  Platform-branched (see "Web platform notes" below).
+- **Platforms:** iOS, Android, **and web** (canonical URL https://xctracker.com,
+  served via Firebase Hosting; the default `xctracker-a2532.web.app` host still
+  serves the same site and is redirected to the canonical domain in-app by
+  `utils/canonicalRedirect.js`). The Firebase **project id stays
+  `xctracker-a2532`** — Cloud Functions (`…cloudfunctions.net`), Firestore, and
+  the Auth backend (`…firebaseapp.com`) are unaffected by the custom domain. Web
+  runs on react-native-web; native modules must be Platform-branched (see "Web
+  platform notes" below).
 - **Backend:** Firebase (Firestore, Firebase Auth, Firebase Cloud Functions,
   Firebase Cloud Messaging for push)
 - **External API:** Strava API v3 (OAuth 2.0, token exchange server-side via
@@ -292,8 +297,10 @@ firebase deploy --only firestore:indexes  # indexes-only redeploy
 ```
 
 ## Web platform notes
-The app is supported on web via react-native-web; deploy URL is
-https://xctracker-a2532.web.app. **The first-school beta ships as a web-only
+The app is supported on web via react-native-web; canonical URL is
+https://xctracker.com (the `xctracker-a2532.web.app` default host still serves
+the same build and is redirected to the canonical domain by
+`utils/canonicalRedirect.js`). **The first-school beta ships as a web-only
 installable PWA** (see `[[project_pwa_beta_pivot]]` in memory); native is
 preserved and resumable. Patterns when working in web-touched code:
 

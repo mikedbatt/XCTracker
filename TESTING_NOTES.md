@@ -20,12 +20,12 @@ via the webhook, no matter which you sign into.
 - **For realistic ongoing webhook testing:** give test users **separate** Strava
   accounts (a free second Strava login works).
 
-### 2. Web Strava OAuth requires the callback domain set to the web host
+### 2. Web Strava OAuth requires the callback domain set to the canonical host
 Strava allows **one** "Authorization Callback Domain" per app
 (https://www.strava.com/settings/api). For the web/PWA it must be exactly:
 
 ```
-xctracker-a2532.web.app
+xctracker.com
 ```
 
 (domain only — no `https://`, no path, no trailing slash). If it's wrong, the
@@ -33,10 +33,14 @@ OAuth page errors with:
 `{"message":"Bad Request","errors":[{"field":"redirect_uri","code":"invalid"}]}`
 
 - The client builds `redirect_uri` as `${window.location.origin}/strava-callback`,
-  so testers must open the app from `xctracker-a2532.web.app` — **not** the
-  alternate `xctracker-a2532.firebaseapp.com` host Firebase also serves.
-- Note: switching this domain to the web host **pauses native Strava OAuth**
-  (native used a different redirect). That's expected for the PWA beta.
+  so testers must open the app from **`xctracker.com`** (the canonical domain).
+  The default `xctracker-a2532.web.app` / `…firebaseapp.com` hosts are redirected
+  to `xctracker.com` in-app by `utils/canonicalRedirect.js`, so an OAuth round
+  trip that starts on the old host lands back on the canonical one.
+- Note: setting this to the web host **pauses native Strava OAuth** (native used
+  a different redirect). That's expected for the PWA beta.
+- History: the callback domain was `xctracker-a2532.web.app` before the
+  xctracker.com custom-domain migration (2026-06-09).
 
 ### 3. On web, signing in does NOT trigger a Strava sync
 Unlike native (which polls on app open), web sync is entirely server-side:
