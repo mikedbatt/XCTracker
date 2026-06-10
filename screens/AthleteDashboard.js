@@ -1060,8 +1060,10 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
         {!stravaLinked && !stravaDismissed && (
           <View style={[styles.cardSpacer]}>
             <View style={styles.stravaRow}>
+              {/* Neutral glyph — NOT a Strava logo (brand guidelines forbid
+                  recreating their mark; "Connect Strava" reads as plain text). */}
               <View style={styles.stravaLogo}>
-                <Text style={styles.stravaLogoText}>S</Text>
+                <Ionicons name="sync" size={18} color={SIGNAL.color.mute} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.stravaTitle}>Connect Strava</Text>
@@ -2055,11 +2057,8 @@ const styles = StyleSheet.create({
   },
   stravaLogo: {
     width: 34, height: 34, borderRadius: 9,
-    backgroundColor: '#FC4C0218',
+    backgroundColor: SIGNAL.color.line,
     alignItems: 'center', justifyContent: 'center',
-  },
-  stravaLogoText: {
-    fontFamily: SIGNAL.font.bodyBold, fontSize: 16, color: '#FC4C02',
   },
   stravaTitle: { fontFamily: SIGNAL.font.bodySemi, fontSize: 13.5, color: SIGNAL.color.ink },
   stravaDesc:  { fontFamily: SIGNAL.font.body, fontSize: 11, color: SIGNAL.color.mute, marginTop: 1 },

@@ -18,7 +18,7 @@ import {
   View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
-import { AVATAR_COLORS, SIGNAL, STRAVA_ORANGE } from '../constants/design';
+import { AVATAR_COLORS, SIGNAL } from '../constants/design';
 import { confirmDestructive } from '../utils/confirmDialog';
 import LegalLinks from '../components/LegalLinks';
 import { calcVDOT, getTrainingPaces, formatPace, parseTimeToSeconds, RACE_DISTANCES } from '../utils/vdotUtils';
@@ -601,8 +601,11 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
               <>
                 <Text style={[styles.eyebrow, { marginTop: 0, marginBottom: 10, paddingLeft: 4 }]}>Connected apps</Text>
                 <View style={styles.connectionCard}>
-                  <View style={[styles.connectionLogo, { backgroundColor: STRAVA_ORANGE + '1A' }]}>
-                    <Text style={[styles.connectionLogoText, { color: STRAVA_ORANGE }]}>S</Text>
+                  {/* Neutral connection glyph — NOT a Strava logo. Strava's brand
+                      guidelines forbid recreating their mark (we previously had a
+                      hand-built orange "S"); the "Strava" name shows as plain text. */}
+                  <View style={[styles.connectionLogo, { backgroundColor: SIGNAL.color.line }]}>
+                    <Ionicons name="link" size={18} color={SIGNAL.color.mute} />
                   </View>
                   <View style={styles.connectionInfo}>
                     <Text style={styles.connectionName}>Strava</Text>
@@ -1227,11 +1230,6 @@ const styles = StyleSheet.create({
     borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  connectionLogoText: {
-    fontSize: 17,
-    fontFamily: SIGNAL.font.bodyBold,
-    fontWeight: '800',
   },
   connectionInfo: { flex: 1 },
   connectionName: {
