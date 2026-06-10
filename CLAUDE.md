@@ -373,6 +373,16 @@ preserved and resumable. Patterns when working in web-touched code:
 - **Auth persistence:** `firebaseConfig.js` branches via Platform —
   `browserLocalPersistence` on web, AsyncStorage on native. Don't import
   `getReactNativePersistence` unconditionally — it has no DOM backing.
+- **App Check (web):** `firebaseConfig.js` initializes App Check with
+  `ReCaptchaEnterpriseProvider`, **gated on `EXPO_PUBLIC_FIREBASE_APPCHECK_RECAPTCHA_KEY`**
+  (a public reCAPTCHA Enterprise site key) so the app boots fine when unset.
+  Web-only; native attestation deferred with native. Emits a dev debug token
+  (`self.FIREBASE_APPCHECK_DEBUG_TOKEN`) under `__DEV__`. The reCAPTCHA key's
+  allowed domains MUST include every host the app runs on (xctracker.com,
+  xctracker-a2532.web.app, localhost) or token minting fails. Run **monitor
+  mode** in the Firebase console ≥1 week before clicking Enforce on Firestore +
+  Storage — enforcing early locks out legit clients. The public Strava
+  `onRequest`/webhook functions are unaffected (App Check guards callables).
 - **Push notifications:** native uses expo-notifications + `expoPushToken`.
   Web uses FCM via `utils/webPush.js` + `webPushToken`. Cloud Functions fan
   out to both tokens per user. Requires `EXPO_PUBLIC_FIREBASE_VAPID_KEY`.

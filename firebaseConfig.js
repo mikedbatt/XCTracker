@@ -8,6 +8,7 @@ import {
   persistentMultipleTabManager,
 } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 import { Platform } from 'react-native';
 
 const firebaseConfig = {
@@ -20,6 +21,30 @@ const firebaseConfig = {
 };
 
 export const app = initializeApp(firebaseConfig);
+
+// App Check (web only) — attests that requests come from our genuine app so
+// abusive clients can't hammer Firestore/Storage. Gated on the site-key env var
+// so the app boots normally BEFORE App Check is configured; once
+// EXPO_PUBLIC_FIREBASE_APPCHECK_RECAPTCHA_KEY is set (a reCAPTCHA Enterprise
+// site key, which is public), web builds start attaching tokens. Native attestation
+// (App Attest / Play Integrity) is deferred along with the native apps.
+const APPCHECK_KEY = process.env.EXPO_PUBLIC_FIREBASE_APPCHECK_RECAPTCHA_KEY;
+if (Platform.OS === 'web' && APPCHECK_KEY) {
+  // In dev, emit a debug token to the console (register it under App Check →
+  // Manage debug tokens) so localhost still passes once enforcement is on.
+  // Never set in a production build.
+  if (typeof __DEV__ !== 'undefined' && __DEV__ && typeof self !== 'undefined') {
+    self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+  }
+  try {
+    initializeAppCheck(app, {
+      provider: new ReCaptchaEnterpriseProvider(APPCHECK_KEY),
+      isTokenAutoRefreshEnabled: true,
+    });
+  } catch (e) {
+    console.warn('App Check init failed:', e);
+  }
+}
 
 // Auth persistence is platform-specific: AsyncStorage on native, browser
 // localStorage on web. Without this branch, web would crash at boot because
