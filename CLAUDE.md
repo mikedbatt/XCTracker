@@ -205,6 +205,13 @@ stravaConfig.js   # Strava OAuth + activity sync (client side)
     later page is rate-limited (429) mid-import. Don't re-add `after`.
   - **Push notifications** (Expo SDK for native + FCM admin SDK for web —
     `sendWebPushNotifications` helper fans out per-user).
+  - **Billing kill-switch** — `stopBillingOnBudget` (`pubsub.topic('budget-alerts')`
+    onPublish). Cost-abuse backstop: DISABLES billing on the project when actual
+    spend exceeds the budget (whole-app-offline; recovery is manual re-link in
+    GCP console). Lazy-requires `@google-cloud/billing`. STAGED — to arm: connect
+    a `budget-alerts` Pub/Sub topic to the GCP budget + grant the runtime SA
+    (`PROJECT_ID@appspot.gserviceaccount.com`) `roles/billing.admin` on the
+    billing account, then `firebase deploy --only functions:stopBillingOnBudget`.
   - **Scheduled jobs:** `dailyCheckinReminder` (4 PM ET daily),
     `weeklyCheckinReminder` (hourly Sat, per-school local-noon filter),
     `onWeeklyCheckinReply` (Firestore onUpdate; also fires on coach edits and
@@ -294,7 +301,16 @@ eas build --profile preview --platform ios       # build for TestFlight
 firebase deploy --only functions   # deploys all of functions/index.js (Node.js 22 runtime)
 firebase deploy --only firestore:rules    # rules-only redeploy
 firebase deploy --only firestore:indexes  # indexes-only redeploy
+firebase deploy --only storage            # Cloud Storage rules (storage.rules)
 ```
+
+`storage.rules` (root, wired in `firebase.json`) governs Cloud Storage —
+currently just team-feed image uploads (`teamPosts/{schoolId}/…`). Enforces
+signed-in + `image/*` + ≤5MB + default-deny. NOTE: Storage rules CANNOT read
+Firestore, so true per-school scoping (verifying the path's `schoolId` is the
+uploader's) is impossible until `schoolId` is a custom auth claim — a
+commented `request.auth.token.schoolId == schoolId` line is left ready to
+enable after the custom-claims migration.
 
 ## Web platform notes
 The app is supported on web via react-native-web; canonical URL is

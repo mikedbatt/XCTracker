@@ -830,3 +830,57 @@ exports.onWeeklyCheckinReply = functions.firestore
       console.error('onWeeklyCheckinReply error:', error);
     }
   });
+
+// ── Billing kill-switch (cost-abuse backstop) ────────────────────────────────
+// Triggered by Cloud Billing budget alerts published to the `budget-alerts`
+// Pub/Sub topic. When ACTUAL spend exceeds the budget, it DISABLES billing on
+// the project — a deliberate nuclear backstop against a runaway cost-abuse loop.
+//
+// ⚠️ DISABLING BILLING TAKES THE WHOLE APP OFFLINE (Firestore, Functions, FCM
+// all stop serving). This is intentional: a surprise multi-thousand-dollar bill
+// is worse than a brief outage. The 50% / 90% budget alerts are email-only and
+// warn first; this handler only acts once spend is AT/OVER 100% of budget. To
+// recover, re-link the billing account in the GCP console (Billing → Account
+// management) — nothing here re-enables billing automatically.
+//
+// ONE-TIME SETUP (see walkthrough):
+//   1. Create the Pub/Sub topic `budget-alerts`.
+//   2. Create a Cloud Billing budget and set its notifications to that topic.
+//   3. Grant this function's runtime service account
+//      (PROJECT_ID@appspot.gserviceaccount.com) the "Billing Account
+//      Administrator" role ON THE BILLING ACCOUNT — without it,
+//      updateProjectBillingInfo() is permission-denied and the switch no-ops.
+exports.stopBillingOnBudget = functions.pubsub
+  .topic('budget-alerts')
+  .onPublish(async (message) => {
+    const { CloudBillingClient } = require('@google-cloud/billing');
+    const billing = new CloudBillingClient();
+    const projectName = `projects/${process.env.GCLOUD_PROJECT}`;
+
+    const data = message.json || {};
+    // Budget alert payload includes costAmount + budgetAmount (same currency).
+    if (typeof data.costAmount !== 'number' || typeof data.budgetAmount !== 'number') {
+      console.warn('Budget message missing cost/budget amounts; ignoring.', data);
+      return;
+    }
+    if (data.costAmount <= data.budgetAmount) {
+      console.log(`Spend ${data.costAmount} within budget ${data.budgetAmount}; no action.`);
+      return;
+    }
+
+    const [info] = await billing.getProjectBillingInfo({ name: projectName });
+    if (!info.billingEnabled) {
+      console.log('Billing already disabled; nothing to do.');
+      return;
+    }
+
+    // Empty billingAccountName detaches the billing account → billing disabled.
+    await billing.updateProjectBillingInfo({
+      name: projectName,
+      projectBillingInfo: { billingAccountName: '' },
+    });
+    console.error(
+      `BILLING DISABLED for ${projectName}: spend ${data.costAmount} ` +
+      `exceeded budget ${data.budgetAmount}. Re-enable manually in GCP console.`
+    );
+  });

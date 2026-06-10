@@ -142,7 +142,9 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
     const blob = await response.blob();
     const filename = `teamPosts/${userData.schoolId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
     const storageRef = ref(storage, filename);
-    await uploadBytes(storageRef, blob);
+    // Set contentType explicitly: blob.type from fetch(file://) is empty on
+    // native, which would fail the Storage rule's image/* content-type check.
+    await uploadBytes(storageRef, blob, { contentType: blob.type || 'image/jpeg' });
     return getDownloadURL(storageRef);
   };
 

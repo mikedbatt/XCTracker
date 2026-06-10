@@ -1,0 +1,48 @@
+rules_version = '2';
+
+// Cloud Storage security rules for XCTracker.
+//
+// Today the only thing written to Storage is team-feed images, uploaded by
+// TeamFeed.js to:  teamPosts/{schoolId}/{timestamp}_{rand}.jpg
+//
+// NOTE ON PER-SCHOOL SCOPING: Storage rules CANNOT read Firestore (there is no
+// cross-service get() like firestore.rules has), so we cannot verify that the
+// {schoolId} segment in the path is actually the uploader's school until
+// schoolId lives in a custom auth claim (request.auth.token.schoolId). That is
+// the Tier-2 "custom claims migration". Until then we enforce: signed-in only,
+// image content-type, and a 5 MB size cap — which blocks anonymous uploads,
+// non-images, and oversized files. Tighten the schoolId match (commented below)
+// once custom claims ship.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isImageUnder5MB() {
+      return request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Team-feed post images.
+    match /teamPosts/{schoolId}/{fileName} {
+      // Any signed-in user can view feed images.
+      allow read: if isSignedIn();
+
+      // Create only — new images, validated. No overwrite/update of existing
+      // objects (timestamp+random filenames mean uploads never collide anyway).
+      allow create: if isSignedIn() && isImageUnder5MB();
+        // && request.auth.token.schoolId == schoolId;  // ← enable after custom-claims migration
+
+      // Author can delete their school's feed images via the SDK if needed.
+      allow delete: if isSignedIn();
+    }
+
+    // Default deny: nothing else in the bucket is readable or writable.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
