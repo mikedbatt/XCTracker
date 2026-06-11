@@ -5,6 +5,7 @@ import {
   doc, getDoc,
   getDocs,
   query,
+  serverTimestamp,
   setDoc,
   updateDoc,
   where,
@@ -42,6 +43,9 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
   const [syncResult,    setSyncResult]    = useState(null);
   const [loading,       setLoading]       = useState(true);
   const [lastSyncDate,  setLastSyncDate]  = useState(null);
+  // Explicit consent to share Strava-synced data with coach/team/parents —
+  // required before connecting, per the Strava API Agreement.
+  const [consentChecked, setConsentChecked] = useState(false);
 
   const primaryColor = school?.primaryColor || BRAND;
   // On web, the browser→Strava data API is CORS-blocked, so the client can't
@@ -93,6 +97,17 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
 
   const handleConnect = async () => {
     try {
+      // Record the athlete's explicit consent to share Strava-synced data with
+      // their coach/team/parents BEFORE kicking off OAuth — on web the next line
+      // navigates the page away, so this must happen first. Gives an audit trail
+      // for the Strava API Agreement's "explicit consent" requirement.
+      if (auth.currentUser) {
+        await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+          stravaShareConsentAt: serverTimestamp(),
+          stravaShareConsentVersion: 'team-visibility-v1',
+        }).catch(e => console.warn('Could not record Strava consent:', e));
+      }
+
       // Web: full-page redirect to Strava; the /strava-callback route handles the
       // return (the native in-app browser session flow doesn't apply on web).
       if (Platform.OS === 'web') {
@@ -491,15 +506,43 @@ export default function StravaConnect({ userData, school, onClose, onSynced }) {
               ))}
             </View>
 
+            {/* Explicit consent — REQUIRED before connecting. The Strava API
+                Agreement requires explicit consent before an athlete's Strava data
+                is shared with anyone other than that athlete (here: their coach,
+                teammates, and linked parent/guardian). The Connect button stays
+                disabled until this is checked. */}
+            <TouchableOpacity
+              style={styles.consentRow}
+              onPress={() => setConsentChecked(v => !v)}
+              activeOpacity={0.7}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: consentChecked }}
+            >
+              <Ionicons
+                name={consentChecked ? 'checkbox' : 'square-outline'}
+                size={22}
+                color={consentChecked ? SIGNAL.color.indigo : SIGNAL.color.mute2}
+                style={{ marginTop: 1 }}
+              />
+              <Text style={styles.consentText}>
+                I agree that my runs synced from Strava — and the pace and mileage
+                metrics derived from them — will be visible to my coaches,
+                teammates, and any linked parent/guardian within XCTracker. I can
+                withdraw this by disconnecting Strava.
+              </Text>
+            </TouchableOpacity>
+
             {/* Official "Connect with Strava" button — the unmodified asset from
                 Strava's brand pack (1.1-Connect-with-Strava-Buttons), rendered at
                 its native aspect ratio per the brand guidelines (no recolor/stretch). */}
             <TouchableOpacity
-              style={styles.connectBtnWrap}
+              style={[styles.connectBtnWrap, !consentChecked && styles.connectBtnDisabled]}
               onPress={handleConnect}
+              disabled={!consentChecked}
               activeOpacity={0.85}
               accessibilityRole="button"
               accessibilityLabel="Connect with Strava"
+              accessibilityState={{ disabled: !consentChecked }}
             >
               <Image
                 source={stravaConnectBtn}
@@ -716,6 +759,23 @@ const styles = StyleSheet.create({
   connectBtnImg: {
     width: 237,
     height: 48,
+  },
+  connectBtnDisabled: {
+    opacity: 0.45,
+  },
+  consentRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    paddingHorizontal: 4,
+    marginBottom: SIGNAL.space[3],
+  },
+  consentText: {
+    flex: 1,
+    fontFamily: SIGNAL.font.body,
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: SIGNAL.color.mute,
   },
 
   disconnectBtn: {

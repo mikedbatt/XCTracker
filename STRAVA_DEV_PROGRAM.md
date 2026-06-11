@@ -51,7 +51,26 @@ Strava reviews these manually. They favor apps that: use the official
 just polling), don't store raw streams, and handle disconnect cleanly.
 **XCTracker already does all of these** — lead with that.
 
+### ⚠️ The team-visibility question — ADDRESS THIS HEAD-ON (do not bury it)
+Strava's API Agreement says a user's Strava Data may only be shown to that user
+unless they give explicit consent. XCTracker is a team platform: an athlete's
+synced runs + derived pace/mileage are visible to their **coach, teammates
+(mileage leaderboards), and linked parent/guardian**. We do NOT treat this as
+fine print — we obtain the athlete's **explicit, affirmative consent at connect
+time** (a required checkbox in `StravaConnect.js`; the connect button is disabled
+until it's checked; the consent timestamp is written to the user doc as
+`stravaShareConsentAt`), and we disclose it in the live **Privacy Policy** and
+**Terms of Service**. State this plainly in the application. If Strava deems the
+team-sharing model unacceptable on the Standard tier even with consent, ask
+whether **Extended Access / a partnership** is required — resolve it now, not
+post-launch. (Weakest spot = the teammate leaderboard, which shows athlete A's
+mileage to athlete B; consider making it opt-in if Strava pushes back.)
+
 ### Compliance talking points (all already true — verify before submitting)
+- ✅ **Explicit consent for team sharing** — athletes must check an affirmative
+      consent box before connecting (`StravaConnect.js`); the connect button is
+      disabled until then; consent timestamp stored (`stravaShareConsentAt`);
+      disclosed in the Privacy Policy + ToS; withdrawable by disconnecting.
 - ✅ **Official "Connect with Strava" button** — the unmodified asset from
       Strava's brand pack (`assets/images/strava-connect-orange.png`, orange @2x),
       rendered at native aspect ratio (237×48) in `screens/StravaConnect.js`.
@@ -76,7 +95,10 @@ just polling), don't store raw streams, and handle disconnect cleanly.
 Capture these from the live web app (sign in as a test athlete with a connected
 Strava account):
 1. **Connect screen** — `StravaConnect` showing the official "Connect with
-   Strava" button (Profile → Connections).
+   Strava" button AND the required consent checkbox ("I agree that my runs synced
+   from Strava… will be visible to my coaches, teammates, and any linked
+   parent/guardian"). This screenshot demonstrates the explicit-consent step —
+   capture it with the box visible (Profile → Connections).
 2. **Strava OAuth consent screen** — the Strava-hosted authorize page (shows the
    scopes XCTracker requests).
 3. **Athlete dashboard** — synced runs in the list + pace-zone display.
@@ -84,8 +106,9 @@ Strava account):
    pace, pace-zone breakdown).
 5. **Analytics** — `AthleteAnalytics` pace-zone / mileage charts derived from runs.
 6. **Disconnect** — Profile → Connections → Manage, showing the disconnect option.
-(If the form asks, note that runs are also visible to the athlete's coach for
-team training — same data, role-gated per the privacy policy.)
+(Runs are also visible to the athlete's coach, teammates, and linked parent —
+that's the consented team model; role-gated per the privacy policy. Be upfront
+about it; the consent checkbox in screenshot #1 is your evidence.)
 
 ## 3. Application narrative (draft — paste into the form)
 
@@ -93,9 +116,10 @@ team training — same data, role-gated per the privacy policy.)
 > XCTracker is a training platform for high-school cross country and track
 > teams. Athletes optionally connect Strava to import their runs; we use the
 > distance, duration, and pace data to populate their training log and compute
-> personalized pace-based training zones. Coaches use the aggregated team
-> training to plan workouts and monitor injury risk. We don't sell, share, or
-> advertise against Strava data, and we don't use it to train AI models.
+> personalized pace-based training zones. With the athlete's explicit in-app
+> consent, their coach, teammates, and linked parent/guardian can view that
+> training (XCTracker is a team platform). We don't sell, share with third
+> parties, or advertise against Strava data, and we don't use it to train AI models.
 
 **Long (for the Developer Program "describe your app / use case" field):**
 > XCTracker (https://xctracker.com) is a team training platform for high-school
@@ -105,8 +129,22 @@ team training — same data, role-gated per the privacy policy.)
 > activities (summary distance, moving time, activity type, start date) and the
 > activity's pace stream, which we use solely to (a) populate the athlete's
 > XCTracker training log and (b) compute their personalized pace-based training
-> zones (VDOT methodology). Their coach can view the team's training to plan
-> workouts and monitor overtraining/injury risk.
+> zones (VDOT methodology).
+>
+> Sharing and consent: XCTracker is a team platform, so an athlete's synced runs
+> and the pace/mileage metrics derived from them are visible within the app to
+> that athlete's coach, teammates (e.g., on team mileage leaderboards), and any
+> linked parent or guardian — the same visibility that applies to runs the
+> athlete logs manually. We recognize the Strava API Agreement requires explicit
+> consent before a user's Strava data is shared with others, so we obtain the
+> athlete's explicit, affirmative consent before connecting: a required consent
+> checkbox is shown on the connect screen (the Connect button is disabled until
+> it is checked), the consent is recorded with a timestamp, and the sharing is
+> disclosed in our Privacy Policy and Terms of Service. Sharing occurs only
+> within the athlete's own team inside XCTracker; we never disclose Strava data
+> to third parties outside the platform. Athletes can withdraw consent at any
+> time by disconnecting Strava. If this team-visibility model requires a
+> different access tier or additional steps, we would welcome Strava's guidance.
 >
 > Data handling: we do NOT persist raw Strava streams — only a derived per-zone
 > time summary per run is stored. We never sell, rent, license, share, or
