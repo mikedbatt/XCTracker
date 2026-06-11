@@ -5,8 +5,10 @@ Generated 2026-06-10. Delete or move once submitted.
 
 App: **XCTracker** · Client ID **211521** · Tier **Standard**
 Dashboard: https://www.strava.com/settings/api
-Developer Program form: https://developers.strava.com/ (Developer Program / "request
-increased access")
+Developer Program form (athlete-capacity increase, >10 athletes):
+  https://share.hsforms.com/1VXSwPUYqSH6IxK0y51FjHwcnkd8
+  (durable path if that link changes: https://developers.strava.com/docs/rate-limits/
+  → "Athlete Capacity" section → the form link)
 
 ---
 
