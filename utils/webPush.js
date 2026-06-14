@@ -62,11 +62,15 @@ export async function registerWebPush(uid) {
 
     // Foreground handler: when the tab is active, the SW doesn't fire. Show a
     // browser notification ourselves so foreground messages aren't missed.
+    // Must go through the service worker registration — Android Chrome forbids
+    // the `new Notification()` constructor ("Illegal constructor"), so use
+    // registration.showNotification() which works on every platform.
     onMessage(messaging, (payload) => {
       const { title, body } = payload.notification || {};
-      if (Notification.permission === 'granted' && title) {
-        new Notification(title, { body: body || '', icon: '/favicon.png' });
-      }
+      if (Notification.permission !== 'granted' || !title) return;
+      Promise.resolve(
+        registration.showNotification(title, { body: body || '', icon: '/favicon.png' })
+      ).catch((e) => console.warn('Web push: foreground notification failed:', e));
     });
   } catch (e) {
     console.warn('Web push registration failed:', e);
