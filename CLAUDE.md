@@ -446,6 +446,28 @@ preserved and resumable. Patterns when working in web-touched code:
 
 ## Building + deploying web
 ```bash
+npm run deploy:web             # PREFERRED: build + Sentry source maps + deploy
+```
+`npm run deploy:web` runs `scripts/deploy-web.js`, which: (1) `expo export -p
+web -s` (the `-s` emits source maps), (2) `sentry-cli sourcemaps inject dist`
+(stamps debug IDs — Expo SDK 54 already stamps them on export with `-s`, so this
+is an idempotent safety net), (3) `sentry-cli sourcemaps upload dist`, then (4)
+`firebase deploy --only hosting`. The Sentry steps are **skipped (non-fatal)**
+when credentials are absent, so the command still deploys without Sentry set up.
+Without uploaded maps, Sentry stack traces are minified (`entry-<hash>.js:902:…`)
+and unreadable — that's the whole point of this flow.
+
+Sentry source-map credentials live in **`.sentryclirc`** (gitignored — holds an
+auth token + org/project SLUGS; see the committed template) or the
+`SENTRY_AUTH_TOKEN`/`SENTRY_ORG`/`SENTRY_PROJECT` env vars. Maps are uploaded to
+Sentry but **never served publicly** — `firebase.json` hosting `ignore` excludes
+`**/*.map`, so symbolication relies on the injected debug IDs, not public maps.
+NOTE: the Sentry project is slugged `react-native` because we use the
+`@sentry/react-native` SDK on web (`utils/sentry.js`); it works on web — the slug
+is cosmetic.
+
+Manual two-step (no source map upload) still works if needed:
+```bash
 npx expo export -p web         # builds to dist/ (~1-2 min)
 firebase deploy --only hosting # uploads dist/ to Firebase Hosting
 ```

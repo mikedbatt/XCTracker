@@ -13,7 +13,8 @@
     "public": "dist",
     "ignore": [
       "firebase.json",
-      "**/.*"
+      "**/.*",
+      "**/*.map"
     ],
     "rewrites": [
       {
