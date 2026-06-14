@@ -77,7 +77,28 @@
       "Bash(sort -k1 -n)",
       "Bash(xargs -I {} basename {})",
       "Bash(git branch *)",
-      "Bash(magick -version)"
+      "Bash(magick -version)",
+      "Bash(git *)",
+      "Bash(npx eas-cli *)",
+      "Bash(echo \"\\(exit: $?\\)\")",
+      "Skill(schedule)",
+      "Bash(gcloud --version)",
+      "Bash(gsutil version *)",
+      "Bash(gcloud auth *)",
+      "Bash(gsutil ls *)",
+      "Bash(gcloud services *)",
+      "WebFetch(domain:developers.strava.com)",
+      "Bash(grep -rn 'name=\"strava\"\\\\|name='\"'\"'strava'\"'\"'' --include=*.js --include=*.tsx screens app components)",
+      "Bash(grep -n \"authUrl\\\\|oauth/authorize\\\\|oauth/mobile\" stravaConfig.js)",
+      "Bash(echo \"=== exit: $? \\(1 = none found, good\\) ===\")",
+      "Bash(grep -rn \"STRAVA_ORANGE\" --include=*.js --include=*.tsx screens app components constants)",
+      "Bash(grep -rn \"name=\\\\\"strava\\\\\"\\\\|strava-connect\\\\|stravaLogo\\\\|strava.*\\\\.png\\\\|logoStrava\" --include=*.js --include=*.tsx screens app components)",
+      "Bash(echo \"\\(curl exit: $?\\)\")",
+      "Bash(nslookup www.xctracker.com)",
+      "PowerShell(npx expo export -p web)",
+      "PowerShell(firebase deploy *)",
+      "Bash(npx sentry-cli *)",
+      "PowerShell(npm run *)"
     ]
   }
 }
