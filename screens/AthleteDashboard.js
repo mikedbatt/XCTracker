@@ -33,7 +33,7 @@ import { bottomInset } from '../utils/safeArea';
 import { aggregateMiles, isCrossTraining, creditForRun, activityMeta, CROSS_TRAINING_TYPES, DEFAULT_CT_FACTORS } from '../utils/activityMiles';
 import { lazyWithReload } from '../utils/lazyWithReload';
 import { toLocalISODate } from '../utils/dateUtils';
-import { autoSyncStrava } from '../stravaConfig';
+import { isGarminConnected } from '../garminConfig';
 import { BRAND, EFFORT_COLORS as DESIGN_EFFORT_COLORS, EFFORT_LABELS as DESIGN_EFFORT_LABELS, SIGNAL } from '../constants/design';
 import { batchDocsByIds } from '../utils/batchDocsByIds';
 import { useStaleRefresh } from '../hooks/useStaleRefresh';
@@ -44,7 +44,7 @@ import { SIGNAL_TYPE_COLORS, TYPE_COLORS, WORKOUT_PACE_ZONE } from '../constants
 import DatePickerField from './DatePickerField';
 import RunDetailModal from './RunDetailModal';
 import { getActiveSeason, getCompletedSeasons } from './SeasonPlanner';
-import StravaConnect from './StravaConnect';
+import GarminConnect from './GarminConnect';
 import ChannelList from './ChannelList';
 import TeammateProfile from './TeammateProfile';
 import TimeframePicker, { TIMEFRAMES, getDateRange } from './TimeframePicker';
@@ -99,7 +99,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
   const [totalMiles,           setTotalMiles]           = useState(0);
   const [teamMiles,            setTeamMiles]            = useState({});
   const [pendingParents,       setPendingParents]       = useState([]);
-  const [autoSyncing,          setAutoSyncing]          = useState(false);
+  const [garminImport,         setGarminImport]         = useState(null); // users.garminBackfill
   const [calendarVisible,      setCalendarVisible]      = useState(false);
   const [selectedTimeframe,    setSelectedTimeframe]    = useState(TIMEFRAMES[0]);
   const [customStart,          setCustomStart]          = useState(null);
@@ -109,7 +109,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
   const [selectedWorkout,      setSelectedWorkout]      = useState(null);
   const [workoutDetailVisible, setWorkoutDetailVisible] = useState(false);
   const [wellnessVisible,      setWellnessVisible]      = useState(false);
-  const [stravaVisible,        setStravaVisible]        = useState(false);
+  const [garminVisible,        setGarminVisible]        = useState(false);
   const [selectedTeammate,     setSelectedTeammate]     = useState(null);
   const [dailyMessage,         setDailyMessage]         = useState(null);
   const [profileVisible,       setProfileVisible]       = useState(false);
@@ -128,8 +128,8 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
   const [effortPickerRun,      setEffortPickerRun]      = useState(null);
   const [activeTab,            setActiveTab]            = useState('home');
   const [localAvatarColor,     setLocalAvatarColor]     = useState(userData.avatarColor || BRAND);
-  const [stravaLinked,         setStravaLinked]         = useState(true); // default true to avoid flash
-  const [stravaDismissed,      setStravaDismissed]      = useState(false);
+  const [garminLinked,         setGarminLinked]         = useState(true); // default true to avoid flash
+  const [garminDismissed,      setGarminDismissed]      = useState(false);
   const [benchmarkDismissed,   setBenchmarkDismissed]   = useState(false);
   const [leaderPaceExpanded,   setLeaderPaceExpanded]   = useState(false);
   const [seasonReviewVisible,  setSeasonReviewVisible]  = useState(false);
@@ -196,32 +196,6 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
       useNativeDriver: false,
     }).start();
   }, [weeklyMiles, weeklyTarget]);
-
-  useEffect(() => {
-    triggerAutoSync();
-  }, []);
-
-  const triggerAutoSync = async () => {
-    try {
-      // On web, Strava sync is webhook-driven (server-side) — the client doesn't
-      // auto-pull (browser→Strava data-API calls may be CORS-blocked; the initial
-      // backfill path is settled at go-live). New runs arrive via the webhook.
-      if (Platform.OS === 'web') return;
-      const user = auth.currentUser;
-      if (!user) return;
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      if (!userDoc.exists() || !userDoc.data().stravaAccessToken) return;
-      setAutoSyncing(true);
-      const result = await autoSyncStrava(user.uid, userData);
-      if (result?.imported > 0) {
-        await loadDashboard();
-      }
-    } catch (e) {
-      console.warn('Auto-sync trigger:', e);
-    } finally {
-      setAutoSyncing(false);
-    }
-  };
 
   const loadDashboard = async () => {
     try {
@@ -318,7 +292,8 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
         setWeekMilesSplit({ running: wAgg.runningMiles, xtCredit: wAgg.xtCreditMiles });
       }
 
-      setStravaLinked(!!userDocData?.stravaAccessToken);
+      setGarminLinked(isGarminConnected(userDocData));
+      setGarminImport(userDocData?.garminBackfill ?? null);
 
       // ── Background: everything below updates the UI as it arrives but does NOT
       // gate the spinner. loadDashboard returns now → first paint happens with
@@ -702,11 +677,20 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
 
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
 
-        {/* ── Strava auto-sync banner ── */}
-        {autoSyncing && (
-          <View style={[styles.bannerCard, styles.cardSpacer]}>
-            <ActivityIndicator size="small" color={SIGNAL.color.indigo} />
-            <Text style={styles.bannerText}>Syncing Strava…</Text>
+        {/* ── Garmin history import banner ──
+            Garmin pushes requested history to our webhook over a few minutes;
+            show this for the first 30 min after the request. Runs appear on the
+            next dashboard load. */}
+        {garminImport?.status === 'requested'
+          && Date.now() - new Date(garminImport.requestedAt).getTime() < 30 * 60 * 1000 && (
+          <View style={[styles.bannerCard, styles.cardSpacer, { gap: SIGNAL.space[3] }]}>
+            <View style={[styles.bannerIcon, { backgroundColor: `${SIGNAL.color.emerald}${SIGNAL.tint.chip}` }]}>
+              <Ionicons name="watch-outline" size={16} color={SIGNAL.color.emerald} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.bannerEyebrow}>Garmin connected</Text>
+              <Text style={styles.bannerBody}>Importing your last {garminImport.days} days of runs — they’ll appear over the next few minutes.</Text>
+            </View>
           </View>
         )}
 
@@ -1055,30 +1039,27 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
           </View>
         )}
 
-        {/* ── Strava connect prompt (compact row per design ref) ── */}
-        {/* Shown on web too for the PWA beta — web OAuth runs via /strava-callback. */}
-        {!stravaLinked && !stravaDismissed && (
+        {/* ── Garmin connect prompt ── */}
+        {!garminLinked && !garminDismissed && (
           <View style={[styles.cardSpacer]}>
-            <View style={styles.stravaRow}>
-              {/* Neutral glyph — NOT a Strava logo (brand guidelines forbid
-                  recreating their mark; "Connect Strava" reads as plain text). */}
-              <View style={styles.stravaLogo}>
-                <Ionicons name="sync" size={18} color={SIGNAL.color.mute} />
+            <View style={styles.garminRow}>
+              <View style={styles.garminLogo}>
+                <Ionicons name="watch-outline" size={18} color={SIGNAL.color.mute} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.stravaTitle}>Connect Strava</Text>
-                <Text style={styles.stravaDesc}>Auto-sync runs so you never log manually.</Text>
+                <Text style={styles.garminTitle}>Connect Garmin</Text>
+                <Text style={styles.garminDesc}>Auto-sync runs so you never log manually.</Text>
               </View>
               <TouchableOpacity
-                style={styles.stravaCta}
-                onPress={() => setStravaVisible(true)}
+                style={styles.garminCta}
+                onPress={() => setGarminVisible(true)}
                 activeOpacity={0.85}
               >
-                <Text style={styles.stravaCtaText}>Connect</Text>
+                <Text style={styles.garminCtaText}>Connect</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => setStravaDismissed(true)}
-                style={styles.stravaClose}
+                onPress={() => setGarminDismissed(true)}
+                style={styles.garminClose}
                 hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
               >
                 <Ionicons name="close" size={14} color={SIGNAL.color.mute} />
@@ -1709,9 +1690,9 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
           <MemoCalendarScreen userData={userData} school={school} trainingPaces={userData.trainingPaces || null} onClose={handleCloseCalendar} />
         </View>
       )}
-      {stravaVisible && (
+      {garminVisible && (
         <View style={[styles.subScreen, { bottom: navHeight }]}>
-          <StravaConnect userData={userData} school={school} onClose={() => { setStravaVisible(false); loadDashboard(); }} onSynced={() => { setStravaVisible(false); setStravaLinked(true); loadDashboard(); }} />
+          <GarminConnect onClose={() => { setGarminVisible(false); loadDashboard(); }} />
         </View>
       )}
       {feedMounted && (
@@ -1769,13 +1750,13 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
         }}
       >
         {(() => {
-          const onHome = !calendarVisible && !stravaVisible && !feedVisible && !profileVisible && !statsVisible;
+          const onHome = !calendarVisible && !garminVisible && !feedVisible && !profileVisible && !statsVisible;
           const tabs = [
-            { key: 'home',     icon: 'home-outline',      label: 'Home',     active: onHome,         onPress: () => { setCalendarVisible(false); setStravaVisible(false); setFeedVisible(false); setProfileVisible(false); setStatsVisible(false); } },
+            { key: 'home',     icon: 'home-outline',      label: 'Home',     active: onHome,         onPress: () => { setCalendarVisible(false); setGarminVisible(false); setFeedVisible(false); setProfileVisible(false); setStatsVisible(false); } },
             { key: 'log',      icon: 'add-circle-outline', label: 'Log',     active: false,          onPress: handleLogRunTap },
-            { key: 'calendar', icon: 'calendar-outline',  label: 'Calendar', active: calendarVisible, onPress: () => { setStravaVisible(false); setFeedVisible(false); setProfileVisible(false); setStatsVisible(false); setCalendarMounted(true); setCalendarVisible(true); } },
-            { key: 'stats',    icon: 'stats-chart-outline', label: 'Stats', active: statsVisible,   onPress: () => { setCalendarVisible(false); setStravaVisible(false); setFeedVisible(false); setProfileVisible(false); setStatsMounted(true); setStatsVisible(true); } },
-            { key: 'feed',     icon: 'chatbubbles-outline', label: 'Feed',  active: feedVisible,    onPress: () => { setCalendarVisible(false); setStravaVisible(false); setProfileVisible(false); setStatsVisible(false); setFeedMounted(true); setFeedVisible(true); } },
+            { key: 'calendar', icon: 'calendar-outline',  label: 'Calendar', active: calendarVisible, onPress: () => { setGarminVisible(false); setFeedVisible(false); setProfileVisible(false); setStatsVisible(false); setCalendarMounted(true); setCalendarVisible(true); } },
+            { key: 'stats',    icon: 'stats-chart-outline', label: 'Stats', active: statsVisible,   onPress: () => { setCalendarVisible(false); setGarminVisible(false); setFeedVisible(false); setProfileVisible(false); setStatsMounted(true); setStatsVisible(true); } },
+            { key: 'feed',     icon: 'chatbubbles-outline', label: 'Feed',  active: feedVisible,    onPress: () => { setCalendarVisible(false); setGarminVisible(false); setProfileVisible(false); setStatsVisible(false); setFeedMounted(true); setFeedVisible(true); } },
           ];
           return tabs.map(t => (
             <TouchableOpacity key={t.key} style={styles.bottomNavBtn} onPress={t.onPress} activeOpacity={0.7}>
@@ -1860,9 +1841,6 @@ const styles = StyleSheet.create({
   bannerBody: {
     fontFamily: SIGNAL.font.body, fontSize: 12.5, color: SIGNAL.color.inkSoft,
     marginTop: 2, lineHeight: 17,
-  },
-  bannerText: {
-    fontFamily: SIGNAL.font.bodyMedium, fontSize: 13, color: SIGNAL.color.inkSoft,
   },
   bannerCta: {
     fontFamily: SIGNAL.font.bodySemi, fontSize: 12, color: SIGNAL.color.indigo,
@@ -2048,27 +2026,27 @@ const styles = StyleSheet.create({
   promptCtaText: { color: '#fff', fontFamily: SIGNAL.font.bodySemi, fontSize: 13 },
 
   // ── Strava compact row ──────────────────────────────────────────────────────
-  stravaRow: {
+  garminRow: {
     backgroundColor: SIGNAL.color.white,
     borderRadius: SIGNAL.radius.card,
     padding: 14,
     flexDirection: 'row', alignItems: 'center', gap: 12,
     ...SIGNAL.border.hairline,
   },
-  stravaLogo: {
+  garminLogo: {
     width: 34, height: 34, borderRadius: 9,
     backgroundColor: SIGNAL.color.line,
     alignItems: 'center', justifyContent: 'center',
   },
-  stravaTitle: { fontFamily: SIGNAL.font.bodySemi, fontSize: 13.5, color: SIGNAL.color.ink },
-  stravaDesc:  { fontFamily: SIGNAL.font.body, fontSize: 11, color: SIGNAL.color.mute, marginTop: 1 },
-  stravaCta: {
+  garminTitle: { fontFamily: SIGNAL.font.bodySemi, fontSize: 13.5, color: SIGNAL.color.ink },
+  garminDesc:  { fontFamily: SIGNAL.font.body, fontSize: 11, color: SIGNAL.color.mute, marginTop: 1 },
+  garminCta: {
     paddingVertical: 8, paddingHorizontal: 14,
     borderRadius: SIGNAL.radius.control,
     backgroundColor: SIGNAL.color.ink,
   },
-  stravaCtaText: { color: '#fff', fontFamily: SIGNAL.font.bodySemi, fontSize: 12 },
-  stravaClose: { padding: 2 },
+  garminCtaText: { color: '#fff', fontFamily: SIGNAL.font.bodySemi, fontSize: 12 },
+  garminClose: { padding: 2 },
 
   // ── Section header + body ───────────────────────────────────────────────────
   sectionHeader: {

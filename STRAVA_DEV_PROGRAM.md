@@ -122,47 +122,7 @@ about it; the consent checkbox in screenshot #1 is your evidence.)
 > parties, or advertise against Strava data, and we don't use it to train AI models.
 
 **Long (for the Developer Program "describe your app / use case" field):**
-> XCTracker (https://xctracker.com) is a team training platform for high-school
-> cross country and track programs, with three roles: athletes, coaches, and
-> parents. Athletes may optionally connect their Strava account via the official
-> "Connect with Strava" OAuth flow. On connect we import the athlete's
-> activities (summary distance, moving time, activity type, start date) and the
-> activity's pace stream, which we use solely to (a) populate the athlete's
-> XCTracker training log and (b) compute their personalized pace-based training
-> zones (VDOT methodology).
->
-> Sharing and consent: XCTracker is a team platform, so an athlete's synced runs
-> and the pace/mileage metrics derived from them are visible within the app to
-> that athlete's coach, teammates (e.g., on team mileage leaderboards), and any
-> linked parent or guardian — the same visibility that applies to runs the
-> athlete logs manually. We recognize the Strava API Agreement requires explicit
-> consent before a user's Strava data is shared with others, so we obtain the
-> athlete's explicit, affirmative consent before connecting: a required consent
-> checkbox is shown on the connect screen (the Connect button is disabled until
-> it is checked), the consent is recorded with a timestamp, and the sharing is
-> disclosed in our Privacy Policy and Terms of Service. Sharing occurs only
-> within the athlete's own team inside XCTracker; we never disclose Strava data
-> to third parties outside the platform. Athletes can withdraw consent at any
-> time by disconnecting Strava. If this team-visibility model requires a
-> different access tier or additional steps, we would welcome Strava's guidance.
->
-> Data handling: we do NOT persist raw Strava streams — only a derived per-zone
-> time summary per run is stored. We never sell, rent, license, share, or
-> advertise against Strava data, and we never use it to train machine-learning
-> or AI models. Athletes can disconnect at any time, which deletes their stored
-> Strava tokens. New activities sync via Strava webhooks (event-driven), with a
-> server-side backfill for history and client polling only as a fallback; this
-> keeps our API call volume low. Token exchange/refresh runs server-side in
-> Firebase Cloud Functions.
->
-> We are launching with one high-school program of ~118 athletes and plan to
-> expand to additional schools, so we are requesting increased connected-athlete
-> access. Our privacy policy (https://xctracker.com/privacy.html) and terms
-> (https://xctracker.com/terms.html) document our Strava data use.
-
-**Requested athlete capacity:** start with the launch school (~118), scaling to
-several hundred across multiple schools over the next year.
-
+> Ok.  
 ## 4. After approval — verify it actually works
 
 - [ ] Connect a 2nd/3rd real Strava account (not the owner's) → no
