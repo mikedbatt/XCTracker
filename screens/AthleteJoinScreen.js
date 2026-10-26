@@ -19,8 +19,9 @@ import {
 import { auth, db } from '../firebaseConfig';
 import { SIGNAL } from '../constants/design';
 import { notify } from '../utils/notify';
+import WrongRoleSignOut from '../components/WrongRoleSignOut';
 
-export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
+export default function AthleteJoinScreen({ onJoinComplete, onSkip, wasDenied = false }) {
   const [joinCode, setJoinCode] = useState('');
   const [selectedSchool, setSelectedSchool] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -134,6 +135,16 @@ export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
         <Text style={styles.subtitle}>Enter the code your coach gave you</Text>
       </View>
 
+      {/* A coach declined this athlete's last request (status 'denied'). */}
+      {wasDenied && (
+        <View style={styles.deniedCard}>
+          <Text style={styles.deniedTitle}>Your last request wasn't approved</Text>
+          <Text style={styles.deniedBody}>
+            Double-check the team code with your coach, then request to join again.
+          </Text>
+        </View>
+      )}
+
       {/* Join by code section */}
       <View style={styles.section}>
         <View style={styles.card}>
@@ -186,6 +197,7 @@ export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
         <Text style={styles.skipText}>Skip for now — I'll join a school later</Text>
       </TouchableOpacity>
 
+      <WrongRoleSignOut />
     </ScrollView>
   );
 }
@@ -248,6 +260,26 @@ const styles = StyleSheet.create({
     letterSpacing: SIGNAL.letter.titleTight,
     color: SIGNAL.color.indigo,
     textAlign: 'center',
+  },
+  deniedCard: {
+    backgroundColor: `${SIGNAL.color.amber}${SIGNAL.tint.fill}`,
+    borderRadius: SIGNAL.radius.card,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.amber,
+    padding: SIGNAL.space.card,
+    marginBottom: SIGNAL.space[5],
+  },
+  deniedTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: SIGNAL.size.body,
+    color: SIGNAL.color.ink,
+  },
+  deniedBody: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: SIGNAL.size.label,
+    color: SIGNAL.color.inkSoft,
+    marginTop: 4,
+    lineHeight: 18,
   },
   subtitle: {
     fontFamily: SIGNAL.font.body,

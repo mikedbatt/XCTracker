@@ -102,6 +102,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
   const [teamMiles,            setTeamMiles]            = useState({});
   const [pendingParents,       setPendingParents]       = useState([]);
   const [garminImport,         setGarminImport]         = useState(null); // users.garminBackfill
+  const [dataVersion,          setDataVersion]          = useState(0);    // see loadDashboard
   const [calendarVisible,      setCalendarVisible]      = useState(false);
   const [selectedTimeframe,    setSelectedTimeframe]    = useState(TIMEFRAMES[0]);
   const [customStart,          setCustomStart]          = useState(null);
@@ -294,6 +295,9 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
       // ── Background: everything below updates the UI as it arrives but does NOT
       // gate the spinner. loadDashboard returns now → first paint happens with
       // the athlete's own data; secondary cards fill in a beat later. ──
+      // Calendar/Stats stay mounted while hidden; bumping this makes them
+      // reload on their next open so new/edited/deleted runs show up there.
+      setDataVersion(v => v + 1);
       loadSecondaryDashboard(user, userDocData, { startDate, endDate, tMiles, tRunMiles, factors });
     } catch (error) { console.error('Dashboard load error:', error); }
   };
@@ -387,7 +391,12 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
           const otherIds = athletes.filter(a => a.id !== user.uid).map(a => a.id);
           if (otherIds.length > 0) {
             try {
-              const { byField } = await batchDocsByIds({ collectionName: 'runs', field: 'userId', ids: otherIds });
+              // Only the selected timeframe — every teammate's all-time runs
+              // grew to tens of thousands of reads per open by mid-season.
+              const { byField } = await batchDocsByIds({
+                collectionName: 'runs', field: 'userId', ids: otherIds,
+                constraints: startDate ? [where('date', '>=', startDate), orderBy('date', 'desc')] : [],
+              });
               for (const id of otherIds) {
                 const athleteRuns = byField[id] || [];
                 const filtered = athleteRuns.filter(r => {
@@ -1687,7 +1696,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
       )}
       {calendarMounted && (
         <View style={[styles.subScreen, { bottom: navHeight }, !calendarVisible && { display: 'none' }]}>
-          <MemoCalendarScreen userData={userData} school={school} trainingPaces={userData.trainingPaces || null} onClose={handleCloseCalendar} />
+          <MemoCalendarScreen userData={userData} school={school} trainingPaces={userData.trainingPaces || null} onClose={handleCloseCalendar} refreshKey={calendarVisible ? dataVersion : null} />
         </View>
       )}
       {garminVisible && (
@@ -1708,6 +1717,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
               school={school}
               myGroup={myGroup}
               onClose={handleCloseStats}
+              refreshKey={statsVisible ? dataVersion : null}
             />
           </Suspense>
         </View>

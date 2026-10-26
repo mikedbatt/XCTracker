@@ -58,6 +58,30 @@ function pickImageWeb() {
  */
 export async function saveImageCrossPlatform(imageUrl) {
   if (Platform.OS === 'web') return saveImageWeb(imageUrl);
+  return saveImageNative(imageUrl);
+}
+
+// Web: share an image (e.g. a data: URI from react-native-view-shot) through
+// the OS share sheet when the browser can share files; otherwise download it.
+// Falls back to download if share is refused (e.g. the tap's user-activation
+// expired while the image was being rendered).
+export async function shareImageWeb(dataUri, { filename = `xctracker_${Date.now()}.png`, title } = {}) {
+  try {
+    const blob = await (await fetch(dataUri)).blob();
+    const file = new File([blob], filename, { type: blob.type || 'image/png' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title });
+      return 'shared';
+    }
+  } catch (e) {
+    if (e?.name === 'AbortError') return 'cancelled'; // user closed the share sheet
+    console.warn('Web share failed, downloading instead:', e);
+  }
+  await saveImageWeb(dataUri, filename);
+  return 'downloaded';
+}
+
+async function saveImageNative(imageUrl) {
 
   const { status } = await MediaLibrary.requestPermissionsAsync();
   if (status !== 'granted') {
@@ -65,7 +89,7 @@ export async function saveImageCrossPlatform(imageUrl) {
     err.code = 'PERMISSION_DENIED';
     throw err;
   }
-  const filename = `teambase_${Date.now()}.jpg`;
+  const filename = `xctracker_${Date.now()}.jpg`;
   const localPath = FileSystem.cacheDirectory + filename;
   const download = await FileSystem.downloadAsync(imageUrl, localPath);
   if (download.status !== 200) throw new Error(`HTTP ${download.status}`);
@@ -74,14 +98,14 @@ export async function saveImageCrossPlatform(imageUrl) {
   catch (e) { console.warn('Temp file cleanup:', e); }
 }
 
-async function saveImageWeb(imageUrl) {
+async function saveImageWeb(imageUrl, filename) {
   const response = await fetch(imageUrl);
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const blob = await response.blob();
   const objectUrl = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = objectUrl;
-  a.download = `teambase_${Date.now()}.jpg`;
+  a.download = filename || `xctracker_${Date.now()}.jpg`;
   document.body.appendChild(a);
   a.click();
   setTimeout(() => {

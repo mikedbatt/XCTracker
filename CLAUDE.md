@@ -324,7 +324,12 @@ Three rules that keep dashboards fast:
    per-entity loops. One batched query (`where field in [ids]`) replaces
    N sequential round-trips. Firestore's `in` operator is capped at 30 values
    per query — the helper chunks in parallel. Applies to any "for each
-   athlete, fetch their X" pattern.
+   athlete, fetch their X" pattern. **Bound team runs reads** with its
+   `constraints` option (`[where('date','>=',start), orderBy('date','desc')]`,
+   served by the runs userId+date index): the athlete leaderboard fetches only
+   the selected timeframe; CoachDashboard fetches timeframe + 5 weeks (ACWR /
+   weekly compliance). CoachDashboard's overtraining alerts reuse those runs +
+   the week's school check-ins — never re-query per athlete.
 
 3. **Wrap loads in `hooks/useStaleRefresh.js`** for screens the user
    returns to. First load shows the spinner; subsequent loads (e.g.
@@ -448,6 +453,11 @@ preserved and resumable. Patterns when working in web-touched code:
   Web uses FCM via `utils/webPush.js` + `webPushToken`. Cloud Functions fan
   out to both tokens per user. Requires `EXPO_PUBLIC_FIREBASE_VAPID_KEY`.
   iOS web push only works once the PWA is installed to the home screen (16.4+).
+  **The permission prompt must come from a tap:** sign-in only calls
+  `registerWebPush(uid, { prompt: false })` (refreshes an already-granted
+  token); `components/NotificationPrompt.js` (top banner, mounted in
+  AppNavigator) asks via its "Turn on" button. Sign-out goes through
+  `utils/signOutUser.js`, which removes the device token.
 - **PWA auto-update:** an installed PWA keeps serving the build it opened with
   until a full navigation. `utils/pwaUpdate.js` (mounted via
   `components/UpdateBanner.js` in `AppNavigator`) detects a new deploy by
@@ -464,7 +474,10 @@ preserved and resumable. Patterns when working in web-touched code:
   returns `index.html` with a 200 for a since-deleted hashed chunk; caching that
   poisoned the cache and made the `Unexpected token '<'` crash sticky. Pair with
   `lazyWithReload` above.) Bump the `CACHE` name (currently `teambase-shell-v3`)
-  to force the activate handler to purge the prior cache. Registered
+  to force the activate handler to purge the prior cache. Reload-on-activate
+  (SW `activate` → `navigate()`, and the page's `controllerchange` listener)
+  runs **only when a new SW replaces an older one** — never on a first visit,
+  where it used to wipe half-typed signup forms. Registered
   eagerly at startup by `utils/registerServiceWorker.js` (called from
   `app/index.tsx`) so it's present for first-time visitors regardless of
   login/push. `utils/webPush.js` re-registers the same URL (idempotent) when push

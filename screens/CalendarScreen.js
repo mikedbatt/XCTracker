@@ -1,5 +1,5 @@
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, updateDoc, where } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -29,7 +29,7 @@ import { notify } from '../utils/notify';
 // Re-export so existing imports from CalendarScreen keep working
 export { CATEGORIES, TYPE_COLORS };
 
-export default function CalendarScreen({ userData, school, onClose, autoOpenAdd, prefillWorkout, groups = [], externalAthleteRuns = null, trainingPaces = null }) {
+export default function CalendarScreen({ userData, school, onClose, autoOpenAdd, prefillWorkout, groups = [], externalAthleteRuns = null, trainingPaces = null, refreshKey = null }) {
   const [markedDates, setMarkedDates] = useState({});
   const [allItems, setAllItems] = useState([]);
   const [athleteRuns, setAthleteRuns] = useState([]);
@@ -68,6 +68,16 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
   const typeColor = (t) => SIGNAL_TYPE_COLORS[t] || TYPE_COLORS[t] || SIGNAL.color.indigo;
 
   useEffect(() => { loadItems(); }, []);
+
+  // Kept mounted while hidden by AthleteDashboard: refreshKey is the
+  // dashboard's data version while visible (null while hidden). Reload when
+  // it's re-opened after the athlete's data changed.
+  const loadedKeyRef = useRef(refreshKey);
+  useEffect(() => {
+    if (refreshKey == null || refreshKey === loadedKeyRef.current) return;
+    loadedKeyRef.current = refreshKey;
+    loadItems();
+  }, [refreshKey]);
 
   // Re-filter the selected day's items when the override loads (it may arrive
   // after the day was tapped). On a coach-modified day, hide the group Training

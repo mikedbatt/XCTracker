@@ -9,6 +9,7 @@ import {
 import { auth, db } from '../firebaseConfig';
 import { SIGNAL } from '../constants/design';
 import { notify } from '../utils/notify';
+import WrongRoleSignOut from '../components/WrongRoleSignOut';
 
 const generateJoinCode = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -343,6 +344,7 @@ export default function CoachSetupScreen({ onSetupComplete }) {
         </Text>
       </TouchableOpacity>
 
+      <WrongRoleSignOut />
     </ScrollView>
   );
 }

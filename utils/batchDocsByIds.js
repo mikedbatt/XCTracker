@@ -17,11 +17,15 @@ const FIRESTORE_IN_LIMIT = 30;
  * @param {string} opts.collectionName - e.g. 'runs'
  * @param {string} opts.field          - e.g. 'userId'
  * @param {string[]} opts.ids          - list of values to match
+ * @param {Array}  [opts.constraints]   - extra query constraints applied to every
+ *   batch, e.g. [where('date', '>=', start), orderBy('date', 'desc')] to bound a
+ *   runs fetch (runs has a userId+date DESC composite index). Unbounded team
+ *   runs reads grow all season — bound them whenever the screen allows.
  * @returns {Promise<{docs: object[], byField: Record<string, object[]>}>}
  *   - `docs`: flat array of `{ id, ...data }`
  *   - `byField`: object grouping docs by their `field` value
  */
-export async function batchDocsByIds({ collectionName, field, ids }) {
+export async function batchDocsByIds({ collectionName, field, ids, constraints = [] }) {
   if (!ids || ids.length === 0) {
     return { docs: [], byField: {} };
   }
@@ -35,7 +39,7 @@ export async function batchDocsByIds({ collectionName, field, ids }) {
 
   const snapshots = await Promise.all(
     batches.map(batch =>
-      getDocs(query(collection(db, collectionName), where(field, 'in', batch)))
+      getDocs(query(collection(db, collectionName), where(field, 'in', batch), ...constraints))
     )
   );
 

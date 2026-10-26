@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -24,7 +24,7 @@ import { aggregateMiles, isCrossTraining, DEFAULT_CT_FACTORS } from '../utils/ac
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function AthleteAnalytics({ userData, school, myGroup, onClose }) {
+export default function AthleteAnalytics({ userData, school, myGroup, onClose, refreshKey = null }) {
   const [loading, setLoading] = useState(true);
   const [expandedSection, setExpandedSection] = useState(null);
   const [seasonReviewSeason, setSeasonReviewSeason] = useState(null);
@@ -37,6 +37,15 @@ export default function AthleteAnalytics({ userData, school, myGroup, onClose })
   const [raceMeets, setRaceMeets] = useState([]);
 
   useEffect(() => { loadData(); }, []);
+
+  // Kept mounted while hidden by AthleteDashboard — reload on re-open after the
+  // athlete's data changed (refreshKey = dashboard data version, null hidden).
+  const loadedKeyRef = useRef(refreshKey);
+  useEffect(() => {
+    if (refreshKey == null || refreshKey === loadedKeyRef.current) return;
+    loadedKeyRef.current = refreshKey;
+    loadData();
+  }, [refreshKey]);
 
   const loadData = async () => {
     setLoading(true);

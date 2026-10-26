@@ -19,6 +19,7 @@ import {
 import { auth, db } from '../firebaseConfig';
 import { SIGNAL } from '../constants/design';
 import { notify } from '../utils/notify';
+import WrongRoleSignOut from '../components/WrongRoleSignOut';
 
 export default function AssistantJoinScreen({ onJoinComplete }) {
   const [joinCode, setJoinCode] = useState('');  const [selectedSchool, setSelectedSchool] = useState(null);
@@ -161,6 +162,7 @@ export default function AssistantJoinScreen({ onJoinComplete }) {
         </View>
       )}
 
+      <WrongRoleSignOut />
     </ScrollView>
   );
 }

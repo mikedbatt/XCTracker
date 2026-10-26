@@ -656,9 +656,11 @@ exports.onNewTeamPost = functions.firestore
   .document('teamPosts/{postId}')
   .onCreate(async (snap, context) => {
     const post = snap.data();
-    if (!post.schoolId || !post.text) return;
+    // Image-only posts are saved with text: '' — they still notify.
+    if (!post.schoolId || (!post.text && !post.imageUrl)) return;
 
-    const { schoolId, channel, authorId, authorName, text } = post;
+    const { schoolId, channel, authorId, authorName } = post;
+    const text = post.text || '📷 Photo';
     const channelKey = channel || 'whole_team';
 
     try {
@@ -666,27 +668,28 @@ exports.onNewTeamPost = functions.firestore
         .where('schoolId', '==', schoolId)
         .get();
 
-      const parentSnap = await db.collection('users')
-        .where('role', '==', 'parent')
-        .get();
+      const allUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const seen = new Set(allUsers.map(u => u.id));
 
-      const allUsers = [
-        ...usersSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-      ];
-
-      const schoolAthleteIds = usersSnap.docs
-        .filter(d => d.data().role === 'athlete')
-        .map(d => d.id);
-
-      parentSnap.docs.forEach(d => {
-        const parent = { id: d.id, ...d.data() };
-        const linked = parent.linkedAthleteIds || [];
-        if (linked.some(id => schoolAthleteIds.includes(id))) {
-          if (!allUsers.find(u => u.id === parent.id)) {
-            allUsers.push(parent);
-          }
-        }
-      });
+      // Parents linked to this school's athletes who don't carry the schoolId
+      // yet (linked before their athlete joined the team). Bounded lookup —
+      // array-contains-any takes ≤30 values — instead of reading EVERY parent
+      // in the database on every post.
+      const schoolAthleteIds = allUsers.filter(u => u.role === 'athlete').map(u => u.id);
+      const parentChunks = [];
+      for (let i = 0; i < schoolAthleteIds.length; i += 30) {
+        parentChunks.push(schoolAthleteIds.slice(i, i + 30));
+      }
+      const parentSnaps = await Promise.all(parentChunks.map(ids =>
+        // Only parent docs carry linkedAthleteIds, so no role filter (which
+        // would need a composite index).
+        db.collection('users')
+          .where('linkedAthleteIds', 'array-contains-any', ids)
+          .get()
+      ));
+      parentSnaps.forEach(ps => ps.docs.forEach(d => {
+        if (!seen.has(d.id)) { seen.add(d.id); allUsers.push({ id: d.id, ...d.data() }); }
+      }));
 
       const recipients = allUsers.filter(user => {
         if (user.id === authorId) return false;
@@ -721,9 +724,16 @@ exports.onNewTeamPost = functions.firestore
       const body = text.length > 100 ? text.slice(0, 97) + '...' : text;
       const data = { channel: channelKey, postId: context.params.postId };
 
+      // One send per device token: a shared family/school device can hold the
+      // same token on several user docs.
+      const sentTokens = new Set();
       const messages = [];
       const webMessages = [];
       for (const user of recipients) {
+        if (user.expoPushToken && sentTokens.has(user.expoPushToken)) continue;
+        if (user.webPushToken && sentTokens.has(user.webPushToken)) continue;
+        if (user.expoPushToken) sentTokens.add(user.expoPushToken);
+        if (user.webPushToken) sentTokens.add(user.webPushToken);
         if (user.expoPushToken && Expo.isExpoPushToken(user.expoPushToken)) {
           messages.push({
             to: user.expoPushToken,

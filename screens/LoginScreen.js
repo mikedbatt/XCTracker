@@ -26,7 +26,7 @@ const ROLES = [
 ];
 
 export default function LoginScreen({ onAuthSuccess }) {
-  const [email, setEmail] = useState('');
+  const [emailInput, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -94,8 +94,13 @@ export default function LoginScreen({ onAuthSuccess }) {
 
   const calculateAge = () => {
     if (!birthYear || !birthMonth || !birthDay) return null;
+    const y = parseInt(birthYear, 10), m = parseInt(birthMonth, 10), d = parseInt(birthDay, 10);
     const today = new Date();
-    const birth = new Date(parseInt(birthYear), parseInt(birthMonth) - 1, parseInt(birthDay));
+    // Reject typos (month 14, year 209, Feb 31) — a nonsense date could slip
+    // past the under-13 check.
+    if (!(y >= 1900 && y <= today.getFullYear()) || !(m >= 1 && m <= 12) || !(d >= 1 && d <= 31)) return 'invalid';
+    const birth = new Date(y, m - 1, d);
+    if (birth.getMonth() !== m - 1 || birth > today) return 'invalid';
     let age = today.getFullYear() - birth.getFullYear();
     const monthDiff = today.getMonth() - birth.getMonth();
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age--;
@@ -106,6 +111,7 @@ export default function LoginScreen({ onAuthSuccess }) {
     if (role !== 'athlete') return { valid: true };
     const age = calculateAge();
     if (age === null) return { valid: false, message: 'Please enter your date of birth.' };
+    if (age === 'invalid') return { valid: false, message: 'Please check your date of birth — that date doesn\'t look right.' };
     // COPPA: athletes under 13 cannot self-register. A coach or parent/guardian
     // must set up the account. Athletes 13+ sign up normally (no parental
     // consent gate).
@@ -115,6 +121,8 @@ export default function LoginScreen({ onAuthSuccess }) {
 
   const handleEmailAuth = async () => {
     setFormError(null);
+    // Autocomplete often adds a trailing space → "Please enter a valid email".
+    const email = emailInput.trim();
     if (!email || !password) {
       setFormError('Please enter your email and password.');
       return;
@@ -191,6 +199,7 @@ export default function LoginScreen({ onAuthSuccess }) {
   };
 
   const handleForgotPassword = () => {
+    const email = emailInput.trim();
     if (!email) {
       notify('Enter your email', 'Type your email address above first, then tap Forgot Password.');
       return;
@@ -323,7 +332,7 @@ export default function LoginScreen({ onAuthSuccess }) {
             style={inputStyle('email')}
             placeholder="Email address"
             placeholderTextColor={SIGNAL.color.mute2}
-            value={email}
+            value={emailInput}
             onChangeText={(v) => { setEmail(v); if (formError) setFormError(null); }}
             keyboardType="email-address"
             autoCapitalize="none"
@@ -495,7 +504,6 @@ export default function LoginScreen({ onAuthSuccess }) {
         {/* Privacy notice */}
         {isSignUp && (
           <Text style={styles.privacyText}>
-            By creating an account you agree to our Terms of Service and Privacy Policy.
             We take the privacy and safety of minors seriously.
           </Text>
         )}

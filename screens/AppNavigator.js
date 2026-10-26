@@ -10,6 +10,7 @@ import { BRAND, NEUTRAL } from '../constants/design';
 import { confirmDestructive } from '../utils/confirmDialog';
 import WebMaxWidth from '../components/WebMaxWidth';
 import InstallPrompt from '../components/InstallPrompt';
+import NotificationPrompt from '../components/NotificationPrompt';
 import UpdateBanner from '../components/UpdateBanner';
 import { registerWebPush } from '../utils/webPush';
 import { lazyWithReload } from '../utils/lazyWithReload';
@@ -41,7 +42,8 @@ const ParentDashboard     = lazyWithReload(() => import('../screens/ParentDashbo
 // On web:    FCM web SDK → webPushToken (handled by registerWebPush).
 async function registerForPushNotifications(uid) {
   if (Platform.OS === 'web') {
-    return registerWebPush(uid);
+    // Refresh only — the permission prompt comes from NotificationPrompt's tap.
+    return registerWebPush(uid, { prompt: false });
   }
 
   try {
@@ -93,11 +95,32 @@ function onboardingStepFor(data, { skippedSchoolJoin = false } = {}) {
   return null;
 }
 
+// Fetch the signed-in user's profile doc. Retries briefly: at signup the auth
+// listener fires the moment the account exists, before LoginScreen's setDoc
+// has written the profile — and on a congested school network a read can fail.
+// Returns { data } | { error: 'missing' | 'network' }.
+async function loadProfile(uid) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const snap = await getDoc(doc(db, 'users', uid));
+      if (snap.exists()) return { data: snap.data() };
+    } catch (e) {
+      console.warn('Profile load failed:', e);
+      if (attempt === 2) return { error: 'network' };
+    }
+    await new Promise(r => setTimeout(r, 1500));
+  }
+  return { error: 'missing' };
+}
+
 function AppNavigatorInner() {
   const [user, setUser] = useState(null);
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [onboardingStep, setOnboardingStep] = useState(null);
+  // 'missing' | 'network' when the profile doc couldn't be loaded — shows a
+  // retry/sign-out screen instead of an endless spinner or the login screen.
+  const [profileError, setProfileError] = useState(null);
   // Set when an athlete explicitly taps "Skip for now" on AthleteJoinScreen.
   // While true, refreshUser() will not auto-route them back into the join
   // flow even though they have no schoolId. Cleared whenever they actually
@@ -131,22 +154,23 @@ function AppNavigatorInner() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // Fetch user profile from Firestore
-        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-        if (userDoc.exists()) {
-          const data = userDoc.data();
+        const { data, error } = await loadProfile(firebaseUser.uid);
+        setUser(firebaseUser);
+        if (data) {
+          setProfileError(null);
           setUserData(data);
-          setUser(firebaseUser);
-
           setOnboardingStep(onboardingStepFor(data));
 
           // Register for push notifications
           registerForPushNotifications(firebaseUser.uid);
+        } else {
+          setProfileError(error);
         }
       } else {
         setUser(null);
         setUserData(null);
         setOnboardingStep(null);
+        setProfileError(null);
       }
       setLoading(false);
     });
@@ -154,10 +178,12 @@ function AppNavigatorInner() {
   }, []);
 
   const handleAuthSuccess = async ({ uid }) => {
-    // Re-fetch user data after signup
+    // Re-fetch user data after signup (the profile doc now exists).
     const userDoc = await getDoc(doc(db, 'users', uid));
     if (userDoc.exists()) {
       const data = userDoc.data();
+      if (auth.currentUser) setUser(auth.currentUser);
+      setProfileError(null);
       setUserData(data);
       setOnboardingStep(onboardingStepFor(data));
     }
@@ -220,6 +246,41 @@ function AppNavigatorInner() {
     return <LoginScreen onAuthSuccess={handleAuthSuccess} />;
   }
 
+  // Signed in but the profile couldn't be loaded.
+  if (profileError) {
+    const retry = async () => {
+      setLoading(true);
+      const { data, error } = await loadProfile(user.uid);
+      if (data) {
+        setProfileError(null);
+        setUserData(data);
+        setOnboardingStep(onboardingStepFor(data));
+        registerForPushNotifications(user.uid);
+      } else {
+        setProfileError(error);
+      }
+      setLoading(false);
+    };
+    return (
+      <View style={styles.pendingScreen}>
+        <Text style={styles.pendingTitle}>
+          {profileError === 'network' ? "Can't reach XCTracker" : "We couldn't finish setting up your account"}
+        </Text>
+        <Text style={styles.pendingDesc}>
+          {profileError === 'network'
+            ? 'Check your internet connection and try again.'
+            : 'Try again in a moment. If this keeps happening, sign out and sign up again, or ask your coach for help.'}
+        </Text>
+        <TouchableOpacity style={styles.refreshBtn} onPress={retry}>
+          <Text style={styles.refreshBtnText}>Try again</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.signOutLink} onPress={signOutUser}>
+          <Text style={styles.signOutLinkText}>Sign out</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   // Onboarding flows
   if (onboardingStep === 'coach_setup') {
     return <CoachSetupScreen onSetupComplete={handleOnboardingComplete} />;
@@ -252,7 +313,7 @@ function AppNavigatorInner() {
     );
   }
   if (onboardingStep === 'athlete_join') {
-    return <AthleteJoinScreen onJoinComplete={handleOnboardingComplete} onSkip={handleSkipSchoolJoin} />;
+    return <AthleteJoinScreen onJoinComplete={handleOnboardingComplete} onSkip={handleSkipSchoolJoin} wasDenied={userData?.status === 'denied'} />;
   }
 
   // Main app dashboards. handleOnboardingComplete doubles as a `refreshUser`
@@ -281,6 +342,7 @@ export default function AppNavigator() {
       </Suspense>
       <UpdateBanner />
       <InstallPrompt />
+      <NotificationPrompt />
     </View>
   );
 }

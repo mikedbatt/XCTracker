@@ -119,33 +119,17 @@ function getDailyTip(phaseName) {
 // ── Overtraining detection ────────────────────────────────────────────────────
 // Uses Monday-aligned weeks and compares this week vs 3-week rolling average
 // to avoid false positives from rolling 7-day window misalignment.
-async function checkOvertraining(athleteId, attendanceStats = null) {
+// Pure: callers pass the athlete's runs (needs ≥4 weeks for ACWR) and this
+// week's check-ins — both already loaded school-wide by loadDashboard.
+function checkOvertraining({ runs, checkins, attendanceStats = null, now = new Date() }) {
   try {
-    const now = new Date();
-    const day = now.getDay();
-    // Current Monday at 00:00
-    const thisMonday = new Date(now);
-    thisMonday.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
-    thisMonday.setHours(0, 0, 0, 0);
-    // 4 weeks back to get this week + 3 prior weeks
-    const fourWeeksAgo = new Date(thisMonday);
-    fourWeeksAgo.setDate(thisMonday.getDate() - 28);
-
-    const [runsSnap, checkinSnap] = await Promise.all([
-      getDocs(query(collection(db, 'runs'), where('userId', '==', athleteId),
-        where('date', '>=', fourWeeksAgo), orderBy('date', 'desc'))),
-      // Query without orderBy to avoid needing a composite index — sort client-side
-      getDocs(query(collection(db, 'checkins'), where('userId', '==', athleteId)))
-        .catch(() => ({ docs: [] })),
-    ]);
-
-    const allRuns = runsSnap.docs.map(d => d.data());
-    const checkins = checkinSnap.docs.map(d => d.data());
-    // Shared with the athlete screens so signals are identical everywhere.
     const { alert, signals, latestInjury, latestIllness, latestCheckinDate } =
-      computeOvertraining({ runs: allRuns, checkins, attendanceStats, now });
+      computeOvertraining({ runs, checkins, attendanceStats, now });
     return { alert, signals, todayInjury: latestInjury, todayIllness: latestIllness, injuryCheckinDate: latestCheckinDate };
-  } catch { return { alert: false, signals: [], todayInjury: null, todayIllness: null, injuryCheckinDate: null }; }
+  } catch (e) {
+    console.error('Overtraining check failed:', e);
+    return { alert: false, signals: [], todayInjury: null, todayIllness: null, injuryCheckinDate: null };
+  }
 }
 
 // ── Pace easy % helper — uses VDOT training paces ────────────────────────────
@@ -406,14 +390,28 @@ export default function CoachDashboard({ userData }) {
       // Single batched `where-in` query for all athlete runs replaces the old
       // serial per-athlete loop (70 athletes × 1 query → ~3 batched queries).
       const athleteIds = approvedAthletes.map(a => a.id);
-      const [runsResult, alertsEntries] = await Promise.all([
-        batchDocsByIds({ collectionName: 'runs', field: 'userId', ids: athleteIds }),
-        Promise.all(approvedAthletes.map(a =>
-          checkOvertraining(a.id, attendanceByAthlete[a.id]).then(result => [a.id, result])
-        )),
-      ]);
+      // Selected timeframe + 5 weeks (ACWR needs 28 days; weekly compliance
+      // needs the 4 prior Monday-weeks). "All time" stays unbounded by choice.
+      const fiveWeeksAgo = new Date(now.getTime() - 35 * 86400000);
+      const runsWindowStart = cutoff ? new Date(Math.min(cutoff, fiveWeeksAgo)) : null;
+      const runsResult = await batchDocsByIds({
+        collectionName: 'runs', field: 'userId', ids: athleteIds,
+        constraints: runsWindowStart ? [where('date', '>=', runsWindowStart), orderBy('date', 'desc')] : [],
+      });
 
-      setOvertTrainingAlerts(Object.fromEntries(alertsEntries));
+      // Overtraining alerts from the batched runs + this week's school-wide
+      // check-ins (checkinSnap, since Monday) — no per-athlete queries.
+      const weekCheckinsByAthlete = {};
+      (checkinSnap?.docs || []).forEach(d => {
+        const c = d.data();
+        if (c.userId) (weekCheckinsByAthlete[c.userId] = weekCheckinsByAthlete[c.userId] || []).push(c);
+      });
+      setOvertTrainingAlerts(Object.fromEntries(approvedAthletes.map(a => [a.id, checkOvertraining({
+        runs: runsResult.byField[a.id] || [],
+        checkins: weekCheckinsByAthlete[a.id] || [],
+        attendanceStats: attendanceByAthlete[a.id],
+        now,
+      })])));
 
       // Active workout overrides (coach injury modifications), keyed by athlete.
       let overrideMap = {};
@@ -812,7 +810,7 @@ export default function CoachDashboard({ userData }) {
   // ── Format last-run summary line for an athlete card ──
   const formatLastRun = (athleteId) => {
     const d = athleteLastRunDate[athleteId];
-    if (!d) return 'No runs yet';
+    if (!d) return 'No recent runs';
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const runDay = new Date(d); runDay.setHours(0, 0, 0, 0);
     const diff = Math.round((today - runDay) / 86400000);

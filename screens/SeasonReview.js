@@ -14,6 +14,8 @@ import { formatTime } from '../utils/raceUtils';
 import { calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
 import { getMondayISO, endOfLocalDay } from '../utils/dateUtils';
 import { creditForRun, isCrossTraining, DEFAULT_CT_FACTORS } from '../utils/activityMiles';
+import { shareImageWeb } from '../utils/imageHelpers';
+import { notify } from '../utils/notify';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -305,12 +307,19 @@ export default function SeasonReview({ season, school, userData, athletes = [], 
   const handleShare = async () => {
     try {
       const uri = await viewShotRef.current.capture();
+      if (Platform.OS === 'web') {
+        // RN's Share needs a url/message on web and has no image support —
+        // use the browser share sheet (or a download) with the captured PNG.
+        await shareImageWeb(uri, { title: 'My season in review' });
+        return;
+      }
       await Share.share({
         url: Platform.OS === 'ios' ? uri : undefined,
         message: Platform.OS === 'android' ? uri : undefined,
       });
     } catch (e) {
       console.warn('Share failed:', e);
+      notify('Could not share', 'Please try again.');
     }
   };
 
