@@ -153,7 +153,7 @@ function calcAthletePaceEasyPct(recentRuns, trainingPaces) {
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
-export default function CoachDashboard({ userData }) {
+export default function CoachDashboard({ userData, refreshUser }) {
   const [school,              setSchool]              = useState(null);
   const [activeSeasonData,    setActiveSeasonData]    = useState(null);
   const [athletes,            setAthletes]            = useState([]);
@@ -2017,6 +2017,7 @@ export default function CoachDashboard({ userData }) {
             onDenyAthlete={handleDenyAthlete}
             onClose={() => { setProfileVisible(false); loadDashboard(); }}
             onUpdated={() => { setProfileVisible(false); loadDashboard(); }}
+            refreshUser={refreshUser}
           />
         </View>
       )}

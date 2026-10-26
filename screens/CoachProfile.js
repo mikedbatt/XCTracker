@@ -19,6 +19,7 @@ import { confirmDestructive } from '../utils/confirmDialog';
 import LegalLinks from '../components/LegalLinks';
 import { signOutUser } from '../utils/signOutUser';
 import { notify } from '../utils/notify';
+import { callFunction } from '../utils/callFunction';
 
 const SCHOOL_COLORS = [
   { name: 'Navy & Gold', primary: '#1a237e', secondary: '#ffd600' },
@@ -40,7 +41,7 @@ const COMMON_TIMEZONES = [
   { value: 'Pacific/Honolulu',    label: 'Hawaii' },
 ];
 
-export default function CoachProfile({ userData, school, pendingAthletes = [], onApproveAthlete, onDenyAthlete, onClose, onUpdated }) {
+export default function CoachProfile({ userData, school, pendingAthletes = [], onApproveAthlete, onDenyAthlete, onClose, onUpdated, refreshUser }) {
   const [firstName, setFirstName] = useState(userData.firstName || '');
   const [lastName,  setLastName]  = useState(userData.lastName  || '');
   const [email,     setEmail]     = useState(userData.email     || '');
@@ -67,6 +68,12 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
   const [pendingCoaches, setPendingCoaches] = useState([]);
   const [assistantCoaches, setAssistantCoaches] = useState([]);
   const [loadingCoaches, setLoadingCoaches] = useState(false);
+
+  // Head coach handoff (admin only)
+  const [handoffOpen, setHandoffOpen]       = useState(false);
+  const [handoffTo, setHandoffTo]           = useState(null);  // assistant coach object
+  const [handoffStay, setHandoffStay]       = useState(true);  // old head coach stays as assistant
+  const [handingOff, setHandingOff]         = useState(false);
 
   // Load pending + approved assistant coaches
   const loadAssistantCoaches = async () => {
@@ -215,6 +222,36 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
       notify('Error', 'Could not save school info. Please try again.');
     }
     setSavingSchool(false);
+  };
+
+  // Hand the head coach role to an approved assistant. Runs server-side
+  // (transferHeadCoach) because rules forbid client role changes.
+  const handleHandoff = () => {
+    if (!handoffTo) return;
+    const name = `${handoffTo.firstName} ${handoffTo.lastName}`;
+    confirmDestructive({
+      title: `Make ${name} head coach?`,
+      message: `${name} will become head coach of ${school?.name || 'your team'} — approving coaches, managing seasons, and reading athletes' private weekly check-ins (including past ones). `
+        + (handoffStay
+          ? 'You will stay on the team as an assistant coach.'
+          : 'You will leave the team.')
+        + ' Only the new head coach can undo this.',
+      confirmLabel: 'Hand off',
+      onConfirm: async () => {
+        setHandingOff(true);
+        try {
+          await callFunction('transferHeadCoach', { newHeadCoachId: handoffTo.id, stayAsAssistant: handoffStay });
+          notify('Handoff complete', `${name} is now the head coach.`);
+          setHandoffOpen(false);
+          if (refreshUser) await refreshUser(); // re-route with the new role
+          else if (onUpdated) onUpdated();
+        } catch (e) {
+          console.error('Head coach handoff failed:', e);
+          notify('Could not hand off', e.message);
+        }
+        setHandingOff(false);
+      },
+    });
   };
 
   const handleSignOut = () => {
@@ -592,6 +629,79 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
                 </View>
               </View>
             ))}
+          </View>
+        )}
+
+        {/* Head coach handoff (admin only) — for a planned departure. */}
+        {isAdmin && (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Hand off head coach</Text>
+            {(() => {
+              const eligible = assistantCoaches.filter(c => c.role === 'assistant_coach' && c.status === 'approved');
+              if (eligible.length === 0) {
+                return (
+                  <Text style={styles.handoffHint}>
+                    Leaving the team? Add the next head coach as an approved assistant coach first
+                    (they join with your team code), then hand the team to them here.
+                  </Text>
+                );
+              }
+              if (!handoffOpen) {
+                return (
+                  <>
+                    <Text style={styles.handoffHint}>
+                      Leaving the team? Make one of your assistant coaches the head coach.
+                    </Text>
+                    <TouchableOpacity style={styles.handoffOpenBtn} onPress={() => { setHandoffOpen(true); setHandoffTo(null); }}>
+                      <Text style={styles.handoffOpenText}>Choose new head coach</Text>
+                    </TouchableOpacity>
+                  </>
+                );
+              }
+              return (
+                <>
+                  <Text style={styles.handoffLabel}>New head coach</Text>
+                  {eligible.map(c => {
+                    const selected = handoffTo?.id === c.id;
+                    return (
+                      <TouchableOpacity key={c.id} style={[styles.handoffOption, selected && styles.handoffOptionOn]} onPress={() => setHandoffTo(c)}>
+                        <View style={[styles.handoffRadio, selected && styles.handoffRadioOn]} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.pendingName}>{c.firstName} {c.lastName}</Text>
+                          <Text style={styles.pendingEmail}>{c.email}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+
+                  <Text style={[styles.handoffLabel, { marginTop: 12 }]}>After the handoff</Text>
+                  {[
+                    { stay: true, label: 'Stay on the team as an assistant coach' },
+                    { stay: false, label: 'Leave the team' },
+                  ].map(o => (
+                    <TouchableOpacity key={String(o.stay)} style={[styles.handoffOption, handoffStay === o.stay && styles.handoffOptionOn]} onPress={() => setHandoffStay(o.stay)}>
+                      <View style={[styles.handoffRadio, handoffStay === o.stay && styles.handoffRadioOn]} />
+                      <Text style={[styles.pendingName, { flex: 1 }]}>{o.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+
+                  <View style={styles.handoffActions}>
+                    <TouchableOpacity onPress={() => setHandoffOpen(false)} style={styles.handoffCancel} disabled={handingOff}>
+                      <Text style={styles.handoffCancelText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.approveBtn, (!handoffTo || handingOff) && { opacity: 0.5 }]}
+                      onPress={handleHandoff}
+                      disabled={!handoffTo || handingOff}
+                    >
+                      {handingOff
+                        ? <ActivityIndicator color="#fff" size="small" />
+                        : <Text style={styles.approveBtnText}>Hand off</Text>}
+                    </TouchableOpacity>
+                  </View>
+                </>
+              );
+            })()}
           </View>
         )}
 
@@ -1038,6 +1148,69 @@ const styles = StyleSheet.create({
     color: SIGNAL.color.inkSoft,
     fontFamily: SIGNAL.font.bodySemi,
     fontWeight: '600',
+  },
+  handoffHint: {
+    fontSize: 13,
+    color: SIGNAL.color.mute,
+    fontFamily: SIGNAL.font.body,
+    lineHeight: 19,
+  },
+  handoffOpenBtn: {
+    marginTop: 12,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: SIGNAL.color.indigo,
+    borderRadius: 9,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  handoffOpenText: {
+    color: SIGNAL.color.indigo,
+    fontSize: 13,
+    fontFamily: SIGNAL.font.bodySemi,
+    fontWeight: '600',
+  },
+  handoffLabel: {
+    ...SIGNAL.style.eyebrow,
+    marginBottom: 8,
+  },
+  handoffOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.line,
+    marginBottom: 8,
+  },
+  handoffOptionOn: {
+    borderColor: SIGNAL.color.indigo,
+    backgroundColor: `${SIGNAL.color.indigo}${SIGNAL.tint.wash}`,
+  },
+  handoffRadio: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: SIGNAL.color.mute2,
+  },
+  handoffRadioOn: {
+    borderColor: SIGNAL.color.indigo,
+    backgroundColor: SIGNAL.color.indigo,
+  },
+  handoffActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 8,
+  },
+  handoffCancel: { paddingHorizontal: 8, paddingVertical: 8 },
+  handoffCancelText: {
+    color: SIGNAL.color.mute,
+    fontSize: 13,
+    fontFamily: SIGNAL.font.bodySemi,
   },
   removeBtn: {
     paddingHorizontal: 4,
