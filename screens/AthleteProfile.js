@@ -22,7 +22,8 @@ import { AVATAR_COLORS, SIGNAL } from '../constants/design';
 import { confirmDestructive } from '../utils/confirmDialog';
 import LegalLinks from '../components/LegalLinks';
 import { calcVDOT, getTrainingPaces, formatPace, parseTimeToSeconds, RACE_DISTANCES } from '../utils/vdotUtils';
-import StravaConnect from './StravaConnect';
+import GarminConnect from './GarminConnect';
+import { isGarminConnected } from '../garminConfig';
 
 export default function AthleteProfile({ userData, school, onClose, onUpdated, refreshUser, goToJoinScreen }) {
   const [firstName,     setFirstName]     = useState(userData.firstName || '');
@@ -32,8 +33,8 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
   const [saving,        setSaving]        = useState(false);
   const [messages,      setMessages]      = useState([]);
   const [loadingMsgs,   setLoadingMsgs]   = useState(true);
-  const [stravaVisible, setStravaVisible] = useState(false);
-  const [stravaLinked,  setStravaLinked]  = useState(false);
+  const [garminVisible, setGarminVisible] = useState(false);
+  const [garminLinked,  setGarminLinked]  = useState(false);
   const [activeSection, setActiveSection] = useState('profile');
   const [avatarColor,   setAvatarColor]   = useState(userData.avatarColor || SIGNAL.color.indigo);
   const [linkedParents, setLinkedParents] = useState([]);
@@ -50,15 +51,15 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
 
   useEffect(() => {
     loadMessages();
-    checkStrava();
+    checkGarmin();
     loadLinkedParents();
   }, []);
 
-  const checkStrava = async () => {
+  const checkGarmin = async () => {
     try {
       const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
-      if (userDoc.exists()) setStravaLinked(!!userDoc.data().stravaAccessToken);
-    } catch (e) { console.warn('Strava check:', e); }
+      if (userDoc.exists()) setGarminLinked(isGarminConnected(userDoc.data()));
+    } catch (e) { console.warn('Garmin check:', e); }
   };
 
   const loadMessages = async () => {
@@ -284,14 +285,9 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
     });
   };
 
-  if (stravaVisible) {
+  if (garminVisible) {
     return (
-      <StravaConnect
-        userData={userData}
-        school={school}
-        onClose={() => { setStravaVisible(false); checkStrava(); }}
-        onSynced={() => { setStravaVisible(false); checkStrava(); }}
-      />
+      <GarminConnect onClose={() => { setGarminVisible(false); checkGarmin(); }} />
     );
   }
 
@@ -595,36 +591,29 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
         {/* ── Connections section ── */}
         {activeSection === 'connections' && (
           <>
-            {/* Connected apps — currently just Strava. Shown on web for the PWA
-                beta (web OAuth via /strava-callback). */}
             {(
               <>
                 <Text style={[styles.eyebrow, { marginTop: 0, marginBottom: 10, paddingLeft: 4 }]}>Connected apps</Text>
                 <View style={styles.connectionCard}>
-                  {/* Neutral connection glyph — NOT a Strava logo. Strava's brand
-                      guidelines forbid recreating their mark (we previously had a
-                      hand-built orange "S"); the "Strava" name shows as plain text. */}
                   <View style={[styles.connectionLogo, { backgroundColor: SIGNAL.color.line }]}>
-                    <Ionicons name="link" size={18} color={SIGNAL.color.mute} />
+                    <Ionicons name="watch-outline" size={18} color={SIGNAL.color.mute} />
                   </View>
                   <View style={styles.connectionInfo}>
-                    <Text style={styles.connectionName}>Strava</Text>
+                    <Text style={styles.connectionName}>Garmin</Text>
                     <Text style={[
                       styles.connectionStatus,
-                      { color: stravaLinked ? SIGNAL.color.emerald : SIGNAL.color.mute },
+                      { color: garminLinked ? SIGNAL.color.emerald : SIGNAL.color.mute },
                     ]}>
-                      {stravaLinked ? '● Connected · auto-syncing' : 'Not connected'}
+                      {garminLinked ? '● Connected · auto-syncing' : 'Not connected'}
                     </Text>
                   </View>
                   <TouchableOpacity
-                    onPress={() => setStravaVisible(true)}
+                    onPress={() => setGarminVisible(true)}
                     activeOpacity={0.7}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
-                    {/* "Manage" (not "Disconnect") — this opens the Strava screen
-                        where Import past runs / disconnect both live. */}
                     <Text style={[styles.connectionAction, { color: SIGNAL.color.indigo }]}>
-                      {stravaLinked ? 'Manage' : 'Connect'}
+                      {garminLinked ? 'Manage' : 'Connect'}
                     </Text>
                   </TouchableOpacity>
                 </View>

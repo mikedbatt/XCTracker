@@ -51,7 +51,7 @@ export default function Root({ children }: PropsWithChildren) {
         {/* ── PWA / installability ── */}
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#4F46E5" />
-        <meta name="description" content="Team training platform for distance-running programs — log runs, sync from Strava, track pace zones, and see team analytics." />
+        <meta name="description" content="Team training platform for distance-running programs — log runs, sync from Garmin, track pace zones, and see team analytics." />
         {/* iOS home-screen install */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         {/* 'default' (not 'black-translucent') so iOS reserves the status-bar

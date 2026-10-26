@@ -1,6 +1,7 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 const fetch = require('node-fetch');
+const crypto = require('crypto');
 const { Expo } = require('expo-server-sdk');
 
 admin.initializeApp();
@@ -8,10 +9,6 @@ const db = admin.firestore();
 const expo = new Expo();
 
 // ── FCM web push helper ──────────────────────────────────────────────────────
-// Parallel to expo.sendPushNotificationsAsync but for web users whose token
-// comes from Firebase Cloud Messaging (stored on user doc as webPushToken).
-// Errors per token are logged but don't throw so a single stale token won't
-// kill the whole batch.
 async function sendWebPushNotifications(messages) {
   if (!messages || messages.length === 0) return;
   await Promise.all(messages.map(m =>
@@ -27,151 +24,445 @@ async function sendWebPushNotifications(messages) {
   ));
 }
 
-// ── Strava Token Exchange ────────────────────────────────────────────────────
-// Public onRequest endpoint — matches the fetch() client shipped in the live
-// TestFlight build. Kept on onRequest (NOT onCall) so existing installs can
-// refresh tokens and keep syncing. maxInstances caps cost-abuse exposure.
+// ── Garmin ────────────────────────────────────────────────────────────────────
+// Garmin's Starter tier is push-only: new activities arrive via garminWebhook
+// when the athlete's watch syncs to Garmin Connect. History is requested with
+// Garmin's Backfill service, which queues the request (HTTP 202) and pushes the
+// historical activities to the same webhook over the following minutes.
 //
-// NOTE: the onCall (auth-required) version is a breaking change for every
-// un-updated client — only flip back to onCall in the SAME release that ships
-// a build whose stravaConfig.js uses httpsCallable. See commit 03025d8.
+// OAuth tokens live in garminTokens/{uid} — server-only (no rule matches the
+// collection, so the catch-all deny applies; the Admin SDK bypasses rules).
+// User docs are readable by every signed-in user, so the user doc carries only
+// non-secret status: garminConnected, garminLastSync, garminBackfill.
+//
+// All endpoints stay onRequest (not onCall) — same reasoning as the prior
+// Strava functions. maxInstances caps cost-abuse exposure.
 
-const STRAVA_RUNTIME = { maxInstances: 10 };
+const GARMIN_RUNTIME = { maxInstances: 10 };
+const GARMIN_TOKEN_URL = 'https://diauth.garmin.com/di-oauth2-service/oauth/token';
+const GARMIN_API = 'https://apis.garmin.com/wellness-api/rest';
+// Historical data (Backfill) is Enterprise-only: on the Starter tier Garmin
+// answers 412 "required HISTORICAL_DATA_EXPORT". Flip to true after Enterprise
+// onboarding — connect then requests history and the dashboard's import banner
+// (driven by users.garminBackfill) appears on its own.
+const GARMIN_HISTORY_ENABLED = false;
+const GARMIN_BACKFILL_DAYS = 60;
+const GARMIN_BACKFILL_CHUNK_DAYS = 30; // keep each backfill request well under Garmin's per-request range cap
 
-exports.stravaTokenExchange = functions
-  .runWith(STRAVA_RUNTIME)
+const garminTokensRef = uid => db.collection('garminTokens').doc(uid);
+
+// Pre-2026-10 connections stored tokens on the (team-readable) user doc.
+const legacyGarminFieldDeletes = () => ({
+  garminAccessToken:  admin.firestore.FieldValue.delete(),
+  garminRefreshToken: admin.firestore.FieldValue.delete(),
+  garminTokenExpiry:  admin.firestore.FieldValue.delete(),
+  garminUserId:       admin.firestore.FieldValue.delete(),
+});
+
+function setGarminCors(res) {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+}
+
+// Verifies the caller's Firebase ID token. Sends the 401 itself and returns
+// null on failure.
+async function verifyGarminCaller(req, res) {
+  const m = (req.headers.authorization || '').match(/^Bearer (.+)$/);
+  if (!m) { res.status(401).json({ error: 'Missing auth token' }); return null; }
+  try {
+    const decoded = await admin.auth().verifyIdToken(m[1]);
+    return decoded.uid;
+  } catch (e) {
+    res.status(401).json({ error: 'Invalid auth token' }); return null;
+  }
+}
+
+async function fetchGarminUserId(accessToken) {
+  const resp = await fetch(`${GARMIN_API}/user/id`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!resp.ok) {
+    console.warn(`fetchGarminUserId: ${resp.status} ${await resp.text()}`);
+    return null;
+  }
+  const profile = await resp.json();
+  return profile.userId ?? null;
+}
+
+async function refreshGarminToken(uid, tokens) {
+  const params = new URLSearchParams({
+    grant_type: 'refresh_token',
+    refresh_token: tokens.refreshToken,
+    client_id: process.env.GARMIN_CLIENT_ID,
+    client_secret: process.env.GARMIN_CLIENT_SECRET,
+  });
+  const resp = await fetch(GARMIN_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString(),
+  });
+  if (!resp.ok) throw new Error(`Garmin token refresh failed (${resp.status})`);
+  const t = await resp.json();
+  const update = {
+    accessToken:  t.access_token,
+    refreshToken: t.refresh_token ?? tokens.refreshToken,
+    expiresAt:    t.expires_in ? Math.floor(Date.now() / 1000) + t.expires_in : null,
+  };
+  await garminTokensRef(uid).update(update);
+  return update.accessToken;
+}
+
+async function getValidGarminToken(uid, tokens) {
+  const nowSecs = Math.floor(Date.now() / 1000);
+  if (tokens.expiresAt && tokens.expiresAt > nowSecs + 300) return tokens.accessToken;
+  return refreshGarminToken(uid, tokens);
+}
+
+// Returns the user's Garmin tokens, moving legacy user-doc tokens into
+// garminTokens/{uid} on first touch. Null if Garmin isn't connected.
+async function loadGarminTokens(uid) {
+  const snap = await garminTokensRef(uid).get();
+  if (snap.exists) return snap.data();
+
+  const userRef = db.collection('users').doc(uid);
+  const userSnap = await userRef.get();
+  const user = userSnap.exists ? userSnap.data() : null;
+  if (!user?.garminAccessToken) return null;
+
+  const tokens = {
+    accessToken:  user.garminAccessToken,
+    refreshToken: user.garminRefreshToken ?? null,
+    expiresAt:    user.garminTokenExpiry ?? null,
+    garminUserId: user.garminUserId ?? null,
+  };
+  await garminTokensRef(uid).set(tokens);
+  await userRef.update({ ...legacyGarminFieldDeletes(), garminConnected: true });
+  console.log(`loadGarminTokens: migrated legacy tokens for uid=${uid}`);
+  return tokens;
+}
+
+// Asks Garmin to push the last `days` of activities to garminWebhook. 202 =
+// queued; 409 = that window was already requested (Garmin backfills a window
+// only once), which we count as success. Records the outcome on the user doc
+// so the client can show import status.
+async function requestGarminBackfill(uid, accessToken, days) {
+  const now = Math.floor(Date.now() / 1000);
+  const start = now - days * 86400;
+  let failure = null;
+  let reason = null;
+
+  for (let chunkStart = start; chunkStart < now; chunkStart += GARMIN_BACKFILL_CHUNK_DAYS * 86400) {
+    const chunkEnd = Math.min(chunkStart + GARMIN_BACKFILL_CHUNK_DAYS * 86400, now);
+    const resp = await fetch(
+      `${GARMIN_API}/backfill/activities` +
+      `?summaryStartTimeInSeconds=${chunkStart}&summaryEndTimeInSeconds=${chunkEnd}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    if (resp.status === 202 || resp.status === 409 || resp.ok) continue;
+    const body = await resp.text();
+    failure = `${resp.status} ${body.slice(0, 200)}`;
+    // 412 "required HISTORICAL_DATA_EXPORT" = the athlete didn't leave the
+    // historical-data toggle on in Garmin's consent screen. Only a reconnect
+    // (re-consent) fixes it, so the client offers that instead of a retry.
+    if (body.includes('HISTORICAL_DATA_EXPORT')) reason = 'permission';
+    console.error(`requestGarminBackfill uid=${uid}: ${failure}`);
+    break;
+  }
+
+  const garminBackfill = {
+    status: failure ? 'failed' : 'requested',
+    ...(reason && { reason }),
+    days,
+    requestedAt: new Date().toISOString(),
+  };
+  await db.collection('users').doc(uid).update({ garminBackfill });
+  return garminBackfill;
+}
+
+// Finds the XCTracker uid for a Garmin push. Prefers the stable garminUserId,
+// falls back to the access token, then to legacy user-doc fields (migrating).
+async function findUidForGarminUser(garminUserId, userAccessToken) {
+  if (garminUserId) {
+    const q = await db.collection('garminTokens')
+      .where('garminUserId', '==', garminUserId).limit(1).get();
+    if (!q.empty) return q.docs[0].id;
+  }
+  if (userAccessToken) {
+    const q = await db.collection('garminTokens')
+      .where('accessToken', '==', userAccessToken).limit(1).get();
+    if (!q.empty) {
+      if (garminUserId) await q.docs[0].ref.update({ garminUserId });
+      return q.docs[0].id;
+    }
+  }
+  const legacyQueries = [];
+  if (garminUserId) legacyQueries.push(['garminUserId', garminUserId]);
+  if (userAccessToken) legacyQueries.push(['garminAccessToken', userAccessToken]);
+  for (const [field, value] of legacyQueries) {
+    const q = await db.collection('users').where(field, '==', value).limit(1).get();
+    if (q.empty) continue;
+    const uid = q.docs[0].id;
+    await loadGarminTokens(uid);
+    if (garminUserId) await garminTokensRef(uid).update({ garminUserId });
+    return uid;
+  }
+  return null;
+}
+
+// Removes the connection on our side. Garmin-side deregistration (if any) is
+// the caller's job.
+async function clearGarminConnection(uid) {
+  await garminTokensRef(uid).delete();
+  await db.collection('users').doc(uid).update({
+    ...legacyGarminFieldDeletes(),
+    garminConnected: false,
+    garminLastSync:  admin.firestore.FieldValue.delete(),
+    garminBackfill:  admin.firestore.FieldValue.delete(),
+  });
+}
+
+// ── Garmin OAuth start ───────────────────────────────────────────────────────
+// The PKCE verifier lives server-side in garminOAuthStates/{state}, not in the
+// browser. An installed PWA often opens Garmin's login in a separate browser
+// context, so the return to /garmin-callback can land somewhere with different
+// sessionStorage (and sometimes no Firebase sign-in). The random `state` comes
+// back in the redirect URL and is all the callback needs.
+const GARMIN_AUTH_URL = 'https://connect.garmin.com/oauth2Confirm';
+const GARMIN_OAUTH_STATE_TTL_MS = 15 * 60 * 1000;
+const GARMIN_WEB_REDIRECTS = [
+  'https://xctracker.com/garmin-callback',
+  'https://xctracker-a2532.web.app/garmin-callback',
+  'http://localhost:8081/garmin-callback',
+];
+const isAllowedGarminRedirect = uri =>
+  GARMIN_WEB_REDIRECTS.includes(uri) || uri === 'xctracker://garmin-auth';
+
+const garminOAuthStatesRef = state => db.collection('garminOAuthStates').doc(state);
+
+exports.garminAuthStart = functions
+  .runWith(GARMIN_RUNTIME)
   .https.onRequest(async (req, res) => {
-    // Allow CORS
-    res.set('Access-Control-Allow-Origin', '*');
-    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.set('Access-Control-Allow-Headers', 'Content-Type');
+    setGarminCors(res);
     if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
+    if (req.method !== 'POST') { res.status(405).json({ error: 'Method Not Allowed' }); return; }
 
-    const { code, redirectUri } = req.body;
-    if (!code) { res.status(400).json({ error: 'Missing code' }); return; }
+    const uid = await verifyGarminCaller(req, res);
+    if (!uid) return;
 
-    const clientId = process.env.STRAVA_CLIENT_ID;
-    const clientSecret = process.env.STRAVA_CLIENT_SECRET;
-    if (!clientId || !clientSecret) { res.status(500).json({ error: 'Strava env vars not set' }); return; }
+    const { redirectUri } = req.body || {};
+    if (!redirectUri || !isAllowedGarminRedirect(redirectUri)) {
+      res.status(400).json({ error: 'Invalid redirect URI' }); return;
+    }
 
-    const response = await fetch('https://www.strava.com/oauth/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: clientId,
-        client_secret: clientSecret,
-        code,
+    try {
+      // One pending attempt per user — drop abandoned ones.
+      const stale = await db.collection('garminOAuthStates').where('uid', '==', uid).get();
+      await Promise.all(stale.docs.map(d => d.ref.delete()));
+
+      const codeVerifier = crypto.randomBytes(32).toString('base64url');
+      const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
+      const state = crypto.randomBytes(24).toString('base64url');
+      await garminOAuthStatesRef(state).set({ uid, codeVerifier, redirectUri, createdAt: Date.now() });
+
+      const authUrl = `${GARMIN_AUTH_URL}?` + new URLSearchParams({
+        response_type: 'code',
+        client_id: process.env.GARMIN_CLIENT_ID,
         redirect_uri: redirectUri,
-        grant_type: 'authorization_code',
-      }),
-    });
-
-    if (!response.ok) {
-      const err = await response.text();
-      res.status(response.status).json({ error: `Strava token exchange failed: ${err}` });
-      return;
+        code_challenge: codeChallenge,
+        code_challenge_method: 'S256',
+        state,
+      }).toString();
+      res.json({ authUrl, state });
+    } catch (e) {
+      console.error('garminAuthStart error:', e);
+      res.status(500).json({ error: 'Could not start the Garmin connection.' });
     }
-
-    const data = await response.json();
-    res.json(data);
   });
 
-// ── Strava Token Refresh ─────────────────────────────────────────────────────
-
-exports.stravaTokenRefresh = functions
-  .runWith(STRAVA_RUNTIME)
+// ── Garmin token exchange (+ first-connect history import when enabled) ──────
+// Redeems the one-time `state` from garminAuthStart, exchanges the OAuth code
+// for tokens, stores them server-side, then (GARMIN_HISTORY_ENABLED only)
+// requests the last GARMIN_BACKFILL_DAYS. The `state` is the credential: it was
+// issued to a signed-in user and is single-use, so the callback works even in a
+// browser context without a Firebase session. If the caller IS signed in, it
+// must be the same user who started the flow.
+exports.garminTokenExchange = functions
+  .runWith(GARMIN_RUNTIME)
   .https.onRequest(async (req, res) => {
-    res.set('Access-Control-Allow-Origin', '*');
-    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.set('Access-Control-Allow-Headers', 'Content-Type');
+    setGarminCors(res);
     if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
+    if (req.method !== 'POST') { res.status(405).json({ error: 'Method Not Allowed' }); return; }
 
-    const { refreshToken } = req.body;
-    if (!refreshToken) { res.status(400).json({ error: 'Missing refreshToken' }); return; }
+    const { code, state } = req.body || {};
+    if (!code || !state || typeof state !== 'string') {
+      res.status(400).json({ error: 'Missing code or state' }); return;
+    }
 
-    const clientId = process.env.STRAVA_CLIENT_ID;
-    const clientSecret = process.env.STRAVA_CLIENT_SECRET;
-    if (!clientId || !clientSecret) { res.status(500).json({ error: 'Strava env vars not set' }); return; }
+    // Single-use: read + delete atomically so a code can't be redeemed twice.
+    let pending;
+    try {
+      pending = await db.runTransaction(async tx => {
+        const ref = garminOAuthStatesRef(state);
+        const snap = await tx.get(ref);
+        if (!snap.exists) return null;
+        tx.delete(ref);
+        return snap.data();
+      });
+    } catch (e) {
+      console.error('garminTokenExchange: state lookup failed:', e);
+      res.status(500).json({ error: 'Could not complete the Garmin connection.' }); return;
+    }
+    if (!pending || Date.now() - pending.createdAt > GARMIN_OAUTH_STATE_TTL_MS) {
+      res.status(400).json({ error: 'This connection link expired — please try connecting again.' }); return;
+    }
+    const { uid, codeVerifier, redirectUri } = pending;
 
-    const response = await fetch('https://www.strava.com/oauth/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: clientId,
-        client_secret: clientSecret,
-        refresh_token: refreshToken,
-        grant_type: 'refresh_token',
-      }),
-    });
+    const m = (req.headers.authorization || '').match(/^Bearer (.+)$/);
+    if (m) {
+      const caller = await admin.auth().verifyIdToken(m[1]).then(d => d.uid, () => null);
+      if (caller && caller !== uid) {
+        console.warn(`garminTokenExchange: state for uid=${uid} redeemed by uid=${caller}`);
+        res.status(403).json({ error: 'This Garmin connection was started from a different account. Please try again.' });
+        return;
+      }
+    }
 
-    if (!response.ok) { res.status(response.status).json({ error: 'Strava token refresh failed' }); return; }
+    const clientId = process.env.GARMIN_CLIENT_ID;
+    const clientSecret = process.env.GARMIN_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      res.status(500).json({ error: 'Garmin env vars not set' }); return;
+    }
 
-    const data = await response.json();
-    res.json(data);
+    try {
+      const response = await fetch(GARMIN_TOKEN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          code,
+          code_verifier: codeVerifier,
+          redirect_uri: redirectUri,
+          client_id: clientId,
+          client_secret: clientSecret,
+        }).toString(),
+      });
+      if (!response.ok) {
+        const err = await response.text();
+        console.warn(`garminTokenExchange uid=${uid}: ${response.status} ${err}`);
+        res.status(400).json({ error: 'Garmin rejected the authorization. Please try connecting again.' });
+        return;
+      }
+
+      const t = await response.json();
+      const garminUserId = await fetchGarminUserId(t.access_token);
+
+      // One Garmin account → one XCTracker user. Drop any older link so webhook
+      // pushes can't be routed to the wrong athlete.
+      if (garminUserId) {
+        const prior = await db.collection('garminTokens')
+          .where('garminUserId', '==', garminUserId).get();
+        await Promise.all(prior.docs
+          .filter(d => d.id !== uid)
+          .map(d => clearGarminConnection(d.id)));
+      }
+
+      await garminTokensRef(uid).set({
+        accessToken:  t.access_token,
+        refreshToken: t.refresh_token ?? null,
+        expiresAt:    t.expires_in ? Math.floor(Date.now() / 1000) + t.expires_in : null,
+        garminUserId,
+        connectedAt:  new Date().toISOString(),
+      });
+      await db.collection('users').doc(uid).update({
+        ...legacyGarminFieldDeletes(),
+        garminConnected: true,
+      });
+
+      let backfill = null;
+      if (GARMIN_HISTORY_ENABLED) {
+        try {
+          backfill = await requestGarminBackfill(uid, t.access_token, GARMIN_BACKFILL_DAYS);
+        } catch (e) {
+          console.error('garminTokenExchange: backfill request failed (non-fatal):', e);
+        }
+      }
+
+      res.json({ connected: true, backfill });
+    } catch (e) {
+      console.error('garminTokenExchange error:', e);
+      res.status(500).json({ error: 'Could not complete the Garmin connection.' });
+    }
   });
 
-// ── Strava Webhooks (event-driven sync) ──────────────────────────────────────
-// One push subscription per app points Strava at `stravaWebhook`. To stay under
-// Strava's 2-second ack SLA, the webhook just enqueues each event to the
-// `stravaEvents` collection and returns 200; `processStravaEvent` (Firestore
-// onCreate) does the real work async with automatic retries.
-//
-// Purely additive: the token functions above and the client-side polling sync
-// are untouched, so this is INERT until the push subscription is registered
-// (see the curl in the project notes). Registering it later only *adds*
-// event-driven sync on top of polling — totalMiles is guarded against
-// double-counting below.
-
-const STRAVA_VERIFY_TOKEN = process.env.STRAVA_VERIFY_TOKEN;
-
-exports.stravaWebhook = functions
-  .runWith(STRAVA_RUNTIME)
+// ── Garmin history import (retry) ────────────────────────────────────────────
+// Re-requests history for an already-connected user. No client UI calls this
+// while GARMIN_HISTORY_ENABLED is false (Starter tier).
+exports.garminBackfill = functions
+  .runWith(GARMIN_RUNTIME)
   .https.onRequest(async (req, res) => {
-    // 1) Subscription validation handshake (GET): echo hub.challenge if the
-    //    verify token matches. Strava calls this once, at subscription creation.
-    if (req.method === 'GET') {
-      const mode = req.query['hub.mode'];
-      const token = req.query['hub.verify_token'];
-      const challenge = req.query['hub.challenge'];
-      if (mode === 'subscribe' && STRAVA_VERIFY_TOKEN && token === STRAVA_VERIFY_TOKEN) {
-        res.status(200).json({ 'hub.challenge': challenge });
-      } else {
-        res.status(403).send('Forbidden');
-      }
-      return;
+    setGarminCors(res);
+    if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
+    if (req.method !== 'POST') { res.status(405).json({ error: 'Method Not Allowed' }); return; }
+
+    const uid = await verifyGarminCaller(req, res);
+    if (!uid) return;
+    if (!GARMIN_HISTORY_ENABLED) {
+      res.status(403).json({ error: 'Garmin history import requires Garmin Enterprise access.' }); return;
     }
 
-    // 2) Event delivery (POST): enqueue + ack 200 immediately (well under 2s).
-    //    All heavy work happens in processStravaEvent.
-    if (req.method === 'POST') {
-      try {
-        const evt = req.body || {};
-        await db.collection('stravaEvents').add({
-          objectType:     evt.object_type || null,           // 'activity' | 'athlete'
-          objectId:       evt.object_id != null ? String(evt.object_id) : null,
-          aspectType:     evt.aspect_type || null,           // 'create' | 'update' | 'delete'
-          ownerId:        evt.owner_id != null ? String(evt.owner_id) : null,
-          subscriptionId: evt.subscription_id || null,
-          updates:        evt.updates || {},
-          eventTime:      evt.event_time || null,
-          status:         'pending',
-          receivedAt:     admin.firestore.FieldValue.serverTimestamp(),
-        });
-      } catch (e) {
-        // Never let an enqueue error turn into a non-200 (Strava would retry).
-        console.error('stravaWebhook enqueue failed:', e);
-      }
-      res.status(200).send('EVENT_RECEIVED');
-      return;
-    }
+    const days = Math.min(Math.max(parseInt(req.body?.days, 10) || GARMIN_BACKFILL_DAYS, 1), GARMIN_BACKFILL_DAYS);
 
-    res.status(405).send('Method Not Allowed');
+    try {
+      const tokens = await loadGarminTokens(uid);
+      if (!tokens) { res.status(400).json({ error: 'Garmin not connected' }); return; }
+      const accessToken = await getValidGarminToken(uid, tokens);
+      const backfill = await requestGarminBackfill(uid, accessToken, days);
+      res.json({ backfill });
+    } catch (e) {
+      console.error('garminBackfill failed:', e);
+      res.status(500).json({ error: 'Could not request your Garmin history.' });
+    }
   });
 
-// ── Strava webhook processor ─────────────────────────────────────────────────
-// Pace-zone math ported from utils/vdotUtils.js (functions/ is a separate
-// package and can't import app code). Pace zones are the only training-zone
-// model — runs are written pace-only, matching the client.
+// ── Garmin disconnect ────────────────────────────────────────────────────────
+// Deregisters the user at Garmin (stops pushes) and deletes stored tokens.
+exports.garminDisconnect = functions
+  .runWith(GARMIN_RUNTIME)
+  .https.onRequest(async (req, res) => {
+    setGarminCors(res);
+    if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
+    if (req.method !== 'POST') { res.status(405).json({ error: 'Method Not Allowed' }); return; }
+
+    const uid = await verifyGarminCaller(req, res);
+    if (!uid) return;
+
+    try {
+      const tokens = await loadGarminTokens(uid);
+      if (tokens) {
+        try {
+          const accessToken = await getValidGarminToken(uid, tokens);
+          const resp = await fetch(`${GARMIN_API}/user/registration`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          if (!resp.ok && resp.status !== 404) {
+            console.warn(`garminDisconnect uid=${uid}: deregistration ${resp.status} ${await resp.text()}`);
+          }
+        } catch (e) {
+          console.warn('garminDisconnect: Garmin deregistration failed (non-fatal):', e.message);
+        }
+      }
+      await clearGarminConnection(uid);
+      res.json({ disconnected: true });
+    } catch (e) {
+      console.error('garminDisconnect failed:', e);
+      res.status(500).json({ error: 'Could not disconnect Garmin.' });
+    }
+  });
+
+// ── Pace zone helpers ─────────────────────────────────────────────────────────
+// Ported from utils/vdotUtils.js — functions/ is a separate package.
 function getPaceZone(paceSecPerMile, tp) {
   if (!tp || !paceSecPerMile || paceSecPerMile <= 0) return 'e';
   const riBoundary = (tp.r + tp.i) / 2;
@@ -189,20 +480,24 @@ function calcPaceZoneBreakdown(paceStream, tp) {
   const zones = { e: 0, m: 0, t: 0, i: 0, r: 0 };
   if (!paceStream || !tp) return zones;
   for (const point of paceStream) {
-    if (!point.pace || point.pace <= 0 || point.pace > 1800) continue; // skip stopped
+    if (!point.pace || point.pace <= 0 || point.pace > 1800) continue;
     zones[getPaceZone(point.pace, tp)] += point.seconds || 1;
   }
   return zones;
 }
 
-// Pace-only activity→run (port of stravaActivityToRun in stravaConfig.js).
-function stravaActivityToRunServer(activity, userId, schoolId) {
-  const runTypes = ['Run', 'TrailRun', 'VirtualRun'];
-  if (!runTypes.includes(activity.type)) return null;
-  const miles = activity.distance / 1609.344;
+// ── Garmin activity → run format (server-side) ────────────────────────────────
+function garminActivityToRunServer(activity, userId, schoolId) {
+  const actType = (activity.activityType || '').toUpperCase();
+  if (!actType.includes('RUN')) return null;
+
+  const distanceMeters = activity.distanceInMeters ?? 0;
+  const miles = distanceMeters / 1609.344;
   if (miles < 0.1) return null;
 
-  const totalSeconds = activity.moving_time;
+  const totalSeconds = activity.durationInSeconds ?? 0;
+  if (totalSeconds < 1) return null;
+
   const hours = Math.floor(totalSeconds / 3600);
   const mins  = Math.floor((totalSeconds % 3600) / 60);
   const secs  = totalSeconds % 60;
@@ -210,305 +505,147 @@ function stravaActivityToRunServer(activity, userId, schoolId) {
     ? `${hours}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
     : `${mins}:${String(secs).padStart(2, '0')}`;
 
-  const averagePace = activity.average_speed > 0
-    ? Math.round(1609.344 / activity.average_speed)
-    : null;
+  const speedMs = activity.averageSpeedInMetersPerSecond;
+  const averagePace = speedMs && speedMs > 0 ? Math.round(1609.344 / speedMs) : null;
 
-  const genericNames = ['Morning Run', 'Afternoon Run', 'Evening Run'];
+  let date;
+  if (activity.startTimeInSeconds) {
+    date = new Date(activity.startTimeInSeconds * 1000);
+  } else if (activity.startTimeLocal) {
+    date = new Date(activity.startTimeLocal);
+  } else {
+    date = new Date();
+  }
+
+  const elevMeters = activity.totalElevationGainInMeters ?? null;
+  const activityName = activity.activityName ?? null;
+  const genericNames = ['Running', 'Morning Run', 'Afternoon Run', 'Evening Run', 'Trail Run'];
+
   return {
     userId,
     schoolId: schoolId || null,
     miles: Math.round(miles * 100) / 100,
     duration,
-    elevationGain: activity.total_elevation_gain ? Math.round(activity.total_elevation_gain * 3.281) : null,
+    elevationGain: elevMeters ? Math.round(elevMeters * 3.281) : null,
     averagePace,
     effort: null,
-    notes: genericNames.includes(activity.name) ? null : activity.name,
-    source: 'strava',
-    stravaId: String(activity.id),
-    date: new Date(activity.start_date),
+    notes: activityName && !genericNames.includes(activityName) ? activityName : null,
+    source: 'garmin',
+    garminActivityId: String(activity.summaryId ?? activity.activityId ?? ''),
+    date,
   };
 }
 
-// Return a valid access token for the user, refreshing + persisting if needed.
-async function getValidStravaToken(userRef, data) {
-  const nowSecs = Math.floor(Date.now() / 1000);
-  if (data.stravaTokenExpiry && data.stravaTokenExpiry > nowSecs + 300) {
-    return data.stravaAccessToken;
-  }
-  const resp = await fetch('https://www.strava.com/oauth/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      client_id: process.env.STRAVA_CLIENT_ID,
-      client_secret: process.env.STRAVA_CLIENT_SECRET,
-      refresh_token: data.stravaRefreshToken,
-      grant_type: 'refresh_token',
-    }),
-  });
-  if (!resp.ok) throw new Error('Strava token refresh failed');
-  const t = await resp.json();
-  await userRef.update({
-    stravaAccessToken:  t.access_token,
-    stravaRefreshToken: t.refresh_token,
-    stravaTokenExpiry:  t.expires_at,
-  });
-  return t.access_token;
+// Approximate a pace stream from the activity summary's average speed.
+// Single-segment estimate good enough for zone classification.
+function approximatePaceStream(activity) {
+  const speedMs = activity.averageSpeedInMetersPerSecond;
+  const totalSecs = activity.durationInSeconds;
+  if (!speedMs || speedMs <= 0 || !totalSecs) return null;
+  return [{ pace: Math.round(1609.344 / speedMs), seconds: totalSecs }];
 }
 
-async function fetchStravaActivity(accessToken, activityId) {
-  const resp = await fetch(`https://www.strava.com/api/v3/activities/${activityId}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!resp.ok) return null;
-  return resp.json();
-}
-
-// Activities within the last `afterTimestamp` (unix secs), NEWEST FIRST.
+// ── Garmin webhook (push delivery) ────────────────────────────────────────────
+// Garmin POSTs here when a connected user's watch syncs, when a backfill
+// request is fulfilled, and when a user revokes access in Garmin Connect.
+// Register this URL in the Garmin Developer Portal as
+//   …/garminWebhook/<GARMIN_WEBHOOK_KEY>
+// (a path segment — the portal strips query strings on save; Cloud Functions
+// routes sub-paths to the function, so req.path is '/<key>'). The key is
+// enforced once GARMIN_WEBHOOK_KEY is set in functions/.env, so pushes can't be
+// forged by anyone who learns an athlete's Garmin userId.
 //
-// IMPORTANT: we deliberately do NOT pass Strava's `after` param. With `after`,
-// Strava returns activities in ASCENDING order (oldest first), so the most
-// recent runs land on the LAST page — and if a later page gets rate-limited
-// (429), the recent runs are exactly what gets dropped. Instead we use Strava's
-// default DESCENDING order (newest first) and stop once we walk past the window.
-// A partial fetch then keeps the recent runs, which matter most; older
-// stragglers can be picked up by re-running the import.
-async function fetchStravaActivitiesServer(accessToken, afterTimestamp) {
-  const all = [];
-  for (let page = 1; page <= 10; page++) {
-    const url = `https://www.strava.com/api/v3/athlete/activities?per_page=50&page=${page}`;
-    const resp = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-    if (!resp.ok) {
-      // 429 = rate limited; return what we have (the most recent runs).
-      if (resp.status === 429) break;
-      throw new Error(`Strava activities fetch failed (${resp.status})`);
-    }
-    const batch = await resp.json();
-    if (!batch || batch.length === 0) break;
-
-    // Keep only activities within the window; stop once we pass the cutoff
-    // (the list is newest-first, so everything after is older still).
-    let reachedCutoff = false;
-    for (const act of batch) {
-      const startSecs = Math.floor(new Date(act.start_date).getTime() / 1000);
-      if (!afterTimestamp || startSecs >= afterTimestamp) all.push(act);
-      else reachedCutoff = true;
-    }
-    if (reachedCutoff) { return all; }
-    if (batch.length < 50) break;
-  }
-  return all;
-}
-
-async function fetchStravaPaceStream(accessToken, activityId) {
-  const url = `https://www.strava.com/api/v3/activities/${activityId}/streams?keys=time,velocity_smooth&key_by_type=true`;
-  const resp = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-  if (!resp.ok) return null;
-  const data = await resp.json();
-  const timeData = data.time && data.time.data;
-  if (!timeData || !(data.velocity_smooth && data.velocity_smooth.data)) return null;
-  const vel = data.velocity_smooth.data;
-  const stream = [];
-  for (let i = 0; i < vel.length; i++) {
-    const dur = i < vel.length - 1 ? timeData[i + 1] - timeData[i] : 1;
-    if (vel[i] > 0.5) stream.push({ pace: Math.round(1609.344 / vel[i]), seconds: dur });
-  }
-  return stream.length ? stream : null;
-}
-
-exports.processStravaEvent = functions
-  .runWith(STRAVA_RUNTIME)
-  .firestore.document('stravaEvents/{eventId}')
-  .onCreate(async (snap) => {
-    const evt = snap.data();
-    try {
-      if (!evt.ownerId) { await snap.ref.update({ status: 'ignored', reason: 'no ownerId' }); return; }
-
-      // Route Strava athlete id → our user.
-      const usersSnap = await db.collection('users')
-        .where('stravaAthleteId', '==', evt.ownerId).limit(1).get();
-      if (usersSnap.empty) { await snap.ref.update({ status: 'ignored', reason: 'no matching user' }); return; }
-      const userDoc = usersSnap.docs[0];
-      const userRef = userDoc.ref;
-      const user = userDoc.data();
-
-      // Athlete deauthorization → clear stored tokens.
-      if (evt.objectType === 'athlete') {
-        const deauthed = evt.updates && (evt.updates.authorized === 'false' || evt.updates.authorized === false);
-        if (deauthed) {
-          await userRef.update({
-            stravaAccessToken:  admin.firestore.FieldValue.delete(),
-            stravaRefreshToken: admin.firestore.FieldValue.delete(),
-            stravaTokenExpiry:  admin.firestore.FieldValue.delete(),
-          });
-          await snap.ref.update({ status: 'done', action: 'deauthorized' });
-        } else {
-          await snap.ref.update({ status: 'ignored', reason: 'athlete update (not deauth)' });
-        }
-        return;
-      }
-
-      if (evt.objectType !== 'activity') { await snap.ref.update({ status: 'ignored', reason: 'unknown objectType' }); return; }
-
-      const runRef = db.collection('runs').doc(`strava_${userDoc.id}_${evt.objectId}`);
-
-      // Activity deleted → remove the run + decrement totalMiles.
-      if (evt.aspectType === 'delete') {
-        const existing = await runRef.get();
-        if (existing.exists) {
-          const miles = existing.data().miles || 0;
-          await runRef.delete();
-          if (miles > 0) {
-            // Atomic decrement — avoids clobbering concurrent webhook/poller writes.
-            await userRef.update({
-              totalMiles: admin.firestore.FieldValue.increment(-miles),
-            });
-          }
-        }
-        await snap.ref.update({ status: 'done', action: 'deleted' });
-        return;
-      }
-
-      // Create / update — fetch the activity with the user's token.
-      if (!user.stravaAccessToken) { await snap.ref.update({ status: 'ignored', reason: 'user not connected' }); return; }
-      const accessToken = await getValidStravaToken(userRef, user);
-
-      const activity = await fetchStravaActivity(accessToken, evt.objectId);
-      if (!activity) { await snap.ref.update({ status: 'error', error: 'activity fetch failed' }); return; }
-
-      const run = stravaActivityToRunServer(activity, userDoc.id, user.schoolId);
-      if (!run) { await snap.ref.update({ status: 'ignored', reason: 'not a run / too short' }); return; }
-
-      // Pace zones from the athlete's stored VDOT paces (if set).
-      let paceZoneSeconds = null;
-      if (user.trainingPaces) {
-        const paceStream = await fetchStravaPaceStream(accessToken, evt.objectId);
-        if (paceStream) paceZoneSeconds = calcPaceZoneBreakdown(paceStream, user.trainingPaces);
-      }
-
-      const existing = await runRef.get();
-      const isNew = !existing.exists;
-      await runRef.set({
-        ...run,
-        ...(paceZoneSeconds ? { paceZoneSeconds, hasPaceData: true } : { hasPaceData: false }),
-      }, { merge: true });
-
-      // Only touch totalMiles when creating a brand-new run doc — mirrors the
-      // client poller's existing-id de-dupe so the webhook and the fallback
-      // poller can never double-count the same activity.
-      if (isNew) {
-        // Atomic increment — two concurrent new-activity events can't clobber
-        // each other's count (the isNew guard already prevents same-activity dupes).
-        await userRef.update({
-          totalMiles: admin.firestore.FieldValue.increment(run.miles),
-        });
-      }
-
-      await snap.ref.update({ status: 'done', action: isNew ? 'created' : 'updated' });
-    } catch (e) {
-      console.error('processStravaEvent failed:', e);
-      try { await snap.ref.update({ status: 'error', error: String((e && e.message) || e) }); } catch (_) {}
-    }
-  });
-
-// ── Strava backfill (server-side history import) ─────────────────────────────
-// The browser can't pull activity history directly (Strava's data API is
-// CORS-blocked), so the web app calls this endpoint to import the last N days
-// server-side. Native could use it too, but currently keeps its client poller.
-//
-// Auth: requires the caller's Firebase ID token in the Authorization header and
-// only ever touches THAT user's own runs — so it stays on onRequest (consistent
-// with the other Strava endpoints) without exposing anyone else's data.
-// Dedupe + atomic totalMiles increment mirror the webhook so history import and
-// the event-driven webhook can't double-count the same activity.
-exports.stravaBackfill = functions
-  .runWith({ maxInstances: 10, timeoutSeconds: 300 })
+// Payload shapes: { activities: [{ userId, userAccessToken, summaryId, … }] }
+//                 { deregistrations: [{ userId, userAccessToken }] }
+exports.garminWebhook = functions
+  .runWith({ maxInstances: 10 })
   .https.onRequest(async (req, res) => {
-    res.set('Access-Control-Allow-Origin', '*');
-    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
-    if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
-    if (req.method !== 'POST') { res.status(405).json({ error: 'Method Not Allowed' }); return; }
-
-    // Verify the Firebase ID token → the uid we'll import for.
-    const authHeader = req.headers.authorization || '';
-    const m = authHeader.match(/^Bearer (.+)$/);
-    if (!m) { res.status(401).json({ error: 'Missing auth token' }); return; }
-    let uid;
-    try {
-      const decoded = await admin.auth().verifyIdToken(m[1]);
-      uid = decoded.uid;
-    } catch (e) {
-      res.status(401).json({ error: 'Invalid auth token' }); return;
+    // Garmin sends a GET/HEAD ping during webhook verification
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      res.status(200).send('OK'); return;
+    }
+    if (req.method !== 'POST') {
+      res.status(405).send('Method Not Allowed'); return;
     }
 
-    // Clamp the window to 1–90 days (Strava history we're willing to pull).
-    const days = Math.min(Math.max(parseInt(req.body && req.body.days, 10) || 60, 1), 90);
+    const expectedKey = process.env.GARMIN_WEBHOOK_KEY;
+    const providedKey = req.path.replace(/^\/+|\/+$/g, '') || req.query.key;
+    if (expectedKey && providedKey !== expectedKey) {
+      console.warn('garminWebhook: rejected push with missing/invalid key');
+      res.status(403).send('Forbidden'); return;
+    }
 
-    try {
-      const userRef = db.collection('users').doc(uid);
-      const userSnap = await userRef.get();
-      if (!userSnap.exists) { res.status(404).json({ error: 'User not found' }); return; }
-      const user = userSnap.data();
-      if (!user.stravaAccessToken) { res.status(400).json({ error: 'Strava not connected' }); return; }
+    const body = req.body || {};
+    const activities = body.activities || [];
+    const deregistrations = body.deregistrations || [];
 
-      const accessToken = await getValidStravaToken(userRef, user);
-      const after = Math.floor((Date.now() - days * 86400000) / 1000);
-      const activities = await fetchStravaActivitiesServer(accessToken, after);
+    for (const d of deregistrations) {
+      try {
+        const uid = await findUidForGarminUser(d.userId, d.userAccessToken);
+        if (uid) {
+          await clearGarminConnection(uid);
+          console.log(`garminWebhook: deregistered uid=${uid}`);
+        }
+      } catch (e) {
+        console.error('Garmin webhook deregistration error:', e);
+      }
+    }
 
-      let imported = 0;
-      let skipped = 0;
-      let milesImported = 0;
-      let streamsRateLimited = false; // once true, import miles-only for the rest
+    let imported = 0;
+    let errors   = 0;
+    const milesByUid = {};
+    const uidCache = new Map();
 
-      for (const activity of activities) {
-        const run = stravaActivityToRunServer(activity, uid, user.schoolId);
-        if (!run) { skipped++; continue; }
+    for (const activity of activities) {
+      try {
+        const cacheKey = activity.userId || activity.userAccessToken;
+        if (!uidCache.has(cacheKey)) {
+          uidCache.set(cacheKey, await findUidForGarminUser(activity.userId, activity.userAccessToken));
+        }
+        const uid = uidCache.get(cacheKey);
+        if (!uid) {
+          console.warn(`garminWebhook: no user found for garminUserId=${activity.userId}`);
+          continue;
+        }
 
-        const runRef = db.collection('runs').doc(`strava_${uid}_${activity.id}`);
+        const userRef = db.collection('users').doc(uid);
+        const userData = (await userRef.get()).data() || {};
+        const run = garminActivityToRunServer(activity, uid, userData.schoolId);
+        if (!run) continue;
+
+        const actId = activity.summaryId ?? activity.activityId;
+        const runRef = db.collection('runs').doc(`garmin_${uid}_${actId}`);
         const existing = await runRef.get();
-        const isNew = !existing.exists;
+        if (existing.exists) continue;
 
-        // Pace zones from the athlete's stored VDOT paces, unless we've started
-        // hitting Strava rate limits (then just import the mileage).
         let paceZoneSeconds = null;
-        if (user.trainingPaces && !streamsRateLimited) {
-          const stream = await fetchStravaPaceStream(accessToken, activity.id);
-          if (stream) paceZoneSeconds = calcPaceZoneBreakdown(stream, user.trainingPaces);
-          else streamsRateLimited = true; // null can mean 429 — stop hammering streams
-          await new Promise(r => setTimeout(r, 120)); // gentle pacing under the rate limit
+        if (userData.trainingPaces) {
+          const paceStream = approximatePaceStream(activity);
+          if (paceStream) paceZoneSeconds = calcPaceZoneBreakdown(paceStream, userData.trainingPaces);
         }
 
         await runRef.set({
           ...run,
           ...(paceZoneSeconds ? { paceZoneSeconds, hasPaceData: true } : { hasPaceData: false }),
-        }, { merge: true });
-
-        if (isNew) {
-          milesImported += run.miles;
-          imported++;
-        } else {
-          skipped++;
-        }
-      }
-
-      // Atomic increment so backfill can't clobber concurrent webhook writes.
-      if (milesImported > 0) {
-        await userRef.update({
-          totalMiles: admin.firestore.FieldValue.increment(Math.round(milesImported * 10) / 10),
         });
+        milesByUid[uid] = (milesByUid[uid] || 0) + run.miles;
+        imported++;
+      } catch (e) {
+        console.error('Garmin webhook activity error:', e);
+        errors++;
       }
-
-      res.json({
-        imported,
-        skipped,
-        miles: Math.round(milesImported * 10) / 10,
-        partial: streamsRateLimited, // true → some runs imported without pace zones
-      });
-    } catch (e) {
-      console.error('stravaBackfill failed:', e);
-      res.status(500).json({ error: String((e && e.message) || e) });
     }
+
+    // One totalMiles increment per user (a backfill push can carry many runs).
+    await Promise.all(Object.entries(milesByUid).map(([uid, miles]) =>
+      db.collection('users').doc(uid).update({
+        totalMiles: admin.firestore.FieldValue.increment(Math.round(miles * 10) / 10),
+        garminLastSync: new Date().toISOString(),
+      })
+    ));
+
+    console.log(`Garmin webhook: imported ${imported}/${activities.length}, errors ${errors}, deregistrations ${deregistrations.length}`);
+    res.status(200).json({ imported, errors });
   });
 
 // ── Push Notification on New Team Post ───────────────────────────────────────
@@ -525,12 +662,10 @@ exports.onNewTeamPost = functions.firestore
     const channelKey = channel || 'whole_team';
 
     try {
-      // Query users who should receive this notification
       const usersSnap = await db.collection('users')
         .where('schoolId', '==', schoolId)
         .get();
 
-      // Also query parents with linked athletes at this school
       const parentSnap = await db.collection('users')
         .where('role', '==', 'parent')
         .get();
@@ -539,7 +674,6 @@ exports.onNewTeamPost = functions.firestore
         ...usersSnap.docs.map(d => ({ id: d.id, ...d.data() })),
       ];
 
-      // Add parents whose linked athletes are at this school
       const schoolAthleteIds = usersSnap.docs
         .filter(d => d.data().role === 'athlete')
         .map(d => d.id);
@@ -548,18 +682,14 @@ exports.onNewTeamPost = functions.firestore
         const parent = { id: d.id, ...d.data() };
         const linked = parent.linkedAthleteIds || [];
         if (linked.some(id => schoolAthleteIds.includes(id))) {
-          // Only add if not already in the list
           if (!allUsers.find(u => u.id === parent.id)) {
             allUsers.push(parent);
           }
         }
       });
 
-      // Filter by channel
       const recipients = allUsers.filter(user => {
-        // Never notify the author
         if (user.id === authorId) return false;
-        // Must have a push token (either native Expo OR web FCM)
         if (!user.expoPushToken && !user.webPushToken) return false;
 
         const role = user.role;
@@ -577,7 +707,6 @@ exports.onNewTeamPost = functions.firestore
           case 'parents':
             return isParent;
           default:
-            // Group channel (e.g., "group_ABC123")
             if (channelKey.startsWith('group_')) {
               const groupId = channelKey.replace('group_', '');
               return isCoach || user.groupId === groupId;
@@ -588,7 +717,6 @@ exports.onNewTeamPost = functions.firestore
 
       if (recipients.length === 0) return;
 
-      // Build push messages — native Expo and web FCM in parallel arrays.
       const title = authorName || 'New message';
       const body = text.length > 100 ? text.slice(0, 97) + '...' : text;
       const data = { channel: channelKey, postId: context.params.postId };
@@ -609,7 +737,6 @@ exports.onNewTeamPost = functions.firestore
         }
       }
 
-      // Send in chunks (Expo limit: 100 per batch)
       const chunks = expo.chunkPushNotifications(messages);
       for (const chunk of chunks) {
         try {
@@ -628,7 +755,6 @@ exports.onNewTeamPost = functions.firestore
 
 // ── Daily Wellness Check-In Reminder ─────────────────────────────────────────
 // Runs once daily at 4 PM Eastern (3 PM CT, 2 PM MT, 1 PM PT).
-// Sends a push only to athletes who haven't checked in today.
 
 exports.dailyCheckinReminder = functions.pubsub
   .schedule('0 16 * * *')
@@ -688,14 +814,7 @@ exports.dailyCheckinReminder = functions.pubsub
   });
 
 // ── Weekly Check-In Reminder (multi-timezone) ────────────────────────────────
-// Runs every hour on Saturday (UTC). For each school, checks the school's local
-// time and fires pushes only when local hour is 12:00 on Saturday. This means
-// every school gets exactly one push per Saturday at their own noon, regardless
-// of timezone. Athletes who've already submitted this week are skipped.
-//
-// Note: schools in timezones where Saturday-noon-local falls on Friday UTC
-// (UTC+12 and beyond) are NOT supported by this Saturday-only cron. US-only
-// timezones all sit within Saturday UTC so this is fine for current scope.
+// Runs every hour on Saturday (UTC). Fires per-school at their local noon.
 
 exports.weeklyCheckinReminder = functions.pubsub
   .schedule('0 * * * 6')
@@ -709,7 +828,6 @@ exports.weeklyCheckinReminder = functions.pubsub
         const school = schoolDoc.data();
         const tz = school.timezone || 'America/New_York';
 
-        // Compute the school's local hour + weekday
         const localFmt = new Intl.DateTimeFormat('en-US', {
           timeZone: tz,
           hour: '2-digit', hour12: false, weekday: 'short',
@@ -719,12 +837,11 @@ exports.weeklyCheckinReminder = functions.pubsub
         const localHour = parseInt(parts.hour, 10) % 24;
         if (parts.weekday !== 'Sat' || localHour !== 12) continue;
 
-        // The Saturday-noon date in the school's TZ — anchors weekly checkins
         const dateFmt = new Intl.DateTimeFormat('en-CA', {
           timeZone: tz,
           year: 'numeric', month: '2-digit', day: '2-digit',
         });
-        const anchor = dateFmt.format(now); // en-CA → YYYY-MM-DD
+        const anchor = dateFmt.format(now);
 
         const athletesSnap = await db.collection('users')
           .where('schoolId', '==', schoolDoc.id)
@@ -733,7 +850,6 @@ exports.weeklyCheckinReminder = functions.pubsub
           .get();
         if (athletesSnap.empty) continue;
 
-        // Skip athletes who already submitted this week
         const checkinsSnap = await db.collection('weeklyCheckins')
           .where('schoolId', '==', schoolDoc.id)
           .where('weekStartISO', '==', anchor)
@@ -786,17 +902,10 @@ exports.onWeeklyCheckinReply = functions.firestore
       const after = change.after.data();
       if (!after?.coachReply || !after.userId) return;
 
-      // Fire on either a brand-new reply OR a text edit. Skip everything else
-      // (athlete editing their message, athleteViewedReplyAt clearing, etc.).
       const isNewReply = !before?.coachReply;
       const isEdited = !isNewReply && before.coachReply.text !== after.coachReply.text;
       if (!isNewReply && !isEdited) return;
 
-      // On an edit, clear the athlete's "viewed" timestamp so the home-screen
-      // "Coach replied" card resurfaces. Coaches can't write this field via
-      // Firestore rules (intentional), so the Function does it admin-side.
-      // This re-triggers onUpdate but the next pass will short-circuit because
-      // coachReply.text is unchanged.
       if (isEdited && after.athleteViewedReplyAt) {
         await change.after.ref.update({
           athleteViewedReplyAt: admin.firestore.FieldValue.delete(),
@@ -832,24 +941,9 @@ exports.onWeeklyCheckinReply = functions.firestore
   });
 
 // ── Billing kill-switch (cost-abuse backstop) ────────────────────────────────
-// Triggered by Cloud Billing budget alerts published to the `budget-alerts`
-// Pub/Sub topic. When ACTUAL spend exceeds the budget, it DISABLES billing on
-// the project — a deliberate nuclear backstop against a runaway cost-abuse loop.
-//
-// ⚠️ DISABLING BILLING TAKES THE WHOLE APP OFFLINE (Firestore, Functions, FCM
-// all stop serving). This is intentional: a surprise multi-thousand-dollar bill
-// is worse than a brief outage. The 50% / 90% budget alerts are email-only and
-// warn first; this handler only acts once spend is AT/OVER 100% of budget. To
-// recover, re-link the billing account in the GCP console (Billing → Account
-// management) — nothing here re-enables billing automatically.
-//
-// ONE-TIME SETUP (see walkthrough):
-//   1. Create the Pub/Sub topic `budget-alerts`.
-//   2. Create a Cloud Billing budget and set its notifications to that topic.
-//   3. Grant this function's runtime service account
-//      (PROJECT_ID@appspot.gserviceaccount.com) the "Billing Account
-//      Administrator" role ON THE BILLING ACCOUNT — without it,
-//      updateProjectBillingInfo() is permission-denied and the switch no-ops.
+// Triggered by Cloud Billing budget alerts on the `budget-alerts` Pub/Sub topic.
+// Disables billing if actual spend exceeds budget. Recovery: re-link billing
+// account in GCP console. See CLAUDE.md for setup instructions.
 exports.stopBillingOnBudget = functions.pubsub
   .topic('budget-alerts')
   .onPublish(async (message) => {
@@ -858,7 +952,6 @@ exports.stopBillingOnBudget = functions.pubsub
     const projectName = `projects/${process.env.GCLOUD_PROJECT}`;
 
     const data = message.json || {};
-    // Budget alert payload includes costAmount + budgetAmount (same currency).
     if (typeof data.costAmount !== 'number' || typeof data.budgetAmount !== 'number') {
       console.warn('Budget message missing cost/budget amounts; ignoring.', data);
       return;
@@ -874,7 +967,6 @@ exports.stopBillingOnBudget = functions.pubsub
       return;
     }
 
-    // Empty billingAccountName detaches the billing account → billing disabled.
     await billing.updateProjectBillingInfo({
       name: projectName,
       projectBillingInfo: { billingAccountName: '' },
