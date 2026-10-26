@@ -10,7 +10,6 @@ import {
 import { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Platform,
   ScrollView,
   StyleSheet,
@@ -19,6 +18,8 @@ import {
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 import { SIGNAL } from '../constants/design';
+import { notify } from '../utils/notify';
+import WrongRoleSignOut from '../components/WrongRoleSignOut';
 
 export default function AssistantJoinScreen({ onJoinComplete }) {
   const [joinCode, setJoinCode] = useState('');  const [selectedSchool, setSelectedSchool] = useState(null);
@@ -45,7 +46,7 @@ export default function AssistantJoinScreen({ onJoinComplete }) {
   };
   const handleJoinByCode = async () => {
     if (!joinCode || joinCode.length < 6) {
-      Alert.alert('Invalid code', 'Please enter the 6-character join code from your head coach.');
+      notify('Invalid code', 'Please enter the 6-character join code from your head coach.');
       return;
     }
     setLoading(true);
@@ -53,7 +54,7 @@ export default function AssistantJoinScreen({ onJoinComplete }) {
       const q = query(collection(db, 'schools'), where('joinCode', '==', joinCode.toUpperCase().trim()));
       const snapshot = await getDocs(q);
       if (snapshot.empty) {
-        Alert.alert('Code not found', 'That join code was not found. Please check with your head coach.');
+        notify('Code not found', 'That join code was not found. Please check with your head coach.');
         setLoading(false);
         return;
       }
@@ -62,7 +63,7 @@ export default function AssistantJoinScreen({ onJoinComplete }) {
       school.headCoachName = await loadHeadCoachName(school.id);
       setSelectedSchool(school);
     } catch {
-      Alert.alert('Error', 'Could not find that join code. Please try again.');
+      notify('Error', 'Could not find that join code. Please try again.');
     }
     setLoading(false);
   };
@@ -85,7 +86,7 @@ export default function AssistantJoinScreen({ onJoinComplete }) {
 
       setRequested(true);
     } catch {
-      Alert.alert('Error', 'Could not send join request. Please try again.');
+      notify('Error', 'Could not send join request. Please try again.');
     }
     setLoading(false);
   };
@@ -161,6 +162,7 @@ export default function AssistantJoinScreen({ onJoinComplete }) {
         </View>
       )}
 
+      <WrongRoleSignOut />
     </ScrollView>
   );
 }

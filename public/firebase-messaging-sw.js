@@ -69,6 +69,7 @@ const CACHE = 'teambase-shell-v3';
 // (via the navigate-on-activate below). Renaming CACHE above also purges the
 // prior cache on activate.
 const SW_BUILD = 5;
+const UPDATE_MARKER = '/__sw-update-pending';
 
 // Precache the app shell so navigations work offline. skipWaiting() activates
 // this SW immediately rather than waiting for all tabs to close.
@@ -76,20 +77,29 @@ self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
     await cache.add('/index.html').catch(() => {}); // best-effort precache
+    // An older SW is still active → this install is an UPDATE. Leave a marker
+    // for activate (SW globals don't survive between events).
+    if (self.registration.active) {
+      await cache.put(UPDATE_MARKER, new Response('1')).catch(() => {});
+    }
     await self.skipWaiting();
   })());
 });
 
-// Drop caches from older deploys, take control of open pages, then force any
-// open window to reload onto the new build. This bootstraps an installed PWA
-// onto the latest version (incl. the in-app auto-updater) without the user
-// having to delete + reinstall — as soon as a new SW activates, open windows
-// reload to fresh content.
+// Drop caches from older deploys, take control of open pages, then — ONLY
+// when this SW replaced an older one — force open windows to reload onto the
+// new build. That bootstraps an installed PWA onto the latest version without
+// a reinstall. A first-ever install (no older cache) must NOT reload: the
+// visitor may be halfway through the signup form.
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
+    const cache = await caches.open(CACHE);
+    const isUpdate = keys.some((k) => k !== CACHE) || !!(await cache.match(UPDATE_MARKER));
+    await cache.delete(UPDATE_MARKER).catch(() => {});
     await Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)));
     await self.clients.claim();
+    if (!isUpdate) return;
     const wins = await self.clients.matchAll({ type: 'window' });
     for (const w of wins) { try { await w.navigate(w.url); } catch (e) { /* ignore */ } }
   })());
@@ -100,7 +110,7 @@ self.addEventListener('activate', (event) => {
 //     as the offline fallback.
 //   • Hashed static assets (/_expo/static/**) → cache-first; they're
 //     content-hashed and immutable, so a cache hit is always correct.
-//   • Everything else (Firebase, Strava, cross-origin) → untouched, straight to
+//   • Everything else (Firebase, Cloud Functions, cross-origin) → untouched, straight to
 //     the network. We never intercept non-GET or cross-origin requests.
 self.addEventListener('fetch', (event) => {
   const { request } = event;

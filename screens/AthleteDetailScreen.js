@@ -4,7 +4,6 @@ import { collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, serverTime
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Platform,
   ScrollView,
@@ -16,7 +15,7 @@ import {
 } from 'react-native';
 import { BRAND, SIGNAL } from '../constants/design';
 import { auth, db } from '../firebaseConfig';
-import { getActiveSeason, getPhaseForSeason, generateVolumeCurve } from './SeasonPlanner';
+import { getActiveSeason, getPhaseForSeason, generateVolumeCurve, getSeasonKey } from './SeasonPlanner';
 import { formatTime, calcPace, formatPace } from '../utils/raceUtils';
 import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
 import RunDetailModal from './RunDetailModal';
@@ -25,11 +24,12 @@ import { getMondayISO, getRunDate, groupRunsByWeek, toLocalISODate } from '../ut
 import { computeOvertraining } from '../utils/overtrainingUtils';
 import { confirmDestructive } from '../utils/confirmDialog';
 import { aggregateMiles, isCrossTraining, creditForRun, activityMeta, DEFAULT_CT_FACTORS } from '../utils/activityMiles';
+import { notify } from '../utils/notify';
 
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function AthleteDetailScreen({ athlete, school, groups, onBack, parentMode = false }) {
+export default function AthleteDetailScreen({ athlete, school, groups, onBack, onOverrideChanged, parentMode = false }) {
   const [loading, setLoading] = useState(true);
   const [expandedSection, setExpandedSection] = useState(null);
   const [selectedRun, setSelectedRun] = useState(null);
@@ -90,13 +90,14 @@ export default function AthleteDetailScreen({ athlete, school, groups, onBack, p
       };
       await setDoc(doc(db, 'workoutOverrides', athlete.id), data);
       setOverride(data);
+      onOverrideChanged && onOverrideChanged();
       setModifyVisible(false);
       setOvNote('');
-      Alert.alert('Workout modified',
+      notify('Workout modified',
         `${athlete.firstName} is set to ${ovType === 'rest' ? 'rest' : 'cross-training'} through ${endISO}.`);
     } catch (e) {
       console.warn('Save override failed:', e);
-      Alert.alert('Could not save', `The modification did not save: ${e?.message || e}. Please try again.`);
+      notify('Could not save', `The modification did not save: ${e?.message || e}. Please try again.`);
     }
     setSavingOverride(false);
   };
@@ -110,6 +111,7 @@ export default function AthleteDetailScreen({ athlete, school, groups, onBack, p
         try {
           await deleteDoc(doc(db, 'workoutOverrides', athlete.id));
           setOverride(null);
+          onOverrideChanged && onOverrideChanged();
         } catch (e) { console.warn('Clear override failed:', e); }
       },
     });
@@ -284,7 +286,7 @@ export default function AthleteDetailScreen({ athlete, school, groups, onBack, p
   const displayWeekTrend = paceWeekTrend;
 
   // ── Feature 3: Season Volume Arc ──
-  const seasonKey = activeSeason ? `${activeSeason.sport || 'cross_country'}_${activeSeason.seasonStart?.split?.('T')?.[0] || activeSeason.seasonStart}` : null;
+  const seasonKey = getSeasonKey(activeSeason);
   // Only build a curve from a real coach-set target — never fabricate a default.
   const volumePlan = seasonKey && athleteGroup?.seasonPlans?.[seasonKey]
     ? athleteGroup.seasonPlans[seasonKey]

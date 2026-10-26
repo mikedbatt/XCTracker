@@ -26,11 +26,14 @@ export function registerServiceWorker() {
   };
   const swUrl = '/firebase-messaging-sw.js?' + new URLSearchParams(cfg).toString();
 
-  // Reload once when a new service worker takes control (it activates + claims
-  // on deploy) so the page swaps to the fresh build.
+  // Reload once when a NEW service worker replaces an existing one (a deploy)
+  // so the page swaps to the fresh build. On a first visit there's no
+  // controller yet — the first SW claiming the page also fires
+  // controllerchange, and reloading then wiped half-typed signup forms.
+  const hadController = !!navigator.serviceWorker.controller;
   let reloading = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (reloading) return;
+    if (!hadController || reloading) return;
     reloading = true;
     window.location.reload();
   });

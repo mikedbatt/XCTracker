@@ -10,7 +10,6 @@ import {
 import { useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Platform,
     ScrollView,
     StyleSheet,
@@ -19,8 +18,10 @@ import {
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 import { SIGNAL } from '../constants/design';
+import { notify } from '../utils/notify';
+import WrongRoleSignOut from '../components/WrongRoleSignOut';
 
-export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
+export default function AthleteJoinScreen({ onJoinComplete, onSkip, wasDenied = false }) {
   const [joinCode, setJoinCode] = useState('');
   const [selectedSchool, setSelectedSchool] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -49,7 +50,7 @@ export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
 
   const handleJoinByCode = async () => {
     if (!joinCode || joinCode.length < 6) {
-      Alert.alert('Invalid code', 'Please enter the 6-character join code from your coach.');
+      notify('Invalid code', 'Please enter the 6-character join code from your coach.');
       return;
     }
     setLoading(true);
@@ -58,7 +59,7 @@ export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
       const q = query(schoolsRef, where('joinCode', '==', joinCode.toUpperCase().trim()));
       const snapshot = await getDocs(q);
       if (snapshot.empty) {
-        Alert.alert('Code not found', 'That join code was not found. Please check with your coach.');
+        notify('Code not found', 'That join code was not found. Please check with your coach.');
         setLoading(false);
         return;
       }
@@ -67,7 +68,7 @@ export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
       school.headCoachName = await loadHeadCoachName(school.id);
       setSelectedSchool(school);
     } catch (error) {
-      Alert.alert('Error', 'Could not find that join code. Please try again.');
+      notify('Error', 'Could not find that join code. Please try again.');
     }
     setLoading(false);
   };
@@ -92,7 +93,7 @@ export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
       // never fire and the user would be stranded with no confirmation).
       setRequestSent(true);
     } catch (error) {
-      Alert.alert('Error', 'Could not send join request. Please try again.');
+      notify('Error', 'Could not send join request. Please try again.');
     }
     setLoading(false);
   };
@@ -133,6 +134,16 @@ export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
         <Text style={styles.title}>Join your team</Text>
         <Text style={styles.subtitle}>Enter the code your coach gave you</Text>
       </View>
+
+      {/* A coach declined this athlete's last request (status 'denied'). */}
+      {wasDenied && (
+        <View style={styles.deniedCard}>
+          <Text style={styles.deniedTitle}>Your last request wasn't approved</Text>
+          <Text style={styles.deniedBody}>
+            Double-check the team code with your coach, then request to join again.
+          </Text>
+        </View>
+      )}
 
       {/* Join by code section */}
       <View style={styles.section}>
@@ -186,6 +197,7 @@ export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
         <Text style={styles.skipText}>Skip for now — I'll join a school later</Text>
       </TouchableOpacity>
 
+      <WrongRoleSignOut />
     </ScrollView>
   );
 }
@@ -248,6 +260,26 @@ const styles = StyleSheet.create({
     letterSpacing: SIGNAL.letter.titleTight,
     color: SIGNAL.color.indigo,
     textAlign: 'center',
+  },
+  deniedCard: {
+    backgroundColor: `${SIGNAL.color.amber}${SIGNAL.tint.fill}`,
+    borderRadius: SIGNAL.radius.card,
+    borderWidth: 1,
+    borderColor: SIGNAL.color.amber,
+    padding: SIGNAL.space.card,
+    marginBottom: SIGNAL.space[5],
+  },
+  deniedTitle: {
+    fontFamily: SIGNAL.font.bodySemi,
+    fontSize: SIGNAL.size.body,
+    color: SIGNAL.color.ink,
+  },
+  deniedBody: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: SIGNAL.size.label,
+    color: SIGNAL.color.inkSoft,
+    marginTop: 4,
+    lineHeight: 18,
   },
   subtitle: {
     fontFamily: SIGNAL.font.body,

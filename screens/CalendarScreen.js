@@ -1,8 +1,7 @@
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, updateDoc, where } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -25,11 +24,13 @@ import { confirmDestructive } from '../utils/confirmDialog';
 import DatePickerField from './DatePickerField';
 import RunDetailModal from './RunDetailModal';
 import WorkoutDetailModal from './WorkoutDetailModal';
+import { notify } from '../utils/notify';
+import { workoutMilesForGroup } from '../utils/workoutMiles';
 
 // Re-export so existing imports from CalendarScreen keep working
 export { CATEGORIES, TYPE_COLORS };
 
-export default function CalendarScreen({ userData, school, onClose, autoOpenAdd, prefillWorkout, groups = [], externalAthleteRuns = null, trainingPaces = null }) {
+export default function CalendarScreen({ userData, school, onClose, autoOpenAdd, prefillWorkout, groups = [], externalAthleteRuns = null, trainingPaces = null, refreshKey = null, athleteGroup = null }) {
   const [markedDates, setMarkedDates] = useState({});
   const [allItems, setAllItems] = useState([]);
   const [athleteRuns, setAthleteRuns] = useState([]);
@@ -61,6 +62,10 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
   const [groupAdjustments, setGroupAdjustments] = useState({});
   const primaryColor = school?.primaryColor || BRAND;
   const isCoach = userData.role === 'admin_coach' || userData.role === 'assistant_coach';
+  // Athletes (and parents viewing an athlete) see their group's distance; the
+  // group comes from the caller (AthleteDashboard / ParentDashboard).
+  const athleteGroupId = isCoach ? null : (athleteGroup?.id || userData.groupId || null);
+  const milesFor = (item) => (isCoach ? (item.baseMiles || null) : workoutMilesForGroup(item, athleteGroupId));
   // True when the athlete's coach modification covers this ISO date.
   const overrideCovers = (iso) => !!myOverride && myOverride.startDate <= iso && iso <= myOverride.endDate;
 
@@ -68,6 +73,16 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
   const typeColor = (t) => SIGNAL_TYPE_COLORS[t] || TYPE_COLORS[t] || SIGNAL.color.indigo;
 
   useEffect(() => { loadItems(); }, []);
+
+  // Kept mounted while hidden by AthleteDashboard: refreshKey is the
+  // dashboard's data version while visible (null while hidden). Reload when
+  // it's re-opened after the athlete's data changed.
+  const loadedKeyRef = useRef(refreshKey);
+  useEffect(() => {
+    if (refreshKey == null || refreshKey === loadedKeyRef.current) return;
+    loadedKeyRef.current = refreshKey;
+    loadItems();
+  }, [refreshKey]);
 
   // Re-filter the selected day's items when the override loads (it may arrive
   // after the day was tapped). On a coach-modified day, hide the group Training
@@ -256,7 +271,7 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
   };
 
   const handleSave = async () => {
-    if (!title) { Alert.alert('Missing info', 'Please enter a title.'); return; }
+    if (!title) { notify('Missing info', 'Please enter a title.'); return; }
     setSaving(true);
     try {
       const eventDateTime = new Date(date);
@@ -292,17 +307,17 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
 
       if (editingItem) {
         await updateDoc(doc(db, 'events', editingItem.id), { ...data, updatedAt: new Date() });
-        Alert.alert('Updated!', `${title} has been updated.`);
+        notify('Updated!', `${title} has been updated.`);
       } else {
         await addDoc(collection(db, 'events'), { ...data, createdAt: new Date() });
-        Alert.alert('Added!', `${title} added to the calendar.`);
+        notify('Added!', `${title} added to the calendar.`);
       }
 
       setAddModalVisible(false);
       setEditingItem(null);
       loadItems();
     } catch (e) {
-      Alert.alert('Error', 'Could not save. Please try again.');
+      notify('Error', 'Could not save. Please try again.');
       console.error(e);
     }
     setSaving(false);
@@ -318,7 +333,7 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
           await deleteDoc(doc(db, 'events', item.id));
           setDetailVisible(false);
           loadItems();
-        } catch { Alert.alert('Error', 'Could not delete.'); }
+        } catch { notify('Error', 'Could not delete.'); }
       },
     });
   };
@@ -462,7 +477,7 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
                   )}
                 </View>
               ) : selectedItems.map(item => {
-                const itemMiles = item.baseMiles || null;
+                const itemMiles = milesFor(item);
                 const c = getColor(item);
                 return (
                   <TouchableOpacity
@@ -565,7 +580,7 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
                 );
               }
               const c = getColor(item);
-              const itemMiles = item.baseMiles || null;
+              const itemMiles = milesFor(item);
               return (
                 <TouchableOpacity
                   key={item.id}
@@ -622,6 +637,8 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
         onClose={() => setDetailVisible(false)}
         primaryColor={primaryColor}
         groups={groups}
+        athleteMiles={!isCoach && detailItem ? workoutMilesForGroup(detailItem, athleteGroupId) : null}
+        groupName={!isCoach ? athleteGroup?.name : null}
         trainingPaces={trainingPaces}
         onEdit={isCoach ? (item) => { setDetailVisible(false); openEdit(item); } : null}
         onDelete={isCoach ? (item) => { handleDelete(item); } : null}

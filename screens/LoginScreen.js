@@ -6,7 +6,7 @@ import { createUserWithEmailAndPassword, sendPasswordResetEmail, signInWithEmail
 import { doc, setDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
-  Alert, KeyboardAvoidingView, Linking, Platform,
+  KeyboardAvoidingView, Linking, Platform,
   ScrollView,
   StyleSheet,
   Text, TextInput, TouchableOpacity,
@@ -16,6 +16,7 @@ import { auth, db } from '../firebaseConfig';
 import { SIGNAL } from '../constants/design';
 import { confirmDestructive } from '../utils/confirmDialog';
 import { PRIVACY_URL, TERMS_URL } from '../constants/legal';
+import { notify } from '../utils/notify';
 
 const ROLES = [
   { key: 'admin_coach',     label: 'Head Coach',      description: 'Set up and manage your program',     icon: 'shield-checkmark-outline', color: SIGNAL.color.indigo },
@@ -25,7 +26,7 @@ const ROLES = [
 ];
 
 export default function LoginScreen({ onAuthSuccess }) {
-  const [email, setEmail] = useState('');
+  const [emailInput, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -68,7 +69,7 @@ export default function LoginScreen({ onAuthSuccess }) {
       fallbackLabel: 'Use password instead',
     });
     if (!result.success) {
-      Alert.alert('Failed', 'Biometric authentication failed. Please try your password.');
+      notify('Failed', 'Biometric authentication failed. Please try your password.');
       return;
     }
     setLoading(true);
@@ -76,14 +77,14 @@ export default function LoginScreen({ onAuthSuccess }) {
       const storedEmail = await SecureStore.getItemAsync('xctracker_email');
       const storedPassword = await SecureStore.getItemAsync('xctracker_password');
       if (!storedEmail || !storedPassword) {
-        Alert.alert('Sign in required', 'Please sign in with your email and password first to enable biometric login.');
+        notify('Sign in required', 'Please sign in with your email and password first to enable biometric login.');
         setLoading(false);
         return;
       }
       const userCredential = await signInWithEmailAndPassword(auth, storedEmail, storedPassword);
       if (onAuthSuccess) onAuthSuccess({ uid: userCredential.user.uid });
     } catch (error) {
-      Alert.alert('Sign in failed', 'Your saved credentials are no longer valid. Please sign in with your email and password.');
+      notify('Sign in failed', 'Your saved credentials are no longer valid. Please sign in with your email and password.');
       await SecureStore.deleteItemAsync('xctracker_email');
       await SecureStore.deleteItemAsync('xctracker_password');
       setBiometricAvailable(false);
@@ -93,8 +94,13 @@ export default function LoginScreen({ onAuthSuccess }) {
 
   const calculateAge = () => {
     if (!birthYear || !birthMonth || !birthDay) return null;
+    const y = parseInt(birthYear, 10), m = parseInt(birthMonth, 10), d = parseInt(birthDay, 10);
     const today = new Date();
-    const birth = new Date(parseInt(birthYear), parseInt(birthMonth) - 1, parseInt(birthDay));
+    // Reject typos (month 14, year 209, Feb 31) — a nonsense date could slip
+    // past the under-13 check.
+    if (!(y >= 1900 && y <= today.getFullYear()) || !(m >= 1 && m <= 12) || !(d >= 1 && d <= 31)) return 'invalid';
+    const birth = new Date(y, m - 1, d);
+    if (birth.getMonth() !== m - 1 || birth > today) return 'invalid';
     let age = today.getFullYear() - birth.getFullYear();
     const monthDiff = today.getMonth() - birth.getMonth();
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age--;
@@ -105,6 +111,7 @@ export default function LoginScreen({ onAuthSuccess }) {
     if (role !== 'athlete') return { valid: true };
     const age = calculateAge();
     if (age === null) return { valid: false, message: 'Please enter your date of birth.' };
+    if (age === 'invalid') return { valid: false, message: 'Please check your date of birth — that date doesn\'t look right.' };
     // COPPA: athletes under 13 cannot self-register. A coach or parent/guardian
     // must set up the account. Athletes 13+ sign up normally (no parental
     // consent gate).
@@ -114,6 +121,8 @@ export default function LoginScreen({ onAuthSuccess }) {
 
   const handleEmailAuth = async () => {
     setFormError(null);
+    // Autocomplete often adds a trailing space → "Please enter a valid email".
+    const email = emailInput.trim();
     if (!email || !password) {
       setFormError('Please enter your email and password.');
       return;
@@ -190,8 +199,9 @@ export default function LoginScreen({ onAuthSuccess }) {
   };
 
   const handleForgotPassword = () => {
+    const email = emailInput.trim();
     if (!email) {
-      Alert.alert('Enter your email', 'Type your email address above first, then tap Forgot Password.');
+      notify('Enter your email', 'Type your email address above first, then tap Forgot Password.');
       return;
     }
     confirmDestructive({
@@ -201,12 +211,12 @@ export default function LoginScreen({ onAuthSuccess }) {
       onConfirm: async () => {
         try {
           await sendPasswordResetEmail(auth, email);
-          Alert.alert('Email sent', `Check ${email} for a password reset link. Check your spam folder if you don't see it.`);
+          notify('Email sent', `Check ${email} for a password reset link. Check your spam folder if you don't see it.`);
         } catch (error) {
           if (error.code === 'auth/user-not-found') {
-            Alert.alert('Not found', 'No account found with that email address.');
+            notify('Not found', 'No account found with that email address.');
           } else {
-            Alert.alert('Error', 'Could not send reset email. Please try again.');
+            notify('Error', 'Could not send reset email. Please try again.');
           }
         }
       },
@@ -235,7 +245,7 @@ export default function LoginScreen({ onAuthSuccess }) {
             end={{ x: 1, y: 1 }}
             style={styles.brandMark}
           >
-            <Text style={styles.brandMarkText}>TB</Text>
+            <Text style={styles.brandMarkText}>XC</Text>
           </LinearGradient>
           <Text style={styles.brandTitle}>XCTracker</Text>
           <Text style={styles.brandTagline}>Building championship teams</Text>
@@ -322,7 +332,7 @@ export default function LoginScreen({ onAuthSuccess }) {
             style={inputStyle('email')}
             placeholder="Email address"
             placeholderTextColor={SIGNAL.color.mute2}
-            value={email}
+            value={emailInput}
             onChangeText={(v) => { setEmail(v); if (formError) setFormError(null); }}
             keyboardType="email-address"
             autoCapitalize="none"
@@ -494,7 +504,6 @@ export default function LoginScreen({ onAuthSuccess }) {
         {/* Privacy notice */}
         {isSignUp && (
           <Text style={styles.privacyText}>
-            By creating an account you agree to our Terms of Service and Privacy Policy.
             We take the privacy and safety of minors seriously.
           </Text>
         )}

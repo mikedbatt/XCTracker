@@ -12,13 +12,28 @@ import { app, db } from '../firebaseConfig';
 // Without this key, web push registration is skipped (auth-only mode).
 const VAPID_KEY = process.env.EXPO_PUBLIC_FIREBASE_VAPID_KEY;
 
-export async function registerWebPush(uid) {
+// 'unsupported' | 'default' | 'granted' | 'denied'. Push needs Notification,
+// a service worker AND PushManager — iOS Safari only has PushManager inside an
+// installed home-screen app.
+export function webPushPermission() {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return 'unsupported';
+  if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+    return 'unsupported';
+  }
+  return Notification.permission;
+}
+
+// { prompt: false } only refreshes the token when permission is ALREADY
+// granted — used on every sign-in. Asking for permission must happen from a
+// user tap (components/NotificationPrompt.js), or iOS never shows the dialog.
+export async function registerWebPush(uid, { prompt = true } = {}) {
   if (Platform.OS !== 'web') return;
   if (!uid) return;
   if (typeof window === 'undefined' || !('Notification' in window)) {
     console.warn('Web push not supported in this browser');
     return;
   }
+  if (!prompt && Notification.permission !== 'granted') return;
   if (!VAPID_KEY) {
     console.warn('Web push skipped: EXPO_PUBLIC_FIREBASE_VAPID_KEY is not set');
     return;

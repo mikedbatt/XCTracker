@@ -36,8 +36,10 @@ service firebase.storage {
       allow create: if isSignedIn() && isImageUnder5MB();
         // && request.auth.token.schoolId == schoolId;  // ← enable after custom-claims migration
 
-      // Author can delete their school's feed images via the SDK if needed.
-      allow delete: if isSignedIn();
+      // No client deletes: the app never deletes feed images, and with no
+      // uploader recorded on the object, "any signed-in user" would let anyone
+      // wipe anyone's photos. Cleanup, if ever needed, runs server-side.
+      allow delete: if false;
     }
 
     // Default deny: nothing else in the bucket is readable or writable.

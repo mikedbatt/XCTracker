@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 import { SIGNAL } from '../constants/design';
-import { getActiveSeason, getPhaseForSeason, getCompletedSeasons, generateVolumeCurve } from './SeasonPlanner';
+import { getActiveSeason, getPhaseForSeason, getCompletedSeasons, generateVolumeCurve, getSeasonKey } from './SeasonPlanner';
 import SeasonReview from './SeasonReview';
 import { formatTime, calcPace, formatPace } from '../utils/raceUtils';
 import { PACE_ZONES, calcPaceZoneBreakdown, calcPaceZoneSecondsForRun, calcPace8020 } from '../utils/vdotUtils';
@@ -24,7 +24,7 @@ import { aggregateMiles, isCrossTraining, DEFAULT_CT_FACTORS } from '../utils/ac
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function AthleteAnalytics({ userData, school, myGroup, onClose }) {
+export default function AthleteAnalytics({ userData, school, myGroup, onClose, refreshKey = null }) {
   const [loading, setLoading] = useState(true);
   const [expandedSection, setExpandedSection] = useState(null);
   const [seasonReviewSeason, setSeasonReviewSeason] = useState(null);
@@ -37,6 +37,15 @@ export default function AthleteAnalytics({ userData, school, myGroup, onClose })
   const [raceMeets, setRaceMeets] = useState([]);
 
   useEffect(() => { loadData(); }, []);
+
+  // Kept mounted while hidden by AthleteDashboard — reload on re-open after the
+  // athlete's data changed (refreshKey = dashboard data version, null hidden).
+  const loadedKeyRef = useRef(refreshKey);
+  useEffect(() => {
+    if (refreshKey == null || refreshKey === loadedKeyRef.current) return;
+    loadedKeyRef.current = refreshKey;
+    loadData();
+  }, [refreshKey]);
 
   const loadData = async () => {
     setLoading(true);
@@ -73,7 +82,7 @@ export default function AthleteAnalytics({ userData, school, myGroup, onClose })
   const totalWeeks = activeSeason ? Math.ceil((new Date(activeSeason.championshipDate) - new Date(activeSeason.seasonStart)) / (7 * 86400000)) : null;
 
   // ── Feature 1: Season Volume Arc data ──
-  const seasonKey = activeSeason ? `${activeSeason.sport || 'cross_country'}_${activeSeason.seasonStart?.split?.('T')?.[0] || activeSeason.seasonStart}` : null;
+  const seasonKey = getSeasonKey(activeSeason);
   // Only build a curve from a real coach-set target — never fabricate a default.
   // No season or no group target → empty plan → "not set up yet" empty state.
   const volumePlan = seasonKey && myGroup?.seasonPlans?.[seasonKey]
@@ -184,8 +193,8 @@ export default function AthleteAnalytics({ userData, school, myGroup, onClose })
 
   // ── Feature 3b: Pace-based Training Quality (shown when VDOT set) ──
   // Uses calcPaceZoneSecondsForRun which falls back to deriving avg pace from
-  // miles + duration on manual runs — so athletes who log manually (no Strava)
-  // still get pace-based 80/20 even without a Strava pace stream.
+  // miles + duration on manual runs — so athletes who log manually (no Garmin)
+  // still get pace-based 80/20 without synced pace data.
   const trainingPaces = userData.trainingPaces || null;
   let paceZoneBreakdown = null;
   let paceEighty20 = null;

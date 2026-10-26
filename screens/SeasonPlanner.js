@@ -3,7 +3,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { doc, updateDoc } from 'firebase/firestore';
 import { useState } from 'react';
 import {
-  Alert,
   Platform,
   ScrollView,
   StyleSheet,
@@ -16,6 +15,7 @@ import { SIGNAL } from '../constants/design';
 import { db } from '../firebaseConfig';
 import { confirmDestructive } from '../utils/confirmDialog';
 import DatePickerField from './DatePickerField';
+import { notify } from '../utils/notify';
 
 // ── Sport definitions (3 sports) ─────────────────────────────────────────────
 export const SPORTS = {
@@ -77,6 +77,30 @@ export const SPORT_PHASES = {
       guidance: ['Strides and short accelerations only', 'Warm-up/warm-down non-negotiable on the track', 'Manage heat assignments and relay timing', 'Multi-event athletes: recovery between events', 'End of year — leave everything on the track'] },
   ],
 };
+
+// Key a group's seasonPlans map by sport + season start date.
+export function getSeasonKey(season) {
+  if (!season?.seasonStart) return null;
+  return `${season.sport || 'cross_country'}_${new Date(season.seasonStart).toISOString().split('T')[0]}`;
+}
+
+// A group's weekly mileage target for the week starting mondayISO — the ONE
+// definition the athlete home card and Stats tab share: the coach's season
+// volume plan, else a legacy per-week plan, else the curve generated from the
+// group's peak target (as the Stats tab charts it), else the flat target.
+// Returns null when the coach hasn't set anything.
+export function getGroupWeekTarget(group, season, mondayISO) {
+  if (!group) return null;
+  const key = getSeasonKey(season);
+  const plan = key ? group.seasonPlans?.[key] : null;
+  if (plan?.[mondayISO]) return plan[mondayISO];
+  if (group.weeklyPlan?.[mondayISO]) return group.weeklyPlan[mondayISO];
+  if (!plan && season && group.weeklyMilesTarget) {
+    const curve = generateVolumeCurve(season, group.weeklyMilesTarget);
+    if (curve[mondayISO]) return curve[mondayISO];
+  }
+  return group.weeklyMilesTarget || null;
+}
 
 // ── Generate a weekly volume plan from season dates + peak mileage ────────────
 export function generateVolumeCurve(season, peakMiles, startingMiles = null) {
@@ -386,11 +410,11 @@ export default function SeasonPlanner({ school, schoolId, onClose, onSaved }) {
 
   const handleSaveSeason = async () => {
     if (!seasonStart || !championshipDate) {
-      Alert.alert('Missing dates', 'Please set both a start date and championship date.');
+      notify('Missing dates', 'Please set both a start date and championship date.');
       return;
     }
     if (championshipDate <= seasonStart) {
-      Alert.alert('Invalid dates', 'Championship date must be after the start date.');
+      notify('Invalid dates', 'Championship date must be after the start date.');
       return;
     }
     const sportDef = SPORTS[sport];
@@ -410,7 +434,7 @@ export default function SeasonPlanner({ school, schoolId, onClose, onSaved }) {
       await updateDoc(doc(db, 'schools', schoolId), { seasons: updated });
       onSaved && onSaved({ seasons: updated });
     } catch {
-      Alert.alert('Error', 'Could not save to server. Check your connection and try again.');
+      notify('Error', 'Could not save to server. Check your connection and try again.');
     }
 
     setShowForm(false);
@@ -427,7 +451,7 @@ export default function SeasonPlanner({ school, schoolId, onClose, onSaved }) {
         try {
           await updateDoc(doc(db, 'schools', schoolId), { seasons: updated });
           onSaved && onSaved({ seasons: updated });
-        } catch { Alert.alert('Error', 'Could not delete. Please try again.'); }
+        } catch { notify('Error', 'Could not delete. Please try again.'); }
       },
     });
   };

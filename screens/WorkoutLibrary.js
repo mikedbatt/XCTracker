@@ -11,7 +11,6 @@ import {
 import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Modal,
     Platform,
     ScrollView,
@@ -24,6 +23,7 @@ import { db } from '../firebaseConfig';
 import { confirmDestructive } from '../utils/confirmDialog';
 import { SIGNAL } from '../constants/design';
 import { SIGNAL_TYPE_COLORS } from '../constants/training';
+import { notify } from '../utils/notify';
 
 // ── Built-in workout library organized by phase ───────────────────────────────
 export const BUILTIN_WORKOUTS = {
@@ -114,10 +114,10 @@ export default function WorkoutLibrary({ school, schoolId, userData, onClose, on
         savedAt: serverTimestamp(),
         isCustom: false,
       });
-      Alert.alert('Saved! ✅', `"${workout.name}" added to your library.`);
+      notify('Saved! ✅', `"${workout.name}" added to your library.`);
       loadSavedWorkouts();
     } catch (e) {
-      Alert.alert('Error', 'Could not save workout. Please try again.');
+      notify('Error', 'Could not save workout. Please try again.');
     }
   };
 
@@ -130,7 +130,7 @@ export default function WorkoutLibrary({ school, schoolId, userData, onClose, on
         try {
           await deleteDoc(doc(db, 'workoutLibrary', workout.id));
           setSavedWorkouts(prev => prev.filter(w => w.id !== workout.id));
-        } catch { Alert.alert('Error', 'Could not remove workout.'); }
+        } catch { notify('Error', 'Could not remove workout.'); }
       },
     });
   };
@@ -614,7 +614,7 @@ const styles = StyleSheet.create({
     backgroundColor: SIGNAL.color.paper2,
   },
   detailHeader: {
-    paddingTop: Platform.OS === 'ios' ? 18 : 18,
+    paddingTop: 18,
     paddingBottom: 14,
     paddingHorizontal: 18,
     flexDirection: 'row',

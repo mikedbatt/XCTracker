@@ -1,10 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as SecureStore from 'expo-secure-store';
-import { signOut } from 'firebase/auth';
-import { collection, doc, getDoc, getDocs, orderBy, query, where } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, updateDoc, where } from 'firebase/firestore';
 import { useState } from 'react';
 import {
-  ActivityIndicator, Alert,
+  ActivityIndicator,
   Platform,
   ScrollView,
   StyleSheet,
@@ -22,6 +20,8 @@ import CalendarScreen from './CalendarScreen';
 import ChannelList from './ChannelList';
 import ParentLinkScreen from './ParentLinkScreen';
 import { useStaleRefresh } from '../hooks/useStaleRefresh';
+import { signOutUser } from '../utils/signOutUser';
+import { aggregateMiles, DEFAULT_CT_FACTORS, isCrossTraining } from '../utils/activityMiles';
 
 export default function ParentDashboard({ userData }) {
   const [athletes, setAthletes] = useState([]);
@@ -33,12 +33,22 @@ export default function ParentDashboard({ userData }) {
   const [activeTab, setActiveTab] = useState('home');
   const [unreadFeedCount, setUnreadFeedCount] = useState(0);
   const [feedSchool, setFeedSchool] = useState(null);
+  // Outstanding link requests this parent sent (athlete hasn't responded, or declined).
+  const [linkRequests, setLinkRequests] = useState([]);
 
   const loadDashboard = async () => {
     try {
-      const parentSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
+      const uid = auth.currentUser.uid;
+      const [parentSnap, requestsSnap] = await Promise.all([
+        getDoc(doc(db, 'users', uid)),
+        getDocs(query(collection(db, 'parentLinks'), where('parentId', '==', uid)))
+          .catch(e => { console.warn('Parent link requests load:', e); return { docs: [] }; }),
+      ]);
       const parentData = parentSnap.exists() ? parentSnap.data() : userData;
       const linkedIds = parentData.linkedAthleteIds || [];
+      setLinkRequests(requestsSnap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(r => r.status !== 'approved' && !linkedIds.includes(r.athleteId)));
 
       if (linkedIds.length > 0) {
         const athleteDocs = await Promise.all(
@@ -48,6 +58,19 @@ export default function ParentDashboard({ userData }) {
           .filter(d => d.exists())
           .map(d => ({ id: d.id, ...d.data() }));
         setAthletes(athleteData);
+
+        // Linked before the athlete was on a team → pick up their school now so
+        // the team feed and calendar open (rule: ownerParentAdoptsSchool).
+        if (!parentData.schoolId) {
+          const source = athleteData.find(a => a.schoolId && a.status === 'approved');
+          if (source) {
+            await updateDoc(doc(db, 'users', uid), {
+              schoolId: source.schoolId,
+              status: 'approved',
+              schoolSourceAthleteId: source.id,
+            }).catch(e => console.warn('Parent school pickup:', e));
+          }
+        }
         const first = athleteData[0];
         if (first) {
           setSelectedAthlete(first);
@@ -103,15 +126,48 @@ export default function ParentDashboard({ userData }) {
       title: 'Sign out',
       message: 'Are you sure?',
       confirmLabel: 'Sign out',
+      onConfirm: signOutUser,
+    });
+  };
+
+  const handleWithdrawRequest = (request) => {
+    confirmDestructive({
+      title: request.status === 'declined' ? 'Remove request?' : 'Cancel request?',
+      message: `Your request to connect with ${request.athleteName || 'this athlete'} will be removed.`,
+      confirmLabel: 'Remove',
       onConfirm: async () => {
         try {
-          await SecureStore.deleteItemAsync('xctracker_email');
-          await SecureStore.deleteItemAsync('xctracker_password');
-        } catch (e) { /* SecureStore unavailable on web — Firebase persistence handles auth */ }
-        signOut(auth);
+          await deleteDoc(doc(db, 'parentLinks', request.id));
+          setLinkRequests(prev => prev.filter(r => r.id !== request.id));
+        } catch (e) { console.error('Withdraw parent link request:', e); }
       },
     });
   };
+
+  // Requests waiting on (or declined by) the athlete.
+  const renderLinkRequests = () => linkRequests.length > 0 && (
+    <>
+      <Text style={styles.sectionTitle}>Requests</Text>
+      {linkRequests.map(r => (
+        <View key={r.id} style={styles.linkedAthleteCard}>
+          <Ionicons
+            name={r.status === 'declined' ? 'close-circle-outline' : 'time-outline'}
+            size={22}
+            color={r.status === 'declined' ? SIGNAL.color.coral : SIGNAL.color.amber}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.linkedName}>{r.athleteName || 'Athlete'}</Text>
+            <Text style={styles.linkedSchool}>
+              {r.status === 'declined' ? 'Declined' : 'Waiting for them to approve'}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={() => handleWithdrawRequest(r)} hitSlop={8}>
+            <Text style={styles.addAthleteBtnText}>{r.status === 'declined' ? 'Remove' : 'Cancel'}</Text>
+          </TouchableOpacity>
+        </View>
+      ))}
+    </>
+  );
 
   const handleSwitchAthlete = (athlete) => {
     setSelectedAthlete(athlete);
@@ -168,16 +224,25 @@ export default function ParentDashboard({ userData }) {
       </View>
 
       {/* Body */}
-      {athletes.length === 0 ? (
-        <View style={styles.noAthletes}>
-          <Text style={styles.noAthletesTitle}>No athletes linked</Text>
-          <Text style={styles.noAthletesText}>
-            Ask your athlete to sign up for XCTracker first, then you can link to their account.
+      {athletes.length === 0 && activeTab !== 'profile' && activeTab !== 'addAthlete' ? (
+        <ScrollView contentContainerStyle={styles.noAthletes}>
+          <Text style={styles.noAthletesTitle}>
+            {linkRequests.some(r => r.status === 'pending') ? 'Waiting for approval' : 'No athletes linked'}
           </Text>
-          <TouchableOpacity style={styles.linkBtn} onPress={() => setActiveTab('profile')}>
+          <Text style={styles.noAthletesText}>
+            {linkRequests.some(r => r.status === 'pending')
+              ? 'Your athlete needs to approve your request in their XCTracker app. Once they do, their training shows up here.'
+              : 'Your athlete needs an XCTracker account first. Then send them a request — they approve it in their app.'}
+          </Text>
+          <View style={{ alignSelf: 'stretch', marginBottom: SIGNAL.space[5] }}>{renderLinkRequests()}</View>
+          <TouchableOpacity style={styles.linkBtn} onPress={() => setActiveTab('addAthlete')}>
             <Text style={styles.linkBtnText}>Link an athlete</Text>
           </TouchableOpacity>
-        </View>
+          <TouchableOpacity style={[styles.signOutBtn, { marginTop: SIGNAL.space[6] }]} onPress={handleSignOut}>
+            <Ionicons name="log-out-outline" size={18} color={SIGNAL.color.coral} />
+            <Text style={styles.signOutText}>Sign out</Text>
+          </TouchableOpacity>
+        </ScrollView>
       ) : (
         <>
           {/* Feed tab (independent of athlete selection) */}
@@ -228,9 +293,10 @@ export default function ParentDashboard({ userData }) {
                   <Text style={styles.linkedChevron}>›</Text>
                 </View>
               ))}
+              {renderLinkRequests()}
               <TouchableOpacity style={styles.addAthleteBtn} onPress={() => setActiveTab('addAthlete')}>
                 <Ionicons name="add-circle-outline" size={18} color={SIGNAL.color.indigo} />
-                <Text style={styles.addAthleteBtnText}>Link another athlete</Text>
+                <Text style={styles.addAthleteBtnText}>{athletes.length ? 'Link another athlete' : 'Link an athlete'}</Text>
               </TouchableOpacity>
 
               <LegalLinks />
@@ -245,7 +311,10 @@ export default function ParentDashboard({ userData }) {
           {/* Add athlete overlay */}
           {activeTab === 'addAthlete' && (
             <View style={styles.overlay}>
-              <ParentLinkScreen onLinkComplete={() => { setActiveTab('profile'); loadDashboard(); }} />
+              <ParentLinkScreen
+                onLinkComplete={() => { setActiveTab('profile'); loadDashboard(); }}
+                onCancel={() => setActiveTab(athletes.length ? 'profile' : 'home')}
+              />
             </View>
           )}
 
@@ -271,15 +340,20 @@ export default function ParentDashboard({ userData }) {
                   </View>
 
                   {(() => {
+                    // Same week + mileage rules as the athlete's own dashboard:
+                    // Monday-start week, cross-training counted as credit miles.
                     const now = new Date();
-                    const weekStart = new Date(now); weekStart.setDate(now.getDate() - 7); weekStart.setHours(0, 0, 0, 0);
+                    const weekStart = new Date(now);
+                    weekStart.setDate(now.getDate() - (now.getDay() === 0 ? 6 : now.getDay() - 1));
+                    weekStart.setHours(0, 0, 0, 0);
                     const weekRuns = athleteRuns.filter(r => {
                       const d = r.date?.toDate ? r.date.toDate() : new Date(r.date);
                       return d >= weekStart;
                     });
-                    const weekMiles = weekRuns.reduce((sum, r) => sum + (Number(r.miles) || 0), 0);
-                    const easyRuns = weekRuns.filter(r => (r.effort || 0) <= 4).length;
-                    const easyPct = weekRuns.length > 0 ? Math.round((easyRuns / weekRuns.length) * 100) : 0;
+                    const weekMiles = aggregateMiles(weekRuns, school?.crossTrainingFactors || DEFAULT_CT_FACTORS).totalMiles;
+                    const runningRuns = weekRuns.filter(r => !isCrossTraining(r));
+                    const easyRuns = runningRuns.filter(r => (r.effort || 0) <= 4).length;
+                    const easyPct = runningRuns.length > 0 ? Math.round((easyRuns / runningRuns.length) * 100) : 0;
                     const lastRun = athleteRuns[0];
                     const lastDate = lastRun?.date?.toDate ? lastRun.date.toDate() : (lastRun?.date ? new Date(lastRun.date) : null);
                     const lastLabel = lastDate ? lastDate.toLocaleDateString('en-US', { weekday: 'short' }) : '—';
@@ -303,7 +377,7 @@ export default function ParentDashboard({ userData }) {
                           <View style={styles.lastActivity}>
                             <Text style={styles.lastActivityDot}>● </Text>
                             <Text style={styles.lastActivityText}>
-                              Last activity: {(Number(lastRun.distance) || 0).toFixed(1)} mi · {lastLabel}
+                              Last activity: {(Number(lastRun.miles) || 0).toFixed(1)} mi · {lastLabel}
                             </Text>
                           </View>
                         )}
@@ -408,6 +482,7 @@ export default function ParentDashboard({ userData }) {
                 groups={groups}
                 externalAthleteRuns={athleteRuns}
                 trainingPaces={selectedAthlete.trainingPaces || null}
+                athleteGroup={groups.find(g => g.id === selectedAthlete.groupId) || null}
                 onClose={() => setActiveTab('home')}
               />
             </View>
@@ -489,7 +564,7 @@ const styles = StyleSheet.create({
   athleteChipTextActive: { color: '#fff' },
 
   // Empty state
-  noAthletes:         { flex: 1, alignItems: 'center', justifyContent: 'center', padding: SIGNAL.space[8] },
+  noAthletes:         { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: SIGNAL.space[8] },
   noAthletesTitle:    {
     fontFamily: SIGNAL.font.display,
     fontSize: SIGNAL.size.title,

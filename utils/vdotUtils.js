@@ -165,7 +165,7 @@ export function calcPaceZoneBreakdown(paceStream, trainingPaces) {
 /**
  * Compute pace-zone seconds for a single run, with sensible fallbacks.
  * Tiered priority (most precise first):
- *   1. rawPaceStream  — per-second pace data from Strava
+ *   1. rawPaceStream  — per-second pace data (legacy Strava runs; not persisted)
  *   2. paceZoneSeconds — pre-computed at sync time
  *   3. miles + duration — derive avg pace, assign whole run to one zone
  *      (used for manual run entries with no pace stream)

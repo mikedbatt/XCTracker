@@ -1,17 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
 import {
-  addDoc, collection, deleteDoc, doc, getDocs, query,
-  serverTimestamp, updateDoc, where,
+  collection, doc, getDocs, query,
+  serverTimestamp, where, writeBatch,
 } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
+  ActivityIndicator, KeyboardAvoidingView, Platform,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 import { bottomInset } from '../utils/safeArea';
 import { BRAND, SIGNAL } from '../constants/design';
 import { parseTime, formatTime, calcPace } from '../utils/raceUtils';
+import { notify } from '../utils/notify';
 
 export default function RaceResultsEntry({ race, meet, schoolId, school, athletes, existingResults, onClose }) {
   const [entries, setEntries] = useState([]);
@@ -53,28 +54,33 @@ export default function RaceResultsEntry({ race, meet, schoolId, school, athlete
     const finishedEntries = entries.filter(e => e.status === 'finished' && e.timeInput.trim());
     for (const e of finishedEntries) {
       if (!parseTime(e.timeInput)) {
-        Alert.alert('Invalid time', `"${e.timeInput}" for ${e.athleteName} is not a valid time. Use MM:SS or H:MM:SS format.`);
+        notify('Invalid time', `"${e.timeInput}" for ${e.athleteName} is not a valid time. Use MM:SS or H:MM:SS format.`);
         return;
       }
     }
 
     setSaving(true);
     try {
-      // Delete existing results for this race (overwrite approach)
+      // ONE atomic batch: write every result at a fixed id ({raceId}_{athleteId}),
+      // then delete any older result docs for this race that aren't in the new
+      // set (legacy random ids, or athletes whose row was cleared). The old
+      // delete-everything-then-add-one-by-one flow lost saved results if the
+      // connection dropped partway through on meet day.
       const existingSnap = await getDocs(query(
         collection(db, 'raceResults'),
         where('raceId', '==', race.id)
       ));
-      for (const d of existingSnap.docs) {
-        await deleteDoc(doc(db, 'raceResults', d.id));
-      }
+      const meetDate = meet.date?.toDate ? meet.date.toDate() : new Date(meet.date);
+      const batch = writeBatch(db);
+      const keepIds = new Set();
 
-      // Create new results
       for (const e of entries) {
         const seconds = parseTime(e.timeInput);
         if (e.status === 'finished' && !seconds) continue; // skip empty finished entries
 
-        await addDoc(collection(db, 'raceResults'), {
+        const resultId = `${race.id}_${e.athleteId}`;
+        keepIds.add(resultId);
+        batch.set(doc(db, 'raceResults', resultId), {
           raceId: race.id,
           meetId: meet.id || race.meetId,
           schoolId,
@@ -93,29 +99,36 @@ export default function RaceResultsEntry({ race, meet, schoolId, school, athlete
           createdAt: serverTimestamp(),
         });
 
-        // Update latestRaceTimes on athlete's user doc
+        // latestRaceTimes = the most RECENT race at this distance. Re-editing an
+        // older meet must not overwrite a newer time.
         if (seconds && e.status === 'finished' && race.distanceLabel) {
-          try {
-            await updateDoc(doc(db, 'users', e.athleteId), {
+          const athlete = athletes.find(a => a.id === e.athleteId);
+          const stored = athlete?.latestRaceTimes?.[race.distanceLabel];
+          const storedDate = stored?.date ? new Date(stored.date) : null;
+          if (!storedDate || stored.raceId === race.id || meetDate >= storedDate) {
+            batch.update(doc(db, 'users', e.athleteId), {
               [`latestRaceTimes.${race.distanceLabel}`]: {
                 time: seconds,
                 display: formatTime(seconds),
                 raceId: race.id,
-                date: meet.date?.toDate ? meet.date.toDate().toISOString() : new Date(meet.date).toISOString(),
+                date: meetDate.toISOString(),
               },
             });
-          } catch (err) { console.warn('Failed to update latestRaceTimes:', err); }
+          }
         }
       }
 
-      // Mark race as results entered
-      await updateDoc(doc(db, 'races', race.id), { resultsEntered: true });
+      existingSnap.docs.forEach(d => {
+        if (!keepIds.has(d.id)) batch.delete(d.ref);
+      });
+      batch.update(doc(db, 'races', race.id), { resultsEntered: true });
+      await batch.commit();
 
-      Alert.alert('Saved!', 'Race results have been saved.');
+      notify('Saved!', 'Race results have been saved.');
       onClose();
     } catch (e) {
       console.error('Failed to save results:', e);
-      Alert.alert('Error', 'Could not save results. Please try again.');
+      notify('Error', 'Could not save results. Please try again.');
     }
     setSaving(false);
   };

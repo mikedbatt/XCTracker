@@ -62,7 +62,7 @@ app/              # Expo Router entry. `index.tsx` boots the app;
                   # `+html.tsx` is the web-only HTML shell that injects a
                   # brand splash visible until React hydrates #root.
 screens/          # All application screens — main source code
-components/       # Reusable UI components (Card, Button, WebMaxWidth)
+components/       # Reusable UI components (Button, WebMaxWidth, prompts/banners)
 constants/        # Theme colors and app-wide constants
 hooks/            # React hooks (useStaleRefresh, useResponsiveLayout)
 utils/            # Pure-logic helpers (pace zones, race utils, compliance,
@@ -114,8 +114,18 @@ garminConfig.js   # Garmin client helpers (PKCE, auth URL, authed calls to the G
   / `MeetDetail.js` — race and meet management
 
 ### Parent-facing
-- `screens/ParentDashboard.js` — multi-athlete, multi-school parent view
-- `screens/ParentLinkScreen.js` — link parent account to an athlete
+- `screens/ParentDashboard.js` — multi-athlete, multi-school parent view. Parents
+  ALWAYS route here (never to an onboarding screen by `schoolId`); it handles
+  the no-athlete state, outstanding link requests, and picks up a linked
+  athlete's school once that athlete is on an approved team.
+- `screens/ParentLinkScreen.js` — parent finds an athlete by email and sends a
+  **link request** (`parentLinks/{parentId}_{athleteId}`, status 'pending').
+- **Parent links are athlete-approved.** `components/ParentRequests.js` shows
+  pending requests (AthleteDashboard + Profile → Connections) with
+  Approve/Decline. Approving sets the request to 'approved'; the
+  `onParentLinkUpdate` Cloud Function then writes `linkedAthleteIds` /
+  `linkedParentIds` / the parent's `schoolId` with the Admin SDK (rules forbid
+  clients from writing those). `onParentLinkCreate` pushes the athlete.
 
 ### Team communication
 - `screens/TeamFeed.js` / `ChannelList.js` — team feed with image attachments
@@ -136,6 +146,14 @@ garminConfig.js   # Garmin client helpers (PKCE, auth URL, authed calls to the G
   callers can chain comparisons safely. **Use `toLocalISODate(date)` for any
   "is this today?" comparison** — `.toISOString().split('T')[0]` returns UTC
   date which flips to tomorrow in evening Eastern / afternoon Pacific.
+  **Use `endOfLocalDay(date)` for the END of an inclusive range** (custom
+  timeframe, season, Season Review) — ending at the stored midnight drops the
+  last day. Daily-tip doc keys (`dailyMessages/{schoolId}_{date}`) use
+  `toLocalISODate` on both writer and readers.
+- `getGroupWeekTarget(group, season, mondayISO)` (in `screens/SeasonPlanner.js`,
+  next to `getActiveSeason`/`getSeasonKey`) — the ONE weekly mileage target the
+  athlete home card and Stats tab share (season volume plan → legacy weeklyPlan
+  → generated curve → flat target).
 - `utils/complianceUtils.js` — training compliance scoring
 - `utils/weeklyCheckinUtils.js` — weekly check-in helpers: window math
   (`isInWeeklyWindow`, `getWeekAnchor`), doc-ID convention
@@ -168,10 +186,17 @@ garminConfig.js   # Garmin client helpers (PKCE, auth URL, authed calls to the G
   (CalendarScreen marks the days + swaps the day-detail item). The "Managed" list
   shows every athlete with an active override (even after their injury check-in
   ages out).
+- `utils/signOutUser.js` — the ONE sign-out path: clears this device's push
+  token from the user doc first (shared Chromebooks otherwise route one user's
+  notifications to another), then signs out. Never call `signOut(auth)` directly.
+- `utils/notify.js` — `notify(title, message, onDismiss?)`. **Use this for
+  every one-button message** ("Saved", "Not found", validation). On web,
+  react-native-web's `Alert.alert` is a literal no-op (`static alert() {}`), so
+  any `Alert.alert` message silently never appears; `notify` uses
+  `window.alert` there. Don't call `Alert.alert` directly anywhere.
 - `utils/confirmDialog.js` — `confirmDestructive({title, message, confirmLabel,
-  onConfirm})`. **Use this instead of `Alert.alert([...buttons])`** — the
-  multi-button native Alert is broken on web (collapses to OK-only via
-  `window.alert`). The helper branches to `window.confirm` on web.
+  onConfirm})`. **Use this for every "are you sure?" prompt** — the helper
+  branches to `window.confirm` on web (where Alert does nothing at all).
 - `utils/imageHelpers.js` — `pickImageCrossPlatform()` and
   `saveImageCrossPlatform(url)`. Native uses expo-image-picker / media-library;
   web uses `<input type=file>` and browser anchor-download.
@@ -299,7 +324,12 @@ Three rules that keep dashboards fast:
    per-entity loops. One batched query (`where field in [ids]`) replaces
    N sequential round-trips. Firestore's `in` operator is capped at 30 values
    per query — the helper chunks in parallel. Applies to any "for each
-   athlete, fetch their X" pattern.
+   athlete, fetch their X" pattern. **Bound team runs reads** with its
+   `constraints` option (`[where('date','>=',start), orderBy('date','desc')]`,
+   served by the runs userId+date index): the athlete leaderboard fetches only
+   the selected timeframe; CoachDashboard fetches timeframe + 5 weeks (ACWR /
+   weekly compliance). CoachDashboard's overtraining alerts reuse those runs +
+   the week's school check-ins — never re-query per athlete.
 
 3. **Wrap loads in `hooks/useStaleRefresh.js`** for screens the user
    returns to. First load shows the spinner; subsequent loads (e.g.
@@ -325,6 +355,20 @@ firebase deploy --only firestore:rules    # rules-only redeploy
 firebase deploy --only firestore:indexes  # indexes-only redeploy
 firebase deploy --only storage            # Cloud Storage rules (storage.rules)
 ```
+
+**Firestore write rules are field-restricted** (2026-10 audit). `users/{uid}`:
+an owner may edit profile fields freely but may change `role`, `status`,
+`schoolId`, `coachRole`, `groupId`, `linkedAthleteIds` & co. ONLY via the named
+flows in `firestore.rules` (`ownerJoinRequest` → always 'pending',
+`ownerLeaveTeam`, `ownerCreateSchool` → `school_{uid}`, `ownerParentAdoptsSchool`);
+coaches may only approve/deny/remove/group athletes at their school
+(`coachManagesUser`; assistants are head-coach-managed). `isCoachAtSchool`
+requires `status == 'approved'`, so a pending assistant has no coach powers.
+Team posts must carry the poster's own `authorId/authorRole/authorName`, parents
+can't post, and coach/parent channels are coach-only. **When adding a new
+client write to a user doc, add its field to the right rule function or it
+will be denied.** Rules can only be compile-checked locally
+(`firebase deploy --only firestore:rules --dry-run`) — no Java, so no emulator.
 
 `storage.rules` (root, wired in `firebase.json`) governs Cloud Storage —
 currently just team-feed image uploads (`teamPosts/{schoolId}/…`). Enforces
@@ -409,6 +453,11 @@ preserved and resumable. Patterns when working in web-touched code:
   Web uses FCM via `utils/webPush.js` + `webPushToken`. Cloud Functions fan
   out to both tokens per user. Requires `EXPO_PUBLIC_FIREBASE_VAPID_KEY`.
   iOS web push only works once the PWA is installed to the home screen (16.4+).
+  **The permission prompt must come from a tap:** sign-in only calls
+  `registerWebPush(uid, { prompt: false })` (refreshes an already-granted
+  token); `components/NotificationPrompt.js` (top banner, mounted in
+  AppNavigator) asks via its "Turn on" button. Sign-out goes through
+  `utils/signOutUser.js`, which removes the device token.
 - **PWA auto-update:** an installed PWA keeps serving the build it opened with
   until a full navigation. `utils/pwaUpdate.js` (mounted via
   `components/UpdateBanner.js` in `AppNavigator`) detects a new deploy by
@@ -425,16 +474,19 @@ preserved and resumable. Patterns when working in web-touched code:
   returns `index.html` with a 200 for a since-deleted hashed chunk; caching that
   poisoned the cache and made the `Unexpected token '<'` crash sticky. Pair with
   `lazyWithReload` above.) Bump the `CACHE` name (currently `teambase-shell-v3`)
-  to force the activate handler to purge the prior cache. Registered
+  to force the activate handler to purge the prior cache. Reload-on-activate
+  (SW `activate` → `navigate()`, and the page's `controllerchange` listener)
+  runs **only when a new SW replaces an older one** — never on a first visit,
+  where it used to wipe half-typed signup forms. Registered
   eagerly at startup by `utils/registerServiceWorker.js` (called from
   `app/index.tsx`) so it's present for first-time visitors regardless of
   login/push. `utils/webPush.js` re-registers the same URL (idempotent) when push
   is enabled. Firebase config is passed in via URL query string so values stay in
   sync with `firebaseConfig.js`.
-- **Confirmation dialogs:** use `confirmDestructive` from
-  `utils/confirmDialog.js` — never `Alert.alert([...buttons])` directly. The
-  multi-button Alert is silently broken on web (the button array is dropped, so
-  any `onPress` — including the one doing the work or navigating — never fires).
+- **Messages + confirmation dialogs:** `Alert.alert` does NOTHING on web
+  (react-native-web ships an empty stub) — no message, no buttons, no
+  `onPress`. Use `notify` (`utils/notify.js`) for messages and
+  `confirmDestructive` (`utils/confirmDialog.js`) for confirmations.
   Same trap for `Alert.alert` used as a picker/action-sheet: build a real
   `<Modal>` (see the group picker in `ManageGroups`).
 - **Date pickers:** use `screens/DatePickerField.js` — it Platform-branches to a

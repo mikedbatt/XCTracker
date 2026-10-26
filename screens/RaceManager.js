@@ -3,13 +3,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { addDoc, collection, doc, getDocs, query, serverTimestamp, where } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Platform, ScrollView, StyleSheet,
+  ActivityIndicator, Platform, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 import { BRAND, SIGNAL } from '../constants/design';
 import DatePickerField from './DatePickerField';
 import MeetDetail from './MeetDetail';
+import { notify } from '../utils/notify';
 
 export default function RaceManager({ schoolId, school, athletes, groups, onClose }) {
   const [meets, setMeets] = useState([]);
@@ -48,8 +49,8 @@ export default function RaceManager({ schoolId, school, athletes, groups, onClos
   };
 
   const handleAddMeet = async () => {
-    if (!meetName.trim()) { Alert.alert('Name required', 'Please enter a meet name.'); return; }
-    if (!meetDate) { Alert.alert('Date required', 'Please select a meet date.'); return; }
+    if (!meetName.trim()) { notify('Name required', 'Please enter a meet name.'); return; }
+    if (!meetDate) { notify('Date required', 'Please select a meet date.'); return; }
     setSaving(true);
     try {
       // Create meet doc
@@ -93,7 +94,7 @@ export default function RaceManager({ schoolId, school, athletes, groups, onClos
       await loadMeets();
     } catch (e) {
       console.warn('Failed to create meet:', e);
-      Alert.alert('Error', 'Could not create meet. Please try again.');
+      notify('Error', 'Could not create meet. Please try again.');
     }
     setSaving(false);
   };

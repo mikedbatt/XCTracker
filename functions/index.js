@@ -20,8 +20,29 @@ async function sendWebPushNotifications(messages) {
           Object.entries(m.data).map(([k, v]) => [k, String(v)])
         ),
       }),
-    }).catch(e => console.warn('FCM web send error:', e.message))
+    }).catch(e => {
+      // Token belongs to an uninstalled app / cleared browser: drop it from
+      // every user doc that holds it so it isn't retried on every send.
+      if (DEAD_FCM_TOKEN_CODES.has(e.code)) return removeDeadWebPushToken(m.token);
+      console.warn('FCM web send error:', e.code || '', e.message);
+    })
   ));
+}
+
+const DEAD_FCM_TOKEN_CODES = new Set([
+  'messaging/registration-token-not-registered',
+  'messaging/invalid-registration-token',
+]);
+
+async function removeDeadWebPushToken(token) {
+  try {
+    const snap = await db.collection('users').where('webPushToken', '==', token).get();
+    await Promise.all(snap.docs.map(d =>
+      d.ref.update({ webPushToken: admin.firestore.FieldValue.delete() })));
+    if (snap.size) console.log(`Removed dead web push token from ${snap.size} user(s)`);
+  } catch (e) {
+    console.warn('removeDeadWebPushToken failed:', e.message);
+  }
 }
 
 // ── Garmin ────────────────────────────────────────────────────────────────────
@@ -36,7 +57,7 @@ async function sendWebPushNotifications(messages) {
 // non-secret status: garminConnected, garminLastSync, garminBackfill.
 //
 // All endpoints stay onRequest (not onCall) — same reasoning as the prior
-// Strava functions. maxInstances caps cost-abuse exposure.
+// (since-removed) Strava functions. maxInstances caps cost-abuse exposure.
 
 const GARMIN_RUNTIME = { maxInstances: 10 };
 const GARMIN_TOKEN_URL = 'https://diauth.garmin.com/di-oauth2-service/oauth/token';
@@ -652,13 +673,17 @@ exports.garminWebhook = functions
 // Triggered when a new document is created in the teamPosts collection.
 // Sends push notifications to all relevant users based on the channel.
 
-exports.onNewTeamPost = functions.firestore
+exports.onNewTeamPost = functions
+  .runWith({ maxInstances: 10 })
+  .firestore
   .document('teamPosts/{postId}')
   .onCreate(async (snap, context) => {
     const post = snap.data();
-    if (!post.schoolId || !post.text) return;
+    // Image-only posts are saved with text: '' — they still notify.
+    if (!post.schoolId || (!post.text && !post.imageUrl)) return;
 
-    const { schoolId, channel, authorId, authorName, text } = post;
+    const { schoolId, channel, authorId, authorName } = post;
+    const text = post.text || '📷 Photo';
     const channelKey = channel || 'whole_team';
 
     try {
@@ -666,27 +691,28 @@ exports.onNewTeamPost = functions.firestore
         .where('schoolId', '==', schoolId)
         .get();
 
-      const parentSnap = await db.collection('users')
-        .where('role', '==', 'parent')
-        .get();
+      const allUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const seen = new Set(allUsers.map(u => u.id));
 
-      const allUsers = [
-        ...usersSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-      ];
-
-      const schoolAthleteIds = usersSnap.docs
-        .filter(d => d.data().role === 'athlete')
-        .map(d => d.id);
-
-      parentSnap.docs.forEach(d => {
-        const parent = { id: d.id, ...d.data() };
-        const linked = parent.linkedAthleteIds || [];
-        if (linked.some(id => schoolAthleteIds.includes(id))) {
-          if (!allUsers.find(u => u.id === parent.id)) {
-            allUsers.push(parent);
-          }
-        }
-      });
+      // Parents linked to this school's athletes who don't carry the schoolId
+      // yet (linked before their athlete joined the team). Bounded lookup —
+      // array-contains-any takes ≤30 values — instead of reading EVERY parent
+      // in the database on every post.
+      const schoolAthleteIds = allUsers.filter(u => u.role === 'athlete').map(u => u.id);
+      const parentChunks = [];
+      for (let i = 0; i < schoolAthleteIds.length; i += 30) {
+        parentChunks.push(schoolAthleteIds.slice(i, i + 30));
+      }
+      const parentSnaps = await Promise.all(parentChunks.map(ids =>
+        // Only parent docs carry linkedAthleteIds, so no role filter (which
+        // would need a composite index).
+        db.collection('users')
+          .where('linkedAthleteIds', 'array-contains-any', ids)
+          .get()
+      ));
+      parentSnaps.forEach(ps => ps.docs.forEach(d => {
+        if (!seen.has(d.id)) { seen.add(d.id); allUsers.push({ id: d.id, ...d.data() }); }
+      }));
 
       const recipients = allUsers.filter(user => {
         if (user.id === authorId) return false;
@@ -721,9 +747,16 @@ exports.onNewTeamPost = functions.firestore
       const body = text.length > 100 ? text.slice(0, 97) + '...' : text;
       const data = { channel: channelKey, postId: context.params.postId };
 
+      // One send per device token: a shared family/school device can hold the
+      // same token on several user docs.
+      const sentTokens = new Set();
       const messages = [];
       const webMessages = [];
       for (const user of recipients) {
+        if (user.expoPushToken && sentTokens.has(user.expoPushToken)) continue;
+        if (user.webPushToken && sentTokens.has(user.webPushToken)) continue;
+        if (user.expoPushToken) sentTokens.add(user.expoPushToken);
+        if (user.webPushToken) sentTokens.add(user.webPushToken);
         if (user.expoPushToken && Expo.isExpoPushToken(user.expoPushToken)) {
           messages.push({
             to: user.expoPushToken,
@@ -754,31 +787,63 @@ exports.onNewTeamPost = functions.firestore
   });
 
 // ── Daily Wellness Check-In Reminder ─────────────────────────────────────────
-// Runs once daily at 4 PM Eastern (3 PM CT, 2 PM MT, 1 PM PT).
+// Runs once daily at 4 PM Eastern (3 PM CT, 2 PM MT, 1 PM PT). "Already checked
+// in today" is judged against midnight in each athlete's SCHOOL timezone —
+// Cloud Functions run in UTC, so setHours(0) meant "since 8 PM ET yesterday"
+// and an evening check-in suppressed the next day's reminder.
 
-exports.dailyCheckinReminder = functions.pubsub
+// Midnight at the start of now's calendar day in `tz`, as a Date.
+function startOfDayInTimeZone(now, tz) {
+  const parts = {};
+  new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hourCycle: 'h23',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(now).forEach(p => { parts[p.type] = p.value; });
+  const asUtc = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second);
+  const offsetMs = asUtc - Math.floor(now.getTime() / 1000) * 1000;
+  return new Date(Date.UTC(+parts.year, +parts.month - 1, +parts.day) - offsetMs);
+}
+
+exports.dailyCheckinReminder = functions
+  .runWith({ maxInstances: 1 })
+  .pubsub
   .schedule('0 16 * * *')
   .timeZone('America/New_York')
   .onRun(async (context) => {
     try {
       const now = new Date();
-      const todayStart = new Date(now);
-      todayStart.setHours(0, 0, 0, 0);
-
-      const athletesSnap = await db.collection('users')
-        .where('role', '==', 'athlete')
-        .where('status', '==', 'approved')
-        .get();
+      const [athletesSnap, schoolsSnap] = await Promise.all([
+        db.collection('users')
+          .where('role', '==', 'athlete')
+          .where('status', '==', 'approved')
+          .get(),
+        db.collection('schools').get(),
+      ]);
 
       if (athletesSnap.empty) return;
 
-      const checkinsSnap = await db.collection('checkins')
-        .where('date', '>=', admin.firestore.Timestamp.fromDate(todayStart))
-        .get();
+      const dayStartBySchool = {};
+      schoolsSnap.docs.forEach(d => {
+        dayStartBySchool[d.id] = startOfDayInTimeZone(now, d.data().timezone || 'America/New_York');
+      });
+      const defaultDayStart = startOfDayInTimeZone(now, 'America/New_York');
+      const earliest = new Date(Math.min(defaultDayStart, ...Object.values(dayStartBySchool)));
 
-      const checkedInUserIds = new Set(
-        checkinsSnap.docs.map(d => d.data().userId).filter(Boolean)
-      );
+      // Latest check-in per athlete since the earliest school's midnight.
+      const checkinsSnap = await db.collection('checkins')
+        .where('date', '>=', admin.firestore.Timestamp.fromDate(earliest))
+        .get();
+      const latestCheckin = {};
+      checkinsSnap.docs.forEach(d => {
+        const { userId, date } = d.data();
+        const when = date?.toDate ? date.toDate() : (date ? new Date(date) : null);
+        if (userId && when && (!latestCheckin[userId] || when > latestCheckin[userId])) latestCheckin[userId] = when;
+      });
+      const checkedInToday = (uid, schoolId) => {
+        const when = latestCheckin[uid];
+        return !!when && when >= (dayStartBySchool[schoolId] || defaultDayStart);
+      };
 
       const title = 'Daily Check-In';
       const body = 'How are you feeling? A quick check-in helps your coach keep you healthy.';
@@ -788,7 +853,7 @@ exports.dailyCheckinReminder = functions.pubsub
       const webMessages = [];
       athletesSnap.docs.forEach(doc => {
         const athlete = doc.data();
-        if (checkedInUserIds.has(doc.id)) return;
+        if (checkedInToday(doc.id, athlete.schoolId)) return;
         if (athlete.expoPushToken && Expo.isExpoPushToken(athlete.expoPushToken)) {
           messages.push({ to: athlete.expoPushToken, sound: 'default', title, body, data });
         }
@@ -816,7 +881,9 @@ exports.dailyCheckinReminder = functions.pubsub
 // ── Weekly Check-In Reminder (multi-timezone) ────────────────────────────────
 // Runs every hour on Saturday (UTC). Fires per-school at their local noon.
 
-exports.weeklyCheckinReminder = functions.pubsub
+exports.weeklyCheckinReminder = functions
+  .runWith({ maxInstances: 1 })
+  .pubsub
   .schedule('0 * * * 6')
   .onRun(async () => {
     try {
@@ -894,7 +961,9 @@ exports.weeklyCheckinReminder = functions.pubsub
 
 // ── Push athlete when coach replies to their weekly check-in ─────────────────
 
-exports.onWeeklyCheckinReply = functions.firestore
+exports.onWeeklyCheckinReply = functions
+  .runWith({ maxInstances: 10 })
+  .firestore
   .document('weeklyCheckins/{docId}')
   .onUpdate(async (change, context) => {
     try {
@@ -940,11 +1009,94 @@ exports.onWeeklyCheckinReply = functions.firestore
     }
   });
 
+// ── Parent ↔ athlete links (athlete-approved) ────────────────────────────────
+// A parent creates parentLinks/{parentId}_{athleteId} (status 'pending'); the
+// athlete approves or declines in the app. Firestore rules stop clients from
+// writing linkedAthleteIds / linkedParentIds / a parent's school, so the link
+// itself is made here with the Admin SDK once the athlete says yes.
+
+// Push one user on whichever channels they have registered.
+async function pushToUser(user, { title, body, data }) {
+  const sends = [];
+  if (user.expoPushToken && Expo.isExpoPushToken(user.expoPushToken)) {
+    sends.push(expo.sendPushNotificationsAsync([{ to: user.expoPushToken, sound: 'default', title, body, data }]));
+  }
+  if (user.webPushToken) {
+    sends.push(sendWebPushNotifications([{ token: user.webPushToken, title, body, data }]));
+  }
+  await Promise.all(sends);
+}
+
+exports.onParentLinkCreate = functions
+  .runWith({ maxInstances: 10 })
+  .firestore.document('parentLinks/{linkId}')
+  .onCreate(async (snap) => {
+    const link = snap.data();
+    try {
+      const athleteDoc = await db.collection('users').doc(link.athleteId).get();
+      if (!athleteDoc.exists) return;
+      await pushToUser(athleteDoc.data(), {
+        title: 'Parent connection request',
+        body: `${link.parentName || 'Someone'} wants to follow your training as your parent. Open XCTracker to approve or decline.`,
+        data: { type: 'parent_link_request', linkId: snap.id },
+      });
+    } catch (e) {
+      console.error('onParentLinkCreate error:', e);
+    }
+  });
+
+exports.onParentLinkUpdate = functions
+  .runWith({ maxInstances: 10 })
+  .firestore.document('parentLinks/{linkId}')
+  .onUpdate(async (change) => {
+    const before = change.before.data();
+    const after = change.after.data();
+    if (before.status === after.status || after.status !== 'approved') return;
+
+    const parentRef = db.collection('users').doc(after.parentId);
+    const athleteRef = db.collection('users').doc(after.athleteId);
+    try {
+      const [parentSnap, athleteSnap] = await Promise.all([parentRef.get(), athleteRef.get()]);
+      if (!parentSnap.exists || !athleteSnap.exists) return;
+      const parent = parentSnap.data();
+      const athlete = athleteSnap.data();
+
+      // The parent joins the athlete's school (feed, calendar) unless they
+      // already belong to one — a parent of athletes at two schools keeps the
+      // first. If the athlete isn't on an approved team yet, the parent picks
+      // the school up later (ownerParentAdoptsSchool rule, ParentDashboard).
+      const parentUpdate = {
+        linkedAthleteIds: admin.firestore.FieldValue.arrayUnion(after.athleteId),
+      };
+      if (!parent.schoolId && athlete.schoolId && athlete.status === 'approved') {
+        parentUpdate.schoolId = athlete.schoolId;
+        parentUpdate.status = 'approved';
+      }
+
+      const batch = db.batch();
+      batch.update(parentRef, parentUpdate);
+      batch.update(athleteRef, {
+        linkedParentIds: admin.firestore.FieldValue.arrayUnion(after.parentId),
+      });
+      await batch.commit();
+
+      await pushToUser(parent, {
+        title: 'Connection approved',
+        body: `${athlete.firstName || 'Your athlete'} approved your request. You can now follow their training in XCTracker.`,
+        data: { type: 'parent_link_approved', athleteId: after.athleteId },
+      });
+    } catch (e) {
+      console.error('onParentLinkUpdate error:', e);
+    }
+  });
+
 // ── Billing kill-switch (cost-abuse backstop) ────────────────────────────────
 // Triggered by Cloud Billing budget alerts on the `budget-alerts` Pub/Sub topic.
 // Disables billing if actual spend exceeds budget. Recovery: re-link billing
 // account in GCP console. See CLAUDE.md for setup instructions.
-exports.stopBillingOnBudget = functions.pubsub
+exports.stopBillingOnBudget = functions
+  .runWith({ maxInstances: 1 })
+  .pubsub
   .topic('budget-alerts')
   .onPublish(async (message) => {
     const { CloudBillingClient } = require('@google-cloud/billing');

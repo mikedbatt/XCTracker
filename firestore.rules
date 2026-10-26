@@ -22,12 +22,16 @@ service cloud.firestore {
       return isSignedIn() && getUserData().schoolId == schoolId;
     }
 
-    // Check if user is a coach (admin or assistant) at the given school
+    // Check if user is an APPROVED coach (admin or assistant) at the given
+    // school. Pending assistant coaches (status 'pending') get no coach powers
+    // until the head coach approves them. Missing status = legacy approved coach.
     function isCoachAtSchool(schoolId) {
       let user = getUserData();
       return isSignedIn()
+        && schoolId != null
         && user.schoolId == schoolId
-        && (user.role == 'admin_coach' || user.role == 'assistant_coach');
+        && (user.role == 'admin_coach' || user.role == 'assistant_coach')
+        && user.get('status', 'approved') == 'approved';
     }
 
     // Check if user is the HEAD coach (admin_coach only) at the given school.
@@ -35,27 +39,175 @@ service cloud.firestore {
     function isHeadCoachAtSchool(schoolId) {
       let user = getUserData();
       return isSignedIn()
+        && schoolId != null
         && user.schoolId == schoolId
-        && user.role == 'admin_coach';
+        && user.role == 'admin_coach'
+        && user.get('status', 'approved') == 'approved';
+    }
+
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
     }
 
     // ── Users ─────────────────────────────────────────────────────────────────
     // Any signed-in user can read user docs. Needed for: parent link flow
     // (search by email), assistant coach join, teammate profiles, leaderboard.
-    // User docs contain names and roles — not sensitive.
+    //
+    // WRITES are field-restricted. `role`, `status`, `schoolId` & co. decide
+    // what rules grant everywhere else (isCoachAtSchool, belongsToSchool), so a
+    // user may only change them through the specific flows below — never by
+    // editing their own doc freely (that let an athlete promote themselves to
+    // head coach or approve themselves; 2026-10 audit).
+
+    // Fields that only specific flows (or a coach / Cloud Function) may change.
+    function userAccessKeys() {
+      return ['role', 'status', 'schoolId', 'coachRole', 'trainingAccess',
+              'groupId', 'linkedAthleteIds', 'latestRaceTimes',
+              'schoolSourceAthleteId'];
+    }
+
+    // Owner edits that don't touch access fields: name, email, VDOT, push
+    // tokens, seen/read markers, totalMiles. linkedParentIds may only shrink
+    // (athlete removing a parent); additions come from the parentLinks flow.
+    function ownerProfileEdit() {
+      return !changedKeys().hasAny(userAccessKeys())
+        && (!changedKeys().hasAny(['linkedParentIds'])
+            || resource.data.get('linkedParentIds', [])
+                 .hasAll(request.resource.data.get('linkedParentIds', [])));
+    }
+
+    // Athlete / assistant coach asks to join a school with its join code.
+    // Always lands as 'pending' — only a coach can approve.
+    function ownerJoinRequest() {
+      let d = request.resource.data;
+      return changedKeys().hasOnly(['schoolId', 'status', 'requestedAt', 'coachRole'])
+        && d.status == 'pending'
+        && d.schoolId is string
+        && exists(/databases/$(database)/documents/schools/$(d.schoolId))
+        && ((resource.data.role == 'athlete' && !changedKeys().hasAny(['coachRole']))
+            || (resource.data.role == 'assistant_coach'
+                && d.get('coachRole', 'assistant') == 'assistant'));
+    }
+
+    // "Leave team" — clear school membership.
+    function ownerLeaveTeam() {
+      let d = request.resource.data;
+      return changedKeys().hasOnly(['schoolId', 'groupId', 'status'])
+        && d.schoolId == null
+        && d.get('groupId', null) == null
+        && d.status == null;
+    }
+
+    // Head coach creates their school (CoachSetupScreen): doc id is fixed to
+    // school_{uid}, so a coach can only ever own the school they created.
+    function ownerCreateSchool() {
+      let d = request.resource.data;
+      return resource.data.role == 'admin_coach'
+        && changedKeys().hasOnly(['schoolId', 'status', 'coachRole'])
+        && d.schoolId == 'school_' + request.auth.uid
+        && d.status == 'approved'
+        && d.coachRole == 'admin';
+    }
+
+    // A linked parent picks up their athlete's school (when the athlete joined
+    // a team after the link was approved). Must name a linked athlete whose
+    // own school membership is approved, and copy exactly that school.
+    function ownerParentAdoptsSchool() {
+      let d = request.resource.data;
+      let athlete = get(/databases/$(database)/documents/users/$(d.schoolSourceAthleteId)).data;
+      return resource.data.role == 'parent'
+        && changedKeys().hasOnly(['schoolId', 'status', 'schoolSourceAthleteId'])
+        && d.schoolSourceAthleteId in resource.data.get('linkedAthleteIds', [])
+        && athlete.get('status', null) == 'approved'
+        && d.schoolId == athlete.schoolId
+        && d.status == 'approved';
+    }
+
+    // Coach managing an athlete (or the head coach managing an assistant) at
+    // their school: approve/deny/remove, groups, race times, training access.
+    // Coaches can never change a role, and can only REMOVE someone from the
+    // school (schoolId → null), never move them elsewhere.
+    function coachManagesUser() {
+      let target = resource.data;
+      let d = request.resource.data;
+      return ((target.role == 'athlete' && isCoachAtSchool(target.schoolId))
+              || (target.role == 'assistant_coach' && isHeadCoachAtSchool(target.schoolId)))
+        && changedKeys().hasOnly(['status', 'schoolId', 'groupId', 'trainingAccess',
+                                  'coachRole', 'latestRaceTimes'])
+        && (!changedKeys().hasAny(['schoolId']) || d.schoolId == null)
+        && (!changedKeys().hasAny(['coachRole']) || d.coachRole == null || d.coachRole == 'assistant');
+    }
+
+    // An athlete removing a parent link also removes themselves from that
+    // parent's linkedAthleteIds — removal of their OWN uid only.
+    function athleteUnlinksFromParent() {
+      let before = resource.data.get('linkedAthleteIds', []);
+      let after = request.resource.data.get('linkedAthleteIds', []);
+      return changedKeys().hasOnly(['linkedAthleteIds'])
+        && request.auth.uid in before
+        && !(request.auth.uid in after)
+        && before.hasAll(after);
+    }
+
     match /users/{userId} {
-      allow create: if isOwner(userId);
+      // Signup: self-chosen role (head coach signup is open by design — see the
+      // multi-school signup backlog), no school yet, and only head coaches
+      // start out approved.
+      allow create: if isOwner(userId)
+        && request.resource.data.role in ['athlete', 'parent', 'admin_coach', 'assistant_coach']
+        && request.resource.data.get('schoolId', null) == null
+        && ((request.resource.data.role == 'admin_coach'
+              && request.resource.data.get('status', null) == 'approved')
+            || (request.resource.data.role != 'admin_coach'
+              && request.resource.data.get('status', null) == 'pending'))
+        && request.resource.data.get('coachRole', null) in [null, 'assistant']
+        && !request.resource.data.keys().hasAny(['linkedAthleteIds', 'linkedParentIds',
+             'groupId', 'trainingAccess', 'latestRaceTimes', 'schoolSourceAthleteId']);
       allow update: if isSignedIn()
-        && (isOwner(userId)
-            || isCoachAtSchool(resource.data.schoolId)
-            || getUserData().role == 'parent');
+        && ((isOwner(userId)
+              && (ownerProfileEdit() || ownerJoinRequest() || ownerLeaveTeam()
+                  || ownerCreateSchool() || ownerParentAdoptsSchool()))
+            || coachManagesUser()
+            || athleteUnlinksFromParent());
       allow read:   if isSignedIn();
       allow delete: if false;
     }
 
+    // ── Parent link requests ──────────────────────────────────────────────────
+    // Doc id: {parentId}_{athleteId}. A parent REQUESTS a link; the ATHLETE
+    // approves or declines (they know the family situation best). On approval
+    // the onParentLinkUpdate Cloud Function writes linkedAthleteIds /
+    // linkedParentIds / the parent's school — clients never set those directly.
+    match /parentLinks/{linkId} {
+      allow read: if isSignedIn()
+        && (resource.data.parentId == request.auth.uid
+            || resource.data.athleteId == request.auth.uid);
+      allow create: if isSignedIn()
+        && getUserData().role == 'parent'
+        && request.resource.data.parentId == request.auth.uid
+        && linkId == request.auth.uid + '_' + request.resource.data.athleteId
+        && request.resource.data.status == 'pending'
+        && request.resource.data.keys().hasOnly(['parentId', 'athleteId', 'parentName',
+             'parentEmail', 'athleteName', 'status', 'createdAt']);
+      allow update: if isSignedIn()
+        && resource.data.athleteId == request.auth.uid
+        && resource.data.status == 'pending'
+        && changedKeys().hasOnly(['status', 'respondedAt'])
+        && request.resource.data.status in ['approved', 'declined'];
+      // Parent withdraws (or clears a declined request to ask again); athlete
+      // clears one they've handled.
+      allow delete: if isSignedIn()
+        && (resource.data.parentId == request.auth.uid
+            || resource.data.athleteId == request.auth.uid);
+    }
+
     // ── Schools ───────────────────────────────────────────────────────────────
     match /schools/{schoolId} {
-      allow create: if isSignedIn(); // coach creates school during onboarding
+      // Head coach creates their school during onboarding; the id is pinned to
+      // their uid (matches ownerCreateSchool above).
+      allow create: if isSignedIn()
+        && schoolId == 'school_' + request.auth.uid
+        && getUserData().role == 'admin_coach';
       allow read:   if isSignedIn(); // athletes need to read school during join flow
       // Coaches at the school have full update access. Anyone else who is
       // signed in may update ONLY the pendingAthleteIds / pendingCoachIds
@@ -89,7 +241,11 @@ service cloud.firestore {
     match /runs/{runId} {
       allow create: if isSignedIn()
         && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isSignedIn()
+      // Owner only, and a run can't be reassigned to someone else's log.
+      allow update: if isSignedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn()
         && resource.data.userId == request.auth.uid;
       allow read: if isSignedIn();
     }
@@ -102,7 +258,8 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && request.resource.data.userId == request.auth.uid;
       allow update: if isSignedIn()
-        && resource.data.userId == request.auth.uid;
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid;
       // TEMP ROLLBACK (2026-06-04) — see /runs above. Same rules-are-not-filters
       // issue: coach checkin queries fetch by schoolId/date but the scoped read
       // tripped on cross-user evaluation. Reverted to open read; re-scope with
@@ -117,8 +274,10 @@ service cloud.firestore {
     // HEAD coach at their school can read. Assistant coaches and parents are
     // excluded by design — these are private athlete→head-coach messages.
     match /weeklyCheckins/{docId} {
+      // An athlete can't create the doc with a coach reply already in it.
       allow create: if isSignedIn()
-        && request.resource.data.userId == request.auth.uid;
+        && request.resource.data.userId == request.auth.uid
+        && !('coachReply' in request.resource.data);
       // Athlete: edit own message + mark reply as read. Cannot write coachReply.
       // Head coach at same school: write/edit coachReply only. Cannot touch
       // the athlete's message text.
@@ -167,11 +326,32 @@ service cloud.firestore {
     }
 
     // ── Team Posts (messaging) ────────────────────────────────────────────────
+    function canPostToTeamFeed(post) {
+      let user = getUserData();
+      let ch = post.get('channel', 'whole_team');
+      let isCoach = user.role == 'admin_coach' || user.role == 'assistant_coach';
+      return post.authorId == request.auth.uid
+        && post.authorRole == user.role
+        && post.authorName == user.firstName + ' ' + user.lastName
+        && user.get('status', 'approved') == 'approved'
+        && user.role != 'parent'
+        && (isCoach
+            || ch == 'whole_team'
+            || ((ch == 'boys' || ch == 'girls') && user.get('gender', null) == ch)
+            || (ch.matches('group_.+') && ch == 'group_' + user.get('groupId', '')));
+    }
+
     match /teamPosts/{postId} {
       allow read:   if isSignedIn()
         && belongsToSchool(resource.data.schoolId);
+      // Approved members only, posting as themselves (author fields must match
+      // the poster — the name/role go out in push notifications), to a channel
+      // their role may post in. Parents read but never post; the coaches and
+      // parents channels are coach-only; boys/girls/group channels need the
+      // matching athlete gender/group.
       allow create: if isSignedIn()
-        && belongsToSchool(request.resource.data.schoolId);
+        && belongsToSchool(request.resource.data.schoolId)
+        && canPostToTeamFeed(request.resource.data);
       allow delete: if isCoachAtSchool(resource.data.schoolId)
         || (isSignedIn() && resource.data.authorId == request.auth.uid);
       allow update: if false;
@@ -202,20 +382,6 @@ service cloud.firestore {
       allow create: if isCoachAtSchool(request.resource.data.schoolId);
       allow update: if isCoachAtSchool(resource.data.schoolId);
       allow delete: if isCoachAtSchool(resource.data.schoolId);
-    }
-
-    // ── Team Zone Settings ────────────────────────────────────────────────────
-    // Doc ID is the schoolId. Read uses isSignedIn() only because getDoc on
-    // a non-existent doc fails if we check resource.data fields.
-    match /teamZoneSettings/{schoolId} {
-      allow read:   if isSignedIn();
-      allow write:  if isCoachAtSchool(schoolId);
-    }
-
-    // ── Zone Settings (legacy, read-only) ─────────────────────────────────────
-    match /zoneSettings/{docId} {
-      allow read:   if isSignedIn();
-      allow write:  if false;
     }
 
     // ── Daily Messages ────────────────────────────────────────────────────────

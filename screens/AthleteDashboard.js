@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { signOut } from 'firebase/auth';
 import {
   addDoc,
   collection,
@@ -9,14 +8,14 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  increment,
   setDoc,
   updateDoc,
   where,
 } from 'firebase/firestore';
 import React, { memo, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert,
-  Animated,
+  ActivityIndicator, Animated,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -32,7 +31,7 @@ import { auth, db } from '../firebaseConfig';
 import { bottomInset } from '../utils/safeArea';
 import { aggregateMiles, isCrossTraining, creditForRun, activityMeta, CROSS_TRAINING_TYPES, DEFAULT_CT_FACTORS } from '../utils/activityMiles';
 import { lazyWithReload } from '../utils/lazyWithReload';
-import { toLocalISODate } from '../utils/dateUtils';
+import { getMondayISO, toLocalISODate } from '../utils/dateUtils';
 import { isGarminConnected } from '../garminConfig';
 import { BRAND, EFFORT_COLORS as DESIGN_EFFORT_COLORS, EFFORT_LABELS as DESIGN_EFFORT_LABELS, SIGNAL } from '../constants/design';
 import { batchDocsByIds } from '../utils/batchDocsByIds';
@@ -43,8 +42,9 @@ import CalendarScreen from './CalendarScreen';
 import { SIGNAL_TYPE_COLORS, TYPE_COLORS, WORKOUT_PACE_ZONE } from '../constants/training';
 import DatePickerField from './DatePickerField';
 import RunDetailModal from './RunDetailModal';
-import { getActiveSeason, getCompletedSeasons } from './SeasonPlanner';
+import { getActiveSeason, getCompletedSeasons, getGroupWeekTarget } from './SeasonPlanner';
 import GarminConnect from './GarminConnect';
+import ParentRequests from '../components/ParentRequests';
 import ChannelList from './ChannelList';
 import TeammateProfile from './TeammateProfile';
 import TimeframePicker, { TIMEFRAMES, getDateRange } from './TimeframePicker';
@@ -59,6 +59,9 @@ import {
   isInWeeklyWindow,
 } from '../utils/weeklyCheckinUtils';
 import WorkoutDetailModal from './WorkoutDetailModal';
+import { signOutUser } from '../utils/signOutUser';
+import { notify } from '../utils/notify';
+import { workoutMilesForGroup } from '../utils/workoutMiles';
 
 const EFFORT_LABELS = DESIGN_EFFORT_LABELS;
 const EFFORT_COLORS = DESIGN_EFFORT_COLORS;
@@ -100,6 +103,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
   const [teamMiles,            setTeamMiles]            = useState({});
   const [pendingParents,       setPendingParents]       = useState([]);
   const [garminImport,         setGarminImport]         = useState(null); // users.garminBackfill
+  const [dataVersion,          setDataVersion]          = useState(0);    // see loadDashboard
   const [calendarVisible,      setCalendarVisible]      = useState(false);
   const [selectedTimeframe,    setSelectedTimeframe]    = useState(TIMEFRAMES[0]);
   const [customStart,          setCustomStart]          = useState(null);
@@ -244,15 +248,9 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
       if (groupDoc && groupDoc.exists && groupDoc.exists()) {
         const loadedGroup = { id: groupDoc.id, ...groupDoc.data() };
         setMyGroup(loadedGroup);
-        const now = new Date();
-        const d = now.getDay();
-        const mon = new Date(now);
-        mon.setDate(now.getDate() - (d === 0 ? 6 : d - 1));
-        const mondayISO = mon.toISOString().split('T')[0];
-        const weekTarget = loadedGroup.weeklyPlan?.[mondayISO] ?? loadedGroup.weeklyMilesTarget;
-        // null = coach hasn't set a target; hero card shows a clean "no target"
-        // state rather than a fabricated goal.
-        setWeeklyTarget(weekTarget ?? null);
+        // Same target the Stats tab charts (season volume plan first). null =
+        // coach hasn't set a target; hero card shows a clean "no target" state.
+        setWeeklyTarget(getGroupWeekTarget(loadedGroup, activeSeason, getMondayISO(new Date())));
       } else if (userData.schoolId && !groupId) {
         setMyGroup(null);
         setWeeklyTarget(null);
@@ -298,6 +296,9 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
       // ── Background: everything below updates the UI as it arrives but does NOT
       // gate the spinner. loadDashboard returns now → first paint happens with
       // the athlete's own data; secondary cards fill in a beat later. ──
+      // Calendar/Stats stay mounted while hidden; bumping this makes them
+      // reload on their next open so new/edited/deleted runs show up there.
+      setDataVersion(v => v + 1);
       loadSecondaryDashboard(user, userDocData, { startDate, endDate, tMiles, tRunMiles, factors });
     } catch (error) { console.error('Dashboard load error:', error); }
   };
@@ -347,7 +348,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
     // Daily message modal
     if (userData.schoolId) {
       try {
-        const today = new Date().toISOString().split('T')[0];
+        const today = toLocalISODate(new Date());
         const msgDoc = await getDoc(doc(db, 'dailyMessages', userData.schoolId + '_' + today));
         if (msgDoc.exists()) {
           setDailyMessage(msgDoc.data());
@@ -391,7 +392,12 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
           const otherIds = athletes.filter(a => a.id !== user.uid).map(a => a.id);
           if (otherIds.length > 0) {
             try {
-              const { byField } = await batchDocsByIds({ collectionName: 'runs', field: 'userId', ids: otherIds });
+              // Only the selected timeframe — every teammate's all-time runs
+              // grew to tens of thousands of reads per open by mid-season.
+              const { byField } = await batchDocsByIds({
+                collectionName: 'runs', field: 'userId', ids: otherIds,
+                constraints: startDate ? [where('date', '>=', startDate), orderBy('date', 'desc')] : [],
+              });
               for (const id of otherIds) {
                 const athleteRuns = byField[id] || [];
                 const filtered = athleteRuns.filter(r => {
@@ -472,14 +478,14 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
       loadDashboard();
     } catch (e) {
       console.error('Failed to save effort:', e);
-      Alert.alert('Error', 'Could not save effort rating.');
+      notify('Error', 'Could not save effort rating.');
     }
   };
 
   const handleLogRunTap = () => setLogModalVisible(true);
 
   const handleLogRun = async () => {
-    if (!miles || isNaN(parseFloat(miles))) { Alert.alert('Missing info', 'Please enter the miles for this run.'); return; }
+    if (!miles || isNaN(parseFloat(miles))) { notify('Missing info', 'Please enter the miles for this run.'); return; }
     setSavingRun(true);
     try {
       const user = auth.currentUser;
@@ -489,8 +495,8 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
         const oldSnap = await fsGet(fsDoc(db, 'runs', editingRunId));
         const oldMiles = oldSnap.data()?.miles || 0;
         await fsUpdate(fsDoc(db, 'runs', editingRunId), { miles: milesFloat, duration: duration || null, effort, notes: notes || null, date: runDate });
-        await updateDoc(doc(db, 'users', user.uid), { totalMiles: Math.max(0, Math.round(((totalMiles || 0) - oldMiles + milesFloat) * 10) / 10) });
-        Alert.alert('Updated! ✅', 'Your run has been updated.');
+        await updateDoc(doc(db, 'users', user.uid), { totalMiles: increment(Math.round((milesFloat - oldMiles) * 10) / 10) });
+        notify('Updated! ✅', 'Your run has been updated.');
         setEditingRunId(null);
       } else {
         const ct = activityType !== 'run';
@@ -506,17 +512,18 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
           const factor = factors[activityType] ?? DEFAULT_CT_FACTORS[activityType] ?? 0;
           const creditMiles = Math.round(milesFloat * factor * 10) / 10;
           await addDoc(collection(db, 'runs'), { ...base, creditMiles, factorAtLog: factor });
-          Alert.alert('Cross-training logged! 🚴', `${milesFloat} ${activityType} mi = ${creditMiles} mi credit.`);
+          notify('Cross-training logged! 🚴', `${milesFloat} ${activityType} mi = ${creditMiles} mi credit.`);
         } else {
           await addDoc(collection(db, 'runs'), base);
-          await updateDoc(doc(db, 'users', user.uid), { totalMiles: Math.round(((totalMiles || 0) + milesFloat) * 10) / 10 });
-          Alert.alert('Run logged! 🏃', miles + ' miles saved. Great work!');
+          // Atomic: totalMiles is lifetime RUNNING miles, not the on-screen timeframe total.
+          await updateDoc(doc(db, 'users', user.uid), { totalMiles: increment(Math.round(milesFloat * 10) / 10) });
+          notify('Run logged! 🏃', miles + ' miles saved. Great work!');
         }
       }
       setLogModalVisible(false); setPendingWellness(null);
       setMiles(''); setDuration(''); setEffort(5); setNotes(''); setRunDate(new Date()); setActivityType('run');
       loadDashboard();
-    } catch (error) { console.error(error); Alert.alert('Error', 'Could not save run. Please try again.'); }
+    } catch (error) { console.error(error); notify('Error', 'Could not save run. Please try again.'); }
     setSavingRun(false);
   };
 
@@ -531,11 +538,11 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
           await deleteDoc(firestoreDoc(db, 'runs', run.id));
           // totalMiles is running-only — only decrement for actual runs.
           if (!isCrossTraining(run)) {
-            await updateDoc(doc(db, 'users', auth.currentUser.uid), { totalMiles: Math.max(0, Math.round(((totalMiles || 0) - (run.miles || 0)) * 10) / 10) });
+            await updateDoc(doc(db, 'users', auth.currentUser.uid), { totalMiles: increment(-Math.round((run.miles || 0) * 10) / 10) });
           }
-          Alert.alert('Deleted', 'Run removed.');
+          notify('Deleted', 'Run removed.');
           setRunDetailVisible(false); setSelectedRun(null); loadDashboard();
-        } catch { Alert.alert('Error', 'Could not delete run.'); }
+        } catch { notify('Error', 'Could not delete run.'); }
       },
     });
   };
@@ -545,7 +552,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
       title: 'Sign out',
       message: 'Are you sure?',
       confirmLabel: 'Sign out',
-      onConfirm: () => signOut(auth),
+      onConfirm: signOutUser,
     });
   };
 
@@ -577,7 +584,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
   const trainingPaces = userData.trainingPaces || null;
 
   // Helper to compute pace breakdown from a set of runs. Falls back to
-  // deriving avg pace from miles+duration for manual runs (no Strava stream)
+  // deriving avg pace from miles+duration for manual runs (no synced pace data)
   // so athletes who log manually still get pace-based zones.
   const computePaceBreakdown = (runs) => {
     if (!trainingPaces) return { breakdown: null, analysis: null };
@@ -693,6 +700,9 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
             </View>
           </View>
         )}
+
+        {/* ── Parent link requests (athlete approves) ── */}
+        <ParentRequests style={styles.cardSpacer} />
 
         {/* ── Pending approval banner ── */}
         {isPending && (
@@ -1134,9 +1144,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
                   );
                 }
                 const c = SIGNAL_TYPE_COLORS[workout.type] || TYPE_COLORS[workout.type] || SIGNAL.color.indigo;
-                const wkMiles = myGroup && workout.groupMiles?.[myGroup.id]
-                  ? workout.groupMiles[myGroup.id]
-                  : workout.baseMiles || null;
+                const wkMiles = workoutMilesForGroup(workout, myGroup?.id);
                 let paceText = null;
                 if (userData.trainingPaces && WORKOUT_PACE_ZONE[workout.type]) {
                   const zone = WORKOUT_PACE_ZONE[workout.type];
@@ -1476,7 +1484,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
           loadDashboard();
         } catch (e) {
           console.warn('Failed to save daily check-in:', e);
-          Alert.alert('Check-in not saved', `Could not save your check-in: ${e.message || e}. Please try again.`);
+          notify('Check-in not saved', `Could not save your check-in: ${e.message || e}. Please try again.`);
         }
       }} onSkip={() => { setDailyWellnessVisible(false); setTodayCheckinDone(true); }} onClose={() => setDailyWellnessVisible(false)} />
 
@@ -1518,7 +1526,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
             loadDashboard();
           } catch (e) {
             console.warn('Weekly check-in save failed:', e);
-            Alert.alert('Check-in not saved', `Could not send your message: ${e.message || e}. Please try again.`);
+            notify('Check-in not saved', `Could not send your message: ${e.message || e}. Please try again.`);
           }
         }}
         onMarkReplyRead={async () => {
@@ -1548,7 +1556,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
         visible={workoutDetailVisible}
         onClose={() => { setWorkoutDetailVisible(false); setSelectedWorkout(null); }}
         primaryColor={SIGNAL.color.indigo}
-        athleteMiles={selectedWorkout && myGroup ? (selectedWorkout.groupMiles?.[myGroup.id] || selectedWorkout.baseMiles || null) : (selectedWorkout?.baseMiles || null)}
+        athleteMiles={workoutMilesForGroup(selectedWorkout, myGroup?.id)}
         groupName={myGroup?.name}
         trainingPaces={userData.trainingPaces || null}
       />
@@ -1687,7 +1695,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
       )}
       {calendarMounted && (
         <View style={[styles.subScreen, { bottom: navHeight }, !calendarVisible && { display: 'none' }]}>
-          <MemoCalendarScreen userData={userData} school={school} trainingPaces={userData.trainingPaces || null} onClose={handleCloseCalendar} />
+          <MemoCalendarScreen userData={userData} school={school} trainingPaces={userData.trainingPaces || null} onClose={handleCloseCalendar} refreshKey={calendarVisible ? dataVersion : null} athleteGroup={myGroup} />
         </View>
       )}
       {garminVisible && (
@@ -1708,6 +1716,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
               school={school}
               myGroup={myGroup}
               onClose={handleCloseStats}
+              refreshKey={statsVisible ? dataVersion : null}
             />
           </Suspense>
         </View>
@@ -2025,7 +2034,7 @@ const styles = StyleSheet.create({
   },
   promptCtaText: { color: '#fff', fontFamily: SIGNAL.font.bodySemi, fontSize: 13 },
 
-  // ── Strava compact row ──────────────────────────────────────────────────────
+  // ── Garmin connect prompt row ───────────────────────────────────────────────
   garminRow: {
     backgroundColor: SIGNAL.color.white,
     borderRadius: SIGNAL.radius.card,

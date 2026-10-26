@@ -1,10 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { deleteDoc, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { deleteDoc, doc, increment, updateDoc } from 'firebase/firestore';
 import { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -22,6 +21,7 @@ import { PACE_ZONES, calcPaceZoneBreakdown, calcPace8020, formatMinutes } from '
 import { isCrossTraining, activityMeta, creditForRun } from '../utils/activityMiles';
 import { confirmDestructive } from '../utils/confirmDialog';
 import DatePickerField from './DatePickerField';
+import { notify } from '../utils/notify';
 
 const EFFORT_LABELS = ['', 'Very Easy', 'Easy', 'Moderate', 'Moderate', 'Medium',
   'Medium Hard', 'Hard', 'Very Hard', 'Max Effort', 'All Out'];
@@ -167,7 +167,7 @@ export default function RunDetailModal({
 
   const handleSaveEdit = async () => {
     if (!editMiles || isNaN(parseFloat(editMiles))) {
-      Alert.alert('Missing info', 'Please enter miles for this run.');
+      notify('Missing info', 'Please enter miles for this run.');
       return;
     }
     let normalizedDuration = editDuration;
@@ -181,7 +181,7 @@ export default function RunDetailModal({
         (parts.length === 3 && parseInt(parts[1]) < 60 && parseInt(parts[2]) < 60)
       );
       if (!validFormat) {
-        Alert.alert('Invalid duration', 'Please use MM:SS or HH:MM:SS format (e.g. 42:30 or 1:05:00).');
+        notify('Invalid duration', 'Please use MM:SS or HH:MM:SS format (e.g. 42:30 or 1:05:00).');
         return;
       }
       // Normalize MM:SS with MM >= 60 → HH:MM:SS so it displays correctly
@@ -213,19 +213,16 @@ export default function RunDetailModal({
       if (!isCT) {
         const diff = newMiles - (run.miles || 0);
         if (diff !== 0) {
-          const userDoc = await getDoc(doc(db, 'users', run.userId));
-          if (userDoc.exists()) {
-            const current = userDoc.data().totalMiles || 0;
-            await updateDoc(doc(db, 'users', run.userId), {
-              totalMiles: Math.max(0, Math.round((current + diff) * 10) / 10),
-            });
-          }
+          // Atomic — no read-then-write race with the Garmin webhook.
+          await updateDoc(doc(db, 'users', run.userId), {
+            totalMiles: increment(Math.round(diff * 10) / 10),
+          });
         }
       }
       setIsEditing(false);
       onUpdated && onUpdated();
-      Alert.alert('Saved!', 'Run updated.');
-    } catch { Alert.alert('Error', 'Could not save changes.'); }
+      notify('Saved!', 'Run updated.');
+    } catch { notify('Error', 'Could not save changes.'); }
     setSaving(false);
   };
 
@@ -240,17 +237,13 @@ export default function RunDetailModal({
           await deleteDoc(doc(db, 'runs', run.id));
           // totalMiles is running-only — skip for cross-training.
           if (!(run.activityType && run.activityType !== 'run')) {
-            const userDoc = await getDoc(doc(db, 'users', run.userId));
-            if (userDoc.exists()) {
-              const current = userDoc.data().totalMiles || 0;
-              await updateDoc(doc(db, 'users', run.userId), {
-                totalMiles: Math.max(0, Math.round((current - (run.miles || 0)) * 10) / 10),
-              });
-            }
+            await updateDoc(doc(db, 'users', run.userId), {
+              totalMiles: increment(-Math.round((run.miles || 0) * 10) / 10),
+            });
           }
           onDeleted && onDeleted();
           onClose();
-        } catch { Alert.alert('Error', 'Could not delete run.'); }
+        } catch { notify('Error', 'Could not delete run.'); }
         setDeleting(false);
       },
     });

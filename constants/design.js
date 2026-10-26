@@ -44,7 +44,6 @@ export const EFFORT_LABELS = [
 ];
 
 // ─── Strava Brand ────────────────────────────────────────────────────────────
-export const STRAVA_ORANGE = '#fc4c02';
 
 // ─── Avatar Color Options ────────────────────────────────────────────────────
 // Athletes can pick their own avatar color. Default is BRAND.

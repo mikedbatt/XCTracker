@@ -1,7 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as SecureStore from 'expo-secure-store';
 import { LinearGradient } from 'expo-linear-gradient';
-import { signOut } from 'firebase/auth';
 import {
   arrayRemove,
   arrayUnion,
@@ -15,10 +13,9 @@ import {
   updateDoc,
   where
 } from 'firebase/firestore';
-import { Suspense, useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState, useRef } from 'react';
 import {
-  ActivityIndicator, Alert,
-  KeyboardAvoidingView,
+  ActivityIndicator, KeyboardAvoidingView,
   Modal,
   Platform,
   ScrollView,
@@ -60,6 +57,8 @@ import { useStaleRefresh } from '../hooks/useStaleRefresh';
 import { getRunDate, toLocalISODate } from '../utils/dateUtils';
 import { getWeekAnchor } from '../utils/weeklyCheckinUtils';
 import { lazyWithReload } from '../utils/lazyWithReload';
+import { signOutUser } from '../utils/signOutUser';
+import { notify } from '../utils/notify';
 
 // Lazy-loaded (heavy, opened on demand) — kept out of the initial bundle.
 const CoachAnalytics = lazyWithReload(() => import('../screens/CoachAnalytics'));
@@ -120,33 +119,17 @@ function getDailyTip(phaseName) {
 // ── Overtraining detection ────────────────────────────────────────────────────
 // Uses Monday-aligned weeks and compares this week vs 3-week rolling average
 // to avoid false positives from rolling 7-day window misalignment.
-async function checkOvertraining(athleteId, attendanceStats = null) {
+// Pure: callers pass the athlete's runs (needs ≥4 weeks for ACWR) and this
+// week's check-ins — both already loaded school-wide by loadDashboard.
+function checkOvertraining({ runs, checkins, attendanceStats = null, now = new Date() }) {
   try {
-    const now = new Date();
-    const day = now.getDay();
-    // Current Monday at 00:00
-    const thisMonday = new Date(now);
-    thisMonday.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
-    thisMonday.setHours(0, 0, 0, 0);
-    // 4 weeks back to get this week + 3 prior weeks
-    const fourWeeksAgo = new Date(thisMonday);
-    fourWeeksAgo.setDate(thisMonday.getDate() - 28);
-
-    const [runsSnap, checkinSnap] = await Promise.all([
-      getDocs(query(collection(db, 'runs'), where('userId', '==', athleteId),
-        where('date', '>=', fourWeeksAgo), orderBy('date', 'desc'))),
-      // Query without orderBy to avoid needing a composite index — sort client-side
-      getDocs(query(collection(db, 'checkins'), where('userId', '==', athleteId)))
-        .catch(() => ({ docs: [] })),
-    ]);
-
-    const allRuns = runsSnap.docs.map(d => d.data());
-    const checkins = checkinSnap.docs.map(d => d.data());
-    // Shared with the athlete screens so signals are identical everywhere.
     const { alert, signals, latestInjury, latestIllness, latestCheckinDate } =
-      computeOvertraining({ runs: allRuns, checkins, attendanceStats, now });
+      computeOvertraining({ runs, checkins, attendanceStats, now });
     return { alert, signals, todayInjury: latestInjury, todayIllness: latestIllness, injuryCheckinDate: latestCheckinDate };
-  } catch { return { alert: false, signals: [], todayInjury: null, todayIllness: null, injuryCheckinDate: null }; }
+  } catch (e) {
+    console.error('Overtraining check failed:', e);
+    return { alert: false, signals: [], todayInjury: null, todayIllness: null, injuryCheckinDate: null };
+  }
 }
 
 // ── Pace easy % helper — uses VDOT training paces ────────────────────────────
@@ -202,6 +185,7 @@ export default function CoachDashboard({ userData }) {
   const [athleteRunMiles,     setAthleteRunMiles]     = useState({}); // running-only (leaderboard toggle)
   const [leaderboardCT,       setLeaderboardCT]       = useState(true);
   const [activeOverrides,     setActiveOverrides]     = useState({}); // athleteId → active workout override
+  const overrideChangedRef = useRef(false); // set by AthleteDetailScreen "Modify workout"
   const [selectedTimeframe,   setSelectedTimeframe]   = useState(TIMEFRAMES[0]);
   const [genderFilter,        setGenderFilter]        = useState('all');
   const [overtTrainingAlerts, setOvertTrainingAlerts] = useState({});
@@ -254,8 +238,9 @@ export default function CoachDashboard({ userData }) {
       const weekStart = new Date(now);
       weekStart.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
       weekStart.setHours(0, 0, 0, 0);
-      const todayKey = now.toISOString().split('T')[0];
-      const thirtyDaysAgoKey = new Date(now.getTime() - 30 * 86400000).toISOString().split('T')[0];
+      // Daily-tip keys use the LOCAL date (matches the athlete readers).
+      const todayKey = toLocalISODate(now);
+      const thirtyDaysAgoKey = toLocalISODate(new Date(now.getTime() - 30 * 86400000));
 
       // ── Phase 1: All independent top-level queries in parallel ──
       const [
@@ -405,14 +390,28 @@ export default function CoachDashboard({ userData }) {
       // Single batched `where-in` query for all athlete runs replaces the old
       // serial per-athlete loop (70 athletes × 1 query → ~3 batched queries).
       const athleteIds = approvedAthletes.map(a => a.id);
-      const [runsResult, alertsEntries] = await Promise.all([
-        batchDocsByIds({ collectionName: 'runs', field: 'userId', ids: athleteIds }),
-        Promise.all(approvedAthletes.map(a =>
-          checkOvertraining(a.id, attendanceByAthlete[a.id]).then(result => [a.id, result])
-        )),
-      ]);
+      // Selected timeframe + 5 weeks (ACWR needs 28 days; weekly compliance
+      // needs the 4 prior Monday-weeks). "All time" stays unbounded by choice.
+      const fiveWeeksAgo = new Date(now.getTime() - 35 * 86400000);
+      const runsWindowStart = cutoff ? new Date(Math.min(cutoff, fiveWeeksAgo)) : null;
+      const runsResult = await batchDocsByIds({
+        collectionName: 'runs', field: 'userId', ids: athleteIds,
+        constraints: runsWindowStart ? [where('date', '>=', runsWindowStart), orderBy('date', 'desc')] : [],
+      });
 
-      setOvertTrainingAlerts(Object.fromEntries(alertsEntries));
+      // Overtraining alerts from the batched runs + this week's school-wide
+      // check-ins (checkinSnap, since Monday) — no per-athlete queries.
+      const weekCheckinsByAthlete = {};
+      (checkinSnap?.docs || []).forEach(d => {
+        const c = d.data();
+        if (c.userId) (weekCheckinsByAthlete[c.userId] = weekCheckinsByAthlete[c.userId] || []).push(c);
+      });
+      setOvertTrainingAlerts(Object.fromEntries(approvedAthletes.map(a => [a.id, checkOvertraining({
+        runs: runsResult.byField[a.id] || [],
+        checkins: weekCheckinsByAthlete[a.id] || [],
+        attendanceStats: attendanceByAthlete[a.id],
+        now,
+      })])));
 
       // Active workout overrides (coach injury modifications), keyed by athlete.
       let overrideMap = {};
@@ -473,18 +472,20 @@ export default function CoachDashboard({ userData }) {
           weeklyMilesMap[athlete.id] = weekMiles(weekFiltered);
 
           // 3-week average weekly miles
-          const week1Start = new Date(weekStart); // current week (incomplete)
+          const week1Start = new Date(weekStart); // current week (incomplete) — boundary only
           const week2Start = new Date(weekStart); week2Start.setDate(week2Start.getDate() - 7);
           const week3Start = new Date(weekStart); week3Start.setDate(week3Start.getDate() - 14);
           const week4Start = new Date(weekStart); week4Start.setDate(week4Start.getDate() - 21);
 
           // Weekly sums count cross-training credit (per the compliance decision).
-          const w1 = weekMiles(allRuns.filter(r => { const d = getRunDate(r); return d && d >= week1Start; }));
           const w2 = weekMiles(allRuns.filter(r => { const d = getRunDate(r); return d && d >= week2Start && d < week1Start; }));
           const w3 = weekMiles(allRuns.filter(r => { const d = getRunDate(r); return d && d >= week3Start && d < week2Start; }));
           const w4 = weekMiles(allRuns.filter(r => { const d = getRunDate(r); return d && d >= week4Start && d < week3Start; }));
 
-          threeWeekAvgMap[athlete.id] = Math.round(((w1 + w2 + w3) / 3) * 10) / 10;
+          // Average the 3 COMPLETED weeks. Including the current partial week
+          // deflated the fallback target (110% of this average) early in the
+          // week, flagging most of the team "over target" Mon–Wed.
+          threeWeekAvgMap[athlete.id] = Math.round(((w2 + w3 + w4) / 3) * 10) / 10;
           // Store last 3 COMPLETED weeks (skip current incomplete week)
           weekBreakdownMap[athlete.id] = {
             w1: Math.round(w2 * 10) / 10, // last week
@@ -643,7 +644,7 @@ export default function CoachDashboard({ userData }) {
       .sort((a, b) => (shareMiles[b.id] || 0) - (shareMiles[a.id] || 0));
 
     if (sorted.length === 0) {
-      Alert.alert('Nothing to share', 'No athlete data for this timeframe.');
+      notify('Nothing to share', 'No athlete data for this timeframe.');
       return;
     }
 
@@ -693,7 +694,15 @@ export default function CoachDashboard({ userData }) {
       athlete={selectedAthlete}
       school={school}
       groups={groups}
-      onBack={() => setSelectedAthlete(null)}
+      onOverrideChanged={() => { overrideChangedRef.current = true; }}
+      onBack={() => {
+        setSelectedAthlete(null);
+        // A workout modification changes the injury card + compliance flags.
+        if (overrideChangedRef.current) {
+          overrideChangedRef.current = false;
+          loadDashboard();
+        }
+      }}
     />;
   }
 
@@ -705,9 +714,9 @@ export default function CoachDashboard({ userData }) {
         pendingAthleteIds: arrayRemove(athlete.id),
         athleteIds: arrayUnion(athlete.id),
       });
-      Alert.alert('Approved!', `${athlete.firstName} ${athlete.lastName} has been approved.`);
+      notify('Approved!', `${athlete.firstName} ${athlete.lastName} has been approved.`);
       loadDashboard();
-    } catch { Alert.alert('Error', 'Could not approve athlete.'); }
+    } catch { notify('Error', 'Could not approve athlete.'); }
   };
 
   const handleDenyAthlete = async (athlete) => {
@@ -728,13 +737,7 @@ export default function CoachDashboard({ userData }) {
       title: 'Sign out',
       message: 'Are you sure?',
       confirmLabel: 'Sign out',
-      onConfirm: async () => {
-        try {
-          await SecureStore.deleteItemAsync('xctracker_email');
-          await SecureStore.deleteItemAsync('xctracker_password');
-        } catch (e) { /* SecureStore unavailable on web — Firebase persistence handles auth */ }
-        signOut(auth);
-      },
+      onConfirm: signOutUser,
     });
   };
 
@@ -747,7 +750,7 @@ export default function CoachDashboard({ userData }) {
     if (!tipText.trim()) return;
     setSendingTip(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = toLocalISODate(new Date());
       await setDoc(doc(db, 'dailyMessages', `${userData.schoolId}_${today}`), {
         schoolId:    userData.schoolId,
         message:     tipText.trim(),
@@ -758,9 +761,9 @@ export default function CoachDashboard({ userData }) {
       });
       setTodayTipSent(true);
       setTipModalVisible(false);
-      Alert.alert('Sent! ✅', "Your message has been pinned to every athlete's dashboard.");
+      notify('Sent! ✅', "Your message has been pinned to every athlete's dashboard.");
     } catch {
-      Alert.alert('Error', 'Could not send message. Please try again.');
+      notify('Error', 'Could not send message. Please try again.');
     }
     setSendingTip(false);
   };
@@ -807,7 +810,7 @@ export default function CoachDashboard({ userData }) {
   // ── Format last-run summary line for an athlete card ──
   const formatLastRun = (athleteId) => {
     const d = athleteLastRunDate[athleteId];
-    if (!d) return 'No runs yet';
+    if (!d) return 'No recent runs';
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const runDay = new Date(d); runDay.setHours(0, 0, 0, 0);
     const diff = Math.round((today - runDay) / 86400000);
@@ -1556,7 +1559,7 @@ export default function CoachDashboard({ userData }) {
                 loadDashboard();
               } catch (e) {
                 console.warn('Send weekly reply failed:', e);
-                Alert.alert('Reply not sent', `Could not send your reply: ${e.message || e}.`);
+                notify('Reply not sent', `Could not send your reply: ${e.message || e}.`);
               } finally {
                 setWeeklySendingReply(false);
               }

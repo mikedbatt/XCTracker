@@ -1,14 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as SecureStore from 'expo-secure-store';
-import { signOut, updateEmail } from 'firebase/auth';
+import { updateEmail } from 'firebase/auth';
 import {
   arrayRemove, collection, doc, getDoc, getDocs, orderBy, query, updateDoc, where
 } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Platform,
   ScrollView,
   StyleSheet,
@@ -23,7 +21,11 @@ import { confirmDestructive } from '../utils/confirmDialog';
 import LegalLinks from '../components/LegalLinks';
 import { calcVDOT, getTrainingPaces, formatPace, parseTimeToSeconds, RACE_DISTANCES } from '../utils/vdotUtils';
 import GarminConnect from './GarminConnect';
+import ParentRequests from '../components/ParentRequests';
 import { isGarminConnected } from '../garminConfig';
+import { signOutUser } from '../utils/signOutUser';
+import { notify } from '../utils/notify';
+import { toLocalISODate } from '../utils/dateUtils';
 
 export default function AthleteProfile({ userData, school, onClose, onUpdated, refreshUser, goToJoinScreen }) {
   const [firstName,     setFirstName]     = useState(userData.firstName || '');
@@ -71,7 +73,7 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
       // Needs a composite index on (schoolId, date) — Firestore will prompt on first run.
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const cutoff = thirtyDaysAgo.toISOString().split('T')[0];
+      const cutoff = toLocalISODate(thirtyDaysAgo);
 
       const snap = await getDocs(query(
         collection(db, 'dailyMessages'),
@@ -87,7 +89,7 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
 
   const handleSave = async () => {
     if (!firstName.trim() || !lastName.trim()) {
-      Alert.alert('Required', 'Please enter both first and last name.');
+      notify('Required', 'Please enter both first and last name.');
       return;
     }
     setSaving(true);
@@ -107,38 +109,38 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
         } catch (e) {
           setSaving(false);
           if (e.code === 'auth/requires-recent-login') {
-            Alert.alert('Sign in required', 'To change your email, please sign out and sign back in first, then try again.');
+            notify('Sign in required', 'To change your email, please sign out and sign back in first, then try again.');
           } else if (e.code === 'auth/email-already-in-use') {
-            Alert.alert('Email taken', 'That email address is already in use by another account.');
+            notify('Email taken', 'That email address is already in use by another account.');
           } else {
-            Alert.alert('Email error', 'Could not update email. Please try again.');
+            notify('Email error', 'Could not update email. Please try again.');
           }
           return;
         }
       }
 
       await updateDoc(doc(db, 'users', auth.currentUser.uid), updates);
-      Alert.alert('Saved', 'Your profile has been updated.');
+      notify('Saved', 'Your profile has been updated.');
       onUpdated && onUpdated(updates);
     } catch {
-      Alert.alert('Error', 'Could not save. Please try again.');
+      notify('Error', 'Could not save. Please try again.');
     }
     setSaving(false);
   };
 
   const handleVdotCalculate = () => {
     const timeSec = parseTimeToSeconds(vdotTimeStr);
-    if (!timeSec || timeSec <= 0) { Alert.alert('Invalid time', 'Enter a valid time in MM:SS or HH:MM:SS format.'); return; }
+    if (!timeSec || timeSec <= 0) { notify('Invalid time', 'Enter a valid time in MM:SS or HH:MM:SS format.'); return; }
     const dist = RACE_DISTANCES[vdotDistance];
     if (!dist) return;
     const score = calcVDOT(dist, timeSec);
-    if (!score) { Alert.alert('Error', 'Could not calculate VDOT from that time.'); return; }
+    if (!score) { notify('Error', 'Could not calculate VDOT from that time.'); return; }
     setVdotScore(score);
     setVdotPaces(getTrainingPaces(score));
   };
 
   const handleVdotSave = async () => {
-    if (!vdotScore || !vdotPaces) { Alert.alert('Calculate first', 'Enter a race time and tap Calculate before saving.'); return; }
+    if (!vdotScore || !vdotPaces) { notify('Calculate first', 'Enter a race time and tap Calculate before saving.'); return; }
     setSavingVdot(true);
     try {
       await updateDoc(doc(db, 'users', auth.currentUser.uid), {
@@ -148,11 +150,11 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
         trainingPaces: vdotPaces,
         vdotUpdatedAt: new Date().toISOString(),
       });
-      Alert.alert('Saved!', 'Your training paces have been updated.');
+      notify('Saved!', 'Your training paces have been updated.');
       onUpdated && onUpdated({ vdot: vdotScore, trainingPaces: vdotPaces, vdotDistance, vdotTime: vdotTimeStr, vdotUpdatedAt: new Date().toISOString() });
     } catch (e) {
       console.warn('Failed to save VDOT:', e);
-      Alert.alert('Error', 'Could not save. Please try again.');
+      notify('Error', 'Could not save. Please try again.');
     }
     setSavingVdot(false);
   };
@@ -194,12 +196,8 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
       const allIds = [...(freshData.linkedParentIds || []), ...(freshData.pendingParentIds || [])];
       const parentIds = [...new Set(allIds)];
       if (parentIds.length === 0) { setLinkedParents([]); return; }
-      const parents = [];
-      for (const pid of parentIds) {
-        const snap = await getDoc(doc(db, 'users', pid));
-        if (snap.exists()) parents.push({ id: snap.id, ...snap.data() });
-      }
-      setLinkedParents(parents);
+      const snaps = await Promise.all(parentIds.map(pid => getDoc(doc(db, 'users', pid))));
+      setLinkedParents(snaps.filter(s => s.exists()).map(s => ({ id: s.id, ...s.data() })));
     } catch (e) { console.warn('Failed to load linked parents:', e); }
   };
 
@@ -264,7 +262,7 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
             if (refreshUser) await refreshUser();
           } catch (e) {
             console.warn('Leave team failed:', e);
-            Alert.alert('Could not leave team', 'Something went wrong. Please try again.');
+            notify('Could not leave team', 'Something went wrong. Please try again.');
           }
       },
     });
@@ -275,13 +273,7 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
       title: 'Sign out',
       message: 'Are you sure you want to sign out?',
       confirmLabel: 'Sign out',
-      onConfirm: async () => {
-        try {
-          await SecureStore.deleteItemAsync('xctracker_email');
-          await SecureStore.deleteItemAsync('xctracker_password');
-        } catch (e) { /* SecureStore unavailable on web — Firebase persistence handles auth */ }
-        signOut(auth);
-      },
+      onConfirm: signOutUser,
     });
   };
 
@@ -569,7 +561,7 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
                 <Text style={styles.emptySub}>Your coach's daily messages will appear here.</Text>
               </View>
             ) : messages.map(msg => {
-              const today = new Date().toISOString().split('T')[0];
+              const today = toLocalISODate(new Date());
               const isToday = msg.date === today;
               const msgDate = new Date(msg.date + 'T12:00:00')
                 .toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
@@ -621,6 +613,7 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
             )}
 
             {/* Connected parents */}
+            <ParentRequests onChanged={loadLinkedParents} />
             <View style={styles.parentsHeader}>
               <Text style={[styles.eyebrow, { marginTop: 0, paddingLeft: 4 }]}>Connected parents</Text>
               {unseenParentCount > 0 && (
@@ -632,7 +625,7 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
             {linkedParents.length === 0 ? (
               <View style={styles.emptyCard}>
                 <Text style={styles.emptyTitle}>No parents connected</Text>
-                <Text style={styles.emptySub}>Parents can link to your account using your email address.</Text>
+                <Text style={styles.emptySub}>Parents send a request using your email address — you approve it here.</Text>
               </View>
             ) : linkedParents.map(parent => (
               <View key={parent.id} style={styles.connectionCard}>
