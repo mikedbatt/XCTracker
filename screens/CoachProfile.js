@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { updateEmail } from 'firebase/auth';
 import { arrayRemove, arrayUnion, doc, getDoc, updateDoc } from 'firebase/firestore';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -97,7 +97,7 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
     setLoadingCoaches(false);
   };
 
-  useState(() => { loadAssistantCoaches(); });
+  useEffect(() => { loadAssistantCoaches(); }, []);
 
   const handleApproveCoach = async (coach) => {
     try {

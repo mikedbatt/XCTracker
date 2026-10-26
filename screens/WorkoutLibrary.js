@@ -614,7 +614,7 @@ const styles = StyleSheet.create({
     backgroundColor: SIGNAL.color.paper2,
   },
   detailHeader: {
-    paddingTop: Platform.OS === 'ios' ? 18 : 18,
+    paddingTop: 18,
     paddingBottom: 14,
     paddingHorizontal: 18,
     flexDirection: 'row',

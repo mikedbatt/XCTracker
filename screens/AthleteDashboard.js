@@ -583,7 +583,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
   const trainingPaces = userData.trainingPaces || null;
 
   // Helper to compute pace breakdown from a set of runs. Falls back to
-  // deriving avg pace from miles+duration for manual runs (no Strava stream)
+  // deriving avg pace from miles+duration for manual runs (no synced pace data)
   // so athletes who log manually still get pace-based zones.
   const computePaceBreakdown = (runs) => {
     if (!trainingPaces) return { breakdown: null, analysis: null };
@@ -2035,7 +2035,7 @@ const styles = StyleSheet.create({
   },
   promptCtaText: { color: '#fff', fontFamily: SIGNAL.font.bodySemi, fontSize: 13 },
 
-  // ── Strava compact row ──────────────────────────────────────────────────────
+  // ── Garmin connect prompt row ───────────────────────────────────────────────
   garminRow: {
     backgroundColor: SIGNAL.color.white,
     borderRadius: SIGNAL.radius.card,

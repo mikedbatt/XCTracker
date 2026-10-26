@@ -2,7 +2,7 @@
 // xctracker.com is the canonical domain. Anyone who opens the old Firebase
 // Hosting default URLs (*.web.app / *.firebaseapp.com), or an old PWA install
 // pinned to them, is forwarded to xctracker.com — preserving the path, query,
-// and hash so deep links and the Strava OAuth callback (?code=…) survive.
+// and hash so deep links and the Garmin OAuth callback (?code=…&state=…) survive.
 //
 // IMPORTANT: only ship this once xctracker.com is live (DNS Connected + SSL),
 // otherwise it would forward users to a domain that isn't serving yet. Runs as

@@ -62,7 +62,7 @@ app/              # Expo Router entry. `index.tsx` boots the app;
                   # `+html.tsx` is the web-only HTML shell that injects a
                   # brand splash visible until React hydrates #root.
 screens/          # All application screens — main source code
-components/       # Reusable UI components (Card, Button, WebMaxWidth)
+components/       # Reusable UI components (Button, WebMaxWidth, prompts/banners)
 constants/        # Theme colors and app-wide constants
 hooks/            # React hooks (useStaleRefresh, useResponsiveLayout)
 utils/            # Pure-logic helpers (pace zones, race utils, compliance,

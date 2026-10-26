@@ -193,8 +193,8 @@ export default function AthleteAnalytics({ userData, school, myGroup, onClose, r
 
   // ── Feature 3b: Pace-based Training Quality (shown when VDOT set) ──
   // Uses calcPaceZoneSecondsForRun which falls back to deriving avg pace from
-  // miles + duration on manual runs — so athletes who log manually (no Strava)
-  // still get pace-based 80/20 even without a Strava pace stream.
+  // miles + duration on manual runs — so athletes who log manually (no Garmin)
+  // still get pace-based 80/20 without synced pace data.
   const trainingPaces = userData.trainingPaces || null;
   let paceZoneBreakdown = null;
   let paceEighty20 = null;

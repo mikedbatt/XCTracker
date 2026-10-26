@@ -21,8 +21,13 @@ export const RACE_LEVELS = [
 // Parse time string (MM:SS or HH:MM:SS) to total seconds
 export function parseTime(str) {
   if (!str || typeof str !== 'string') return null;
-  const parts = str.trim().split(':').map(Number);
-  if (parts.some(isNaN)) return null;
+  const raw = str.trim().split(':');
+  // Every segment must be digits ("18:" used to parse as 18:00 because
+  // Number('') is 0), and seconds — plus minutes in H:MM:SS — must be < 60.
+  if (raw.some(p => !/^\d+(\.\d+)?$/.test(p))) return null;
+  const parts = raw.map(Number);
+  if (parts[parts.length - 1] >= 60) return null;
+  if (parts.length === 3 && parts[1] >= 60) return null;
   if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
   if (parts.length === 2) return parts[0] * 60 + parts[1];
   return null;

@@ -110,7 +110,7 @@ self.addEventListener('activate', (event) => {
 //     as the offline fallback.
 //   • Hashed static assets (/_expo/static/**) → cache-first; they're
 //     content-hashed and immutable, so a cache hit is always correct.
-//   • Everything else (Firebase, Strava, cross-origin) → untouched, straight to
+//   • Everything else (Firebase, Cloud Functions, cross-origin) → untouched, straight to
 //     the network. We never intercept non-GET or cross-origin requests.
 self.addEventListener('fetch', (event) => {
   const { request } = event;

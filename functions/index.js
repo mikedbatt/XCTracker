@@ -20,8 +20,29 @@ async function sendWebPushNotifications(messages) {
           Object.entries(m.data).map(([k, v]) => [k, String(v)])
         ),
       }),
-    }).catch(e => console.warn('FCM web send error:', e.message))
+    }).catch(e => {
+      // Token belongs to an uninstalled app / cleared browser: drop it from
+      // every user doc that holds it so it isn't retried on every send.
+      if (DEAD_FCM_TOKEN_CODES.has(e.code)) return removeDeadWebPushToken(m.token);
+      console.warn('FCM web send error:', e.code || '', e.message);
+    })
   ));
+}
+
+const DEAD_FCM_TOKEN_CODES = new Set([
+  'messaging/registration-token-not-registered',
+  'messaging/invalid-registration-token',
+]);
+
+async function removeDeadWebPushToken(token) {
+  try {
+    const snap = await db.collection('users').where('webPushToken', '==', token).get();
+    await Promise.all(snap.docs.map(d =>
+      d.ref.update({ webPushToken: admin.firestore.FieldValue.delete() })));
+    if (snap.size) console.log(`Removed dead web push token from ${snap.size} user(s)`);
+  } catch (e) {
+    console.warn('removeDeadWebPushToken failed:', e.message);
+  }
 }
 
 // ── Garmin ────────────────────────────────────────────────────────────────────
@@ -36,7 +57,7 @@ async function sendWebPushNotifications(messages) {
 // non-secret status: garminConnected, garminLastSync, garminBackfill.
 //
 // All endpoints stay onRequest (not onCall) — same reasoning as the prior
-// Strava functions. maxInstances caps cost-abuse exposure.
+// (since-removed) Strava functions. maxInstances caps cost-abuse exposure.
 
 const GARMIN_RUNTIME = { maxInstances: 10 };
 const GARMIN_TOKEN_URL = 'https://diauth.garmin.com/di-oauth2-service/oauth/token';
@@ -652,7 +673,9 @@ exports.garminWebhook = functions
 // Triggered when a new document is created in the teamPosts collection.
 // Sends push notifications to all relevant users based on the channel.
 
-exports.onNewTeamPost = functions.firestore
+exports.onNewTeamPost = functions
+  .runWith({ maxInstances: 10 })
+  .firestore
   .document('teamPosts/{postId}')
   .onCreate(async (snap, context) => {
     const post = snap.data();
@@ -782,7 +805,9 @@ function startOfDayInTimeZone(now, tz) {
   return new Date(Date.UTC(+parts.year, +parts.month - 1, +parts.day) - offsetMs);
 }
 
-exports.dailyCheckinReminder = functions.pubsub
+exports.dailyCheckinReminder = functions
+  .runWith({ maxInstances: 1 })
+  .pubsub
   .schedule('0 16 * * *')
   .timeZone('America/New_York')
   .onRun(async (context) => {
@@ -856,7 +881,9 @@ exports.dailyCheckinReminder = functions.pubsub
 // ── Weekly Check-In Reminder (multi-timezone) ────────────────────────────────
 // Runs every hour on Saturday (UTC). Fires per-school at their local noon.
 
-exports.weeklyCheckinReminder = functions.pubsub
+exports.weeklyCheckinReminder = functions
+  .runWith({ maxInstances: 1 })
+  .pubsub
   .schedule('0 * * * 6')
   .onRun(async () => {
     try {
@@ -934,7 +961,9 @@ exports.weeklyCheckinReminder = functions.pubsub
 
 // ── Push athlete when coach replies to their weekly check-in ─────────────────
 
-exports.onWeeklyCheckinReply = functions.firestore
+exports.onWeeklyCheckinReply = functions
+  .runWith({ maxInstances: 10 })
+  .firestore
   .document('weeklyCheckins/{docId}')
   .onUpdate(async (change, context) => {
     try {
@@ -1065,7 +1094,9 @@ exports.onParentLinkUpdate = functions
 // Triggered by Cloud Billing budget alerts on the `budget-alerts` Pub/Sub topic.
 // Disables billing if actual spend exceeds budget. Recovery: re-link billing
 // account in GCP console. See CLAUDE.md for setup instructions.
-exports.stopBillingOnBudget = functions.pubsub
+exports.stopBillingOnBudget = functions
+  .runWith({ maxInstances: 1 })
+  .pubsub
   .topic('budget-alerts')
   .onPublish(async (message) => {
     const { CloudBillingClient } = require('@google-cloud/billing');

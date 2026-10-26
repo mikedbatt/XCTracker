@@ -384,20 +384,6 @@ service cloud.firestore {
       allow delete: if isCoachAtSchool(resource.data.schoolId);
     }
 
-    // ── Team Zone Settings ────────────────────────────────────────────────────
-    // Doc ID is the schoolId. Read uses isSignedIn() only because getDoc on
-    // a non-existent doc fails if we check resource.data fields.
-    match /teamZoneSettings/{schoolId} {
-      allow read:   if isSignedIn();
-      allow write:  if isCoachAtSchool(schoolId);
-    }
-
-    // ── Zone Settings (legacy, read-only) ─────────────────────────────────────
-    match /zoneSettings/{docId} {
-      allow read:   if isSignedIn();
-      allow write:  if false;
-    }
-
     // ── Daily Messages ────────────────────────────────────────────────────────
     // Doc ID format: schoolId_YYYY-MM-DD
     match /dailyMessages/{messageId} {
