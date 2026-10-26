@@ -98,7 +98,18 @@
       "PowerShell(npx expo export -p web)",
       "PowerShell(firebase deploy *)",
       "Bash(npx sentry-cli *)",
-      "PowerShell(npm run *)"
+      "PowerShell(npm run *)",
+      "WebFetch(domain:www.dcrainmaker.com)",
+      "WebFetch(domain:the5krunner.com)",
+      "WebFetch(domain:sahha.ai)",
+      "WebFetch(domain:developerportal.garmin.com)",
+      "WebFetch(domain:garminrumors.com)",
+      "WebFetch(domain:developer.garmin.com)",
+      "WebFetch(domain:aifitnessapi.com)",
+      "WebFetch(domain:openwearables.io)",
+      "Bash(npm run *)",
+      "Bash(node_modules\\\\.bin\\\\firebase-functions --version)",
+      "WebFetch(domain:pdfcoffee.com)"
     ]
   }
 }
