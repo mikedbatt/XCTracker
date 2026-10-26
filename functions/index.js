@@ -80,7 +80,7 @@ const legacyGarminFieldDeletes = () => ({
   garminUserId:       admin.firestore.FieldValue.delete(),
 });
 
-function setGarminCors(res) {
+function setCors(res) {
   res.set('Access-Control-Allow-Origin', '*');
   res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
@@ -88,7 +88,7 @@ function setGarminCors(res) {
 
 // Verifies the caller's Firebase ID token. Sends the 401 itself and returns
 // null on failure.
-async function verifyGarminCaller(req, res) {
+async function verifyCaller(req, res) {
   const m = (req.headers.authorization || '').match(/^Bearer (.+)$/);
   if (!m) { res.status(401).json({ error: 'Missing auth token' }); return null; }
   try {
@@ -264,11 +264,11 @@ const garminOAuthStatesRef = state => db.collection('garminOAuthStates').doc(sta
 exports.garminAuthStart = functions
   .runWith(GARMIN_RUNTIME)
   .https.onRequest(async (req, res) => {
-    setGarminCors(res);
+    setCors(res);
     if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
     if (req.method !== 'POST') { res.status(405).json({ error: 'Method Not Allowed' }); return; }
 
-    const uid = await verifyGarminCaller(req, res);
+    const uid = await verifyCaller(req, res);
     if (!uid) return;
 
     const { redirectUri } = req.body || {};
@@ -311,7 +311,7 @@ exports.garminAuthStart = functions
 exports.garminTokenExchange = functions
   .runWith(GARMIN_RUNTIME)
   .https.onRequest(async (req, res) => {
-    setGarminCors(res);
+    setCors(res);
     if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
     if (req.method !== 'POST') { res.status(405).json({ error: 'Method Not Allowed' }); return; }
 
@@ -422,11 +422,11 @@ exports.garminTokenExchange = functions
 exports.garminBackfill = functions
   .runWith(GARMIN_RUNTIME)
   .https.onRequest(async (req, res) => {
-    setGarminCors(res);
+    setCors(res);
     if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
     if (req.method !== 'POST') { res.status(405).json({ error: 'Method Not Allowed' }); return; }
 
-    const uid = await verifyGarminCaller(req, res);
+    const uid = await verifyCaller(req, res);
     if (!uid) return;
     if (!GARMIN_HISTORY_ENABLED) {
       res.status(403).json({ error: 'Garmin history import requires Garmin Enterprise access.' }); return;
@@ -451,11 +451,11 @@ exports.garminBackfill = functions
 exports.garminDisconnect = functions
   .runWith(GARMIN_RUNTIME)
   .https.onRequest(async (req, res) => {
-    setGarminCors(res);
+    setCors(res);
     if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
     if (req.method !== 'POST') { res.status(405).json({ error: 'Method Not Allowed' }); return; }
 
-    const uid = await verifyGarminCaller(req, res);
+    const uid = await verifyCaller(req, res);
     if (!uid) return;
 
     try {
@@ -1089,6 +1089,101 @@ exports.onParentLinkUpdate = functions
       console.error('onParentLinkUpdate error:', e);
     }
   });
+
+// ── Head coach handoff ───────────────────────────────────────────────────────
+// The current head coach hands the school to one of its APPROVED assistant
+// coaches (CoachProfile → "Hand off head coach"). Role changes are forbidden
+// to clients by firestore.rules, so the swap happens here, atomically:
+//   new head coach → role admin_coach / coachRole admin
+//   old head coach → stays as an approved assistant (stayAsAssistant: true),
+//                    or leaves the team (assistant_coach with no school)
+//   school         → adminCoachId = new head coach, coachIds updated
+// For a head coach who is gone and can't do this, see
+// docs/HEAD_COACH_HANDOFF.md (manual Firebase console steps).
+exports.transferHeadCoach = functions
+  .runWith({ maxInstances: 10 })
+  .https.onRequest(async (req, res) => {
+    setCors(res);
+    if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
+    if (req.method !== 'POST') { res.status(405).json({ error: 'Method Not Allowed' }); return; }
+
+    const uid = await verifyCaller(req, res);
+    if (!uid) return;
+
+    const { newHeadCoachId, stayAsAssistant } = req.body || {};
+    if (!newHeadCoachId || typeof newHeadCoachId !== 'string' || newHeadCoachId === uid) {
+      res.status(400).json({ error: 'Choose an assistant coach to hand off to.' }); return;
+    }
+
+    const oldRef = db.collection('users').doc(uid);
+    const newRef = db.collection('users').doc(newHeadCoachId);
+    let schoolId;
+    let newCoach;
+    try {
+      await db.runTransaction(async tx => {
+        const [oldSnap, newSnap] = await Promise.all([tx.get(oldRef), tx.get(newRef)]);
+        const oldCoach = oldSnap.data() || {};
+        newCoach = newSnap.data() || {};
+        schoolId = oldCoach.schoolId;
+
+        if (oldCoach.role !== 'admin_coach' || !schoolId
+            || (oldCoach.status && oldCoach.status !== 'approved')) {
+          throw new HttpsError(403, 'Only the head coach can hand off the team.');
+        }
+        const schoolRef = db.collection('schools').doc(schoolId);
+        const schoolSnap = await tx.get(schoolRef);
+        const school = schoolSnap.data();
+        if (!school || (school.adminCoachId && school.adminCoachId !== uid)) {
+          throw new HttpsError(403, 'Only the head coach can hand off the team.');
+        }
+        if (!newSnap.exists || newCoach.role !== 'assistant_coach'
+            || newCoach.schoolId !== schoolId || newCoach.status !== 'approved') {
+          throw new HttpsError(400, 'The new head coach must be an approved assistant coach on your team.');
+        }
+
+        const del = admin.firestore.FieldValue.delete();
+        tx.update(newRef, {
+          role: 'admin_coach',
+          coachRole: 'admin',
+          status: 'approved',
+          trainingAccess: del,
+        });
+        tx.update(oldRef, stayAsAssistant
+          ? { role: 'assistant_coach', coachRole: 'assistant', status: 'approved', trainingAccess: true }
+          : { role: 'assistant_coach', coachRole: del, status: null, schoolId: null, groupId: null, trainingAccess: del });
+        const coachIds = new Set(school.coachIds || []);
+        coachIds.add(newHeadCoachId);
+        if (!stayAsAssistant) coachIds.delete(uid);
+        tx.update(schoolRef, {
+          adminCoachId: newHeadCoachId,
+          coachIds: [...coachIds],
+          headCoachChangedAt: new Date().toISOString(),
+        });
+      });
+    } catch (e) {
+      if (e instanceof HttpsError) { res.status(e.status).json({ error: e.message }); return; }
+      console.error('transferHeadCoach failed:', e);
+      res.status(500).json({ error: 'Could not hand off the team. Please try again.' });
+      return;
+    }
+
+    console.log(`transferHeadCoach: school=${schoolId} ${uid} -> ${newHeadCoachId} (old coach ${stayAsAssistant ? 'stays as assistant' : 'left'})`);
+    try {
+      await pushToUser(newCoach, {
+        title: "You're now the head coach",
+        body: 'The head coach role for your team has been handed to you in XCTracker.',
+        data: { type: 'head_coach_transfer' },
+      });
+    } catch (e) {
+      console.warn('transferHeadCoach push failed (non-fatal):', e.message);
+    }
+    res.json({ transferred: true });
+  });
+
+// Error with an HTTP status, thrown inside transactions to abort them.
+class HttpsError extends Error {
+  constructor(status, message) { super(message); this.status = status; }
+}
 
 // ── Billing kill-switch (cost-abuse backstop) ────────────────────────────────
 // Triggered by Cloud Billing budget alerts on the `budget-alerts` Pub/Sub topic.

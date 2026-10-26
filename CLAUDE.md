@@ -100,6 +100,12 @@ garminConfig.js   # Garmin client helpers (PKCE, auth URL, authed calls to the G
 - `screens/SeasonReview.js` — post-season visual recap
 
 ### Coach-facing
+- **Head coach handoff** — CoachProfile "Hand off head coach" (head coach picks an
+  approved assistant; stays as assistant or leaves) → `transferHeadCoach` Cloud
+  Function swaps roles + the school's `adminCoachId` atomically (rules forbid
+  client role changes). When the head coach is gone, follow the manual console
+  runbook in `docs/HEAD_COACH_HANDOFF.md`. Head-coach power = user doc
+  (`role`/`schoolId`/`status`) AND `school.adminCoachId` — keep both in sync.
 - `screens/CoachDashboard.js` — team view, athlete cards, overtraining flags,
   injury-risk (ACWR) card
 - `screens/CoachAnalytics.js` — team-wide compliance and zone distribution
@@ -186,6 +192,9 @@ garminConfig.js   # Garmin client helpers (PKCE, auth URL, authed calls to the G
   (CalendarScreen marks the days + swaps the day-detail item). The "Managed" list
   shows every athlete with an active override (even after their injury check-in
   ages out).
+- `utils/callFunction.js` — `callFunction(name, body)`: authed POST to our HTTP
+  Cloud Functions (ID token in the Authorization header; server verifies via
+  `verifyCaller`). Garmin calls use `garminConfig.js`.
 - `utils/signOutUser.js` — the ONE sign-out path: clears this device's push
   token from the user doc first (shared Chromebooks otherwise route one user's
   notifications to another), then signs out. Never call `signOut(auth)` directly.
