@@ -21,6 +21,7 @@ import ChannelList from './ChannelList';
 import ParentLinkScreen from './ParentLinkScreen';
 import { useStaleRefresh } from '../hooks/useStaleRefresh';
 import { signOutUser } from '../utils/signOutUser';
+import { aggregateMiles, DEFAULT_CT_FACTORS, isCrossTraining } from '../utils/activityMiles';
 
 export default function ParentDashboard({ userData }) {
   const [athletes, setAthletes] = useState([]);
@@ -339,15 +340,20 @@ export default function ParentDashboard({ userData }) {
                   </View>
 
                   {(() => {
+                    // Same week + mileage rules as the athlete's own dashboard:
+                    // Monday-start week, cross-training counted as credit miles.
                     const now = new Date();
-                    const weekStart = new Date(now); weekStart.setDate(now.getDate() - 7); weekStart.setHours(0, 0, 0, 0);
+                    const weekStart = new Date(now);
+                    weekStart.setDate(now.getDate() - (now.getDay() === 0 ? 6 : now.getDay() - 1));
+                    weekStart.setHours(0, 0, 0, 0);
                     const weekRuns = athleteRuns.filter(r => {
                       const d = r.date?.toDate ? r.date.toDate() : new Date(r.date);
                       return d >= weekStart;
                     });
-                    const weekMiles = weekRuns.reduce((sum, r) => sum + (Number(r.miles) || 0), 0);
-                    const easyRuns = weekRuns.filter(r => (r.effort || 0) <= 4).length;
-                    const easyPct = weekRuns.length > 0 ? Math.round((easyRuns / weekRuns.length) * 100) : 0;
+                    const weekMiles = aggregateMiles(weekRuns, school?.crossTrainingFactors || DEFAULT_CT_FACTORS).totalMiles;
+                    const runningRuns = weekRuns.filter(r => !isCrossTraining(r));
+                    const easyRuns = runningRuns.filter(r => (r.effort || 0) <= 4).length;
+                    const easyPct = runningRuns.length > 0 ? Math.round((easyRuns / runningRuns.length) * 100) : 0;
                     const lastRun = athleteRuns[0];
                     const lastDate = lastRun?.date?.toDate ? lastRun.date.toDate() : (lastRun?.date ? new Date(lastRun.date) : null);
                     const lastLabel = lastDate ? lastDate.toLocaleDateString('en-US', { weekday: 'short' }) : '—';

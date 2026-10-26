@@ -25,6 +25,7 @@ import ParentRequests from '../components/ParentRequests';
 import { isGarminConnected } from '../garminConfig';
 import { signOutUser } from '../utils/signOutUser';
 import { notify } from '../utils/notify';
+import { toLocalISODate } from '../utils/dateUtils';
 
 export default function AthleteProfile({ userData, school, onClose, onUpdated, refreshUser, goToJoinScreen }) {
   const [firstName,     setFirstName]     = useState(userData.firstName || '');
@@ -72,7 +73,7 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
       // Needs a composite index on (schoolId, date) — Firestore will prompt on first run.
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const cutoff = thirtyDaysAgo.toISOString().split('T')[0];
+      const cutoff = toLocalISODate(thirtyDaysAgo);
 
       const snap = await getDocs(query(
         collection(db, 'dailyMessages'),
@@ -560,7 +561,7 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
                 <Text style={styles.emptySub}>Your coach's daily messages will appear here.</Text>
               </View>
             ) : messages.map(msg => {
-              const today = new Date().toISOString().split('T')[0];
+              const today = toLocalISODate(new Date());
               const isToday = msg.date === today;
               const msgDate = new Date(msg.date + 'T12:00:00')
                 .toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });

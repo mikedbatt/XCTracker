@@ -754,7 +754,23 @@ exports.onNewTeamPost = functions.firestore
   });
 
 // ── Daily Wellness Check-In Reminder ─────────────────────────────────────────
-// Runs once daily at 4 PM Eastern (3 PM CT, 2 PM MT, 1 PM PT).
+// Runs once daily at 4 PM Eastern (3 PM CT, 2 PM MT, 1 PM PT). "Already checked
+// in today" is judged against midnight in each athlete's SCHOOL timezone —
+// Cloud Functions run in UTC, so setHours(0) meant "since 8 PM ET yesterday"
+// and an evening check-in suppressed the next day's reminder.
+
+// Midnight at the start of now's calendar day in `tz`, as a Date.
+function startOfDayInTimeZone(now, tz) {
+  const parts = {};
+  new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hourCycle: 'h23',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(now).forEach(p => { parts[p.type] = p.value; });
+  const asUtc = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second);
+  const offsetMs = asUtc - Math.floor(now.getTime() / 1000) * 1000;
+  return new Date(Date.UTC(+parts.year, +parts.month - 1, +parts.day) - offsetMs);
+}
 
 exports.dailyCheckinReminder = functions.pubsub
   .schedule('0 16 * * *')
@@ -762,23 +778,37 @@ exports.dailyCheckinReminder = functions.pubsub
   .onRun(async (context) => {
     try {
       const now = new Date();
-      const todayStart = new Date(now);
-      todayStart.setHours(0, 0, 0, 0);
-
-      const athletesSnap = await db.collection('users')
-        .where('role', '==', 'athlete')
-        .where('status', '==', 'approved')
-        .get();
+      const [athletesSnap, schoolsSnap] = await Promise.all([
+        db.collection('users')
+          .where('role', '==', 'athlete')
+          .where('status', '==', 'approved')
+          .get(),
+        db.collection('schools').get(),
+      ]);
 
       if (athletesSnap.empty) return;
 
-      const checkinsSnap = await db.collection('checkins')
-        .where('date', '>=', admin.firestore.Timestamp.fromDate(todayStart))
-        .get();
+      const dayStartBySchool = {};
+      schoolsSnap.docs.forEach(d => {
+        dayStartBySchool[d.id] = startOfDayInTimeZone(now, d.data().timezone || 'America/New_York');
+      });
+      const defaultDayStart = startOfDayInTimeZone(now, 'America/New_York');
+      const earliest = new Date(Math.min(defaultDayStart, ...Object.values(dayStartBySchool)));
 
-      const checkedInUserIds = new Set(
-        checkinsSnap.docs.map(d => d.data().userId).filter(Boolean)
-      );
+      // Latest check-in per athlete since the earliest school's midnight.
+      const checkinsSnap = await db.collection('checkins')
+        .where('date', '>=', admin.firestore.Timestamp.fromDate(earliest))
+        .get();
+      const latestCheckin = {};
+      checkinsSnap.docs.forEach(d => {
+        const { userId, date } = d.data();
+        const when = date?.toDate ? date.toDate() : (date ? new Date(date) : null);
+        if (userId && when && (!latestCheckin[userId] || when > latestCheckin[userId])) latestCheckin[userId] = when;
+      });
+      const checkedInToday = (uid, schoolId) => {
+        const when = latestCheckin[uid];
+        return !!when && when >= (dayStartBySchool[schoolId] || defaultDayStart);
+      };
 
       const title = 'Daily Check-In';
       const body = 'How are you feeling? A quick check-in helps your coach keep you healthy.';
@@ -788,7 +818,7 @@ exports.dailyCheckinReminder = functions.pubsub
       const webMessages = [];
       athletesSnap.docs.forEach(doc => {
         const athlete = doc.data();
-        if (checkedInUserIds.has(doc.id)) return;
+        if (checkedInToday(doc.id, athlete.schoolId)) return;
         if (athlete.expoPushToken && Expo.isExpoPushToken(athlete.expoPushToken)) {
           messages.push({ to: athlete.expoPushToken, sound: 'default', title, body, data });
         }

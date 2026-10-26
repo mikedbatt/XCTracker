@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 import { SIGNAL } from '../constants/design';
-import { getActiveSeason, getPhaseForSeason, getCompletedSeasons, generateVolumeCurve } from './SeasonPlanner';
+import { getActiveSeason, getPhaseForSeason, getCompletedSeasons, generateVolumeCurve, getSeasonKey } from './SeasonPlanner';
 import SeasonReview from './SeasonReview';
 import { formatTime, calcPace, formatPace } from '../utils/raceUtils';
 import { PACE_ZONES, calcPaceZoneBreakdown, calcPaceZoneSecondsForRun, calcPace8020 } from '../utils/vdotUtils';
@@ -73,7 +73,7 @@ export default function AthleteAnalytics({ userData, school, myGroup, onClose })
   const totalWeeks = activeSeason ? Math.ceil((new Date(activeSeason.championshipDate) - new Date(activeSeason.seasonStart)) / (7 * 86400000)) : null;
 
   // ── Feature 1: Season Volume Arc data ──
-  const seasonKey = activeSeason ? `${activeSeason.sport || 'cross_country'}_${activeSeason.seasonStart?.split?.('T')?.[0] || activeSeason.seasonStart}` : null;
+  const seasonKey = getSeasonKey(activeSeason);
   // Only build a curve from a real coach-set target — never fabricate a default.
   // No season or no group target → empty plan → "not set up yet" empty state.
   const volumePlan = seasonKey && myGroup?.seasonPlans?.[seasonKey]

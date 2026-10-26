@@ -15,9 +15,9 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import {
-  collection, doc, getDocs, query, serverTimestamp, setDoc, where,
+  collection, doc, getDocs, query, serverTimestamp, where, writeBatch,
 } from 'firebase/firestore';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Platform, ScrollView, StyleSheet, Text,
   TouchableOpacity, View,
@@ -41,6 +41,9 @@ export default function AttendanceScreen({ userData, athletes = [], onClose }) {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [sortBy, setSortBy] = useState('firstName'); // 'firstName' | 'lastName'
   const [marks, setMarks] = useState({});           // { athleteId: 'present' | 'absent' | 'excused' }
+  // Athletes with a SAVED record for this date — so un-marking one (or Clear
+  // all) deletes that record on save instead of leaving a stale mark behind.
+  const savedIdsRef = useRef(new Set());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const dateKey = toDateKey(selectedDate);
@@ -61,6 +64,7 @@ export default function AttendanceScreen({ userData, athletes = [], onClose }) {
           const data = d.data();
           loaded[data.athleteId] = data.status;
         });
+        savedIdsRef.current = new Set(Object.keys(loaded));
         setMarks(loaded);
       } catch (e) {
         console.warn('Failed to load attendance:', e);
@@ -120,11 +124,13 @@ export default function AttendanceScreen({ userData, athletes = [], onClose }) {
     setSaving(true);
     try {
       const coachId = auth.currentUser?.uid;
-      // Save only marked entries. Unmarked = no record for this athlete/date
-      // (matches the "only days attendance was taken" model).
-      const writes = Object.entries(marks).map(([athleteId, status]) => {
-        const id = `${userData.schoolId}_${athleteId}_${dateKey}`;
-        return setDoc(doc(db, 'attendance', id), {
+      // Marked = a record; unmarked = no record for this athlete/date (the
+      // "only days attendance was taken" model). One atomic batch: set every
+      // mark, delete every previously-saved mark that was cleared.
+      const docId = athleteId => `${userData.schoolId}_${athleteId}_${dateKey}`;
+      const batch = writeBatch(db);
+      Object.entries(marks).forEach(([athleteId, status]) => {
+        batch.set(doc(db, 'attendance', docId(athleteId)), {
           schoolId:  userData.schoolId,
           athleteId,
           date:      dateKey,
@@ -133,7 +139,11 @@ export default function AttendanceScreen({ userData, athletes = [], onClose }) {
           markedBy:  coachId,
         });
       });
-      await Promise.all(writes);
+      savedIdsRef.current.forEach(athleteId => {
+        if (!marks[athleteId]) batch.delete(doc(db, 'attendance', docId(athleteId)));
+      });
+      await batch.commit();
+      savedIdsRef.current = new Set(Object.keys(marks));
       notify('Saved', `Attendance recorded for ${dateKey}.`);
       if (onClose) onClose();
     } catch (e) {

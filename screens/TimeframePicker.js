@@ -3,6 +3,7 @@ import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import DatePickerField from './DatePickerField';
 import Button from '../components/Button';
 import { BRAND, BRAND_DARK, BRAND_LIGHT, FONT_SIZE, FONT_WEIGHT, NEUTRAL, RADIUS, SHADOW, SPACE } from '../constants/design';
+import { endOfLocalDay } from '../utils/dateUtils';
 
 export const TIMEFRAMES = [
   { label: 'This week',   key: 'week' },
@@ -56,7 +57,7 @@ export function getDateRange(timeframe, activeSeason, customStart, customEnd) {
       if (activeSeason?.seasonStart) {
         return {
           start: new Date(activeSeason.seasonStart),
-          end:   activeSeason.championshipDate ? new Date(activeSeason.championshipDate) : now,
+          end:   activeSeason.championshipDate ? endOfLocalDay(activeSeason.championshipDate) : now,
         };
       }
       // No season configured — fall back to all-time rather than guessing a
@@ -66,7 +67,7 @@ export function getDateRange(timeframe, activeSeason, customStart, customEnd) {
     case 'custom': {
       return {
         start: customStart instanceof Date ? customStart : null,
-        end:   customEnd   instanceof Date ? customEnd   : null,
+        end:   customEnd   instanceof Date ? endOfLocalDay(customEnd) : null,
       };
     }
     default:

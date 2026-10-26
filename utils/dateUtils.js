@@ -11,6 +11,16 @@ export function getMondayISO(date) {
   return d.toISOString().split('T')[0];
 }
 
+// Last millisecond of the given date's LOCAL day. Use for the END of an
+// inclusive date range ("through Nov 7"): a range ending at the stored
+// midnight silently drops every run on its last day.
+export function endOfLocalDay(date) {
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return null;
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
 // YYYY-MM-DD in the user's LOCAL timezone. Use this instead of
 // `.toISOString().split('T')[0]` whenever you're comparing calendar dates —
 // toISOString uses UTC, so in evening Eastern (or afternoon Pacific) hours it

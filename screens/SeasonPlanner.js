@@ -78,6 +78,30 @@ export const SPORT_PHASES = {
   ],
 };
 
+// Key a group's seasonPlans map by sport + season start date.
+export function getSeasonKey(season) {
+  if (!season?.seasonStart) return null;
+  return `${season.sport || 'cross_country'}_${new Date(season.seasonStart).toISOString().split('T')[0]}`;
+}
+
+// A group's weekly mileage target for the week starting mondayISO — the ONE
+// definition the athlete home card and Stats tab share: the coach's season
+// volume plan, else a legacy per-week plan, else the curve generated from the
+// group's peak target (as the Stats tab charts it), else the flat target.
+// Returns null when the coach hasn't set anything.
+export function getGroupWeekTarget(group, season, mondayISO) {
+  if (!group) return null;
+  const key = getSeasonKey(season);
+  const plan = key ? group.seasonPlans?.[key] : null;
+  if (plan?.[mondayISO]) return plan[mondayISO];
+  if (group.weeklyPlan?.[mondayISO]) return group.weeklyPlan[mondayISO];
+  if (!plan && season && group.weeklyMilesTarget) {
+    const curve = generateVolumeCurve(season, group.weeklyMilesTarget);
+    if (curve[mondayISO]) return curve[mondayISO];
+  }
+  return group.weeklyMilesTarget || null;
+}
+
 // ── Generate a weekly volume plan from season dates + peak mileage ────────────
 export function generateVolumeCurve(season, peakMiles, startingMiles = null) {
   const sport = season.sport || 'cross_country';

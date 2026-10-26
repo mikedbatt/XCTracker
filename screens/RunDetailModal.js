@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { deleteDoc, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { deleteDoc, doc, increment, updateDoc } from 'firebase/firestore';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -213,13 +213,10 @@ export default function RunDetailModal({
       if (!isCT) {
         const diff = newMiles - (run.miles || 0);
         if (diff !== 0) {
-          const userDoc = await getDoc(doc(db, 'users', run.userId));
-          if (userDoc.exists()) {
-            const current = userDoc.data().totalMiles || 0;
-            await updateDoc(doc(db, 'users', run.userId), {
-              totalMiles: Math.max(0, Math.round((current + diff) * 10) / 10),
-            });
-          }
+          // Atomic — no read-then-write race with the Garmin webhook.
+          await updateDoc(doc(db, 'users', run.userId), {
+            totalMiles: increment(Math.round(diff * 10) / 10),
+          });
         }
       }
       setIsEditing(false);
@@ -240,13 +237,9 @@ export default function RunDetailModal({
           await deleteDoc(doc(db, 'runs', run.id));
           // totalMiles is running-only — skip for cross-training.
           if (!(run.activityType && run.activityType !== 'run')) {
-            const userDoc = await getDoc(doc(db, 'users', run.userId));
-            if (userDoc.exists()) {
-              const current = userDoc.data().totalMiles || 0;
-              await updateDoc(doc(db, 'users', run.userId), {
-                totalMiles: Math.max(0, Math.round((current - (run.miles || 0)) * 10) / 10),
-              });
-            }
+            await updateDoc(doc(db, 'users', run.userId), {
+              totalMiles: increment(-Math.round((run.miles || 0) * 10) / 10),
+            });
           }
           onDeleted && onDeleted();
           onClose();

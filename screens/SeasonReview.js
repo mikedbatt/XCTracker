@@ -12,7 +12,7 @@ import { SIGNAL } from '../constants/design';
 import { SPORTS } from './SeasonPlanner';
 import { formatTime } from '../utils/raceUtils';
 import { calcPaceZoneBreakdown, calcPace8020 } from '../utils/vdotUtils';
-import { getMondayISO } from '../utils/dateUtils';
+import { getMondayISO, endOfLocalDay } from '../utils/dateUtils';
 import { creditForRun, isCrossTraining, DEFAULT_CT_FACTORS } from '../utils/activityMiles';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -34,7 +34,8 @@ export default function SeasonReview({ season, school, userData, athletes = [], 
   const isCoach = userData.role === 'admin_coach' || userData.role === 'assistant_coach';
   const sport = SPORTS[season.sport] || SPORTS.cross_country;
   const seasonStart = new Date(season.seasonStart);
-  const seasonEnd = new Date(season.championshipDate);
+  // Inclusive of championship day.
+  const seasonEnd = endOfLocalDay(season.championshipDate);
   // Cross-training counts as running-equivalent credit miles, not raw miles.
   const ctFactors = school?.crossTrainingFactors || DEFAULT_CT_FACTORS;
 

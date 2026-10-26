@@ -146,6 +146,14 @@ garminConfig.js   # Garmin client helpers (PKCE, auth URL, authed calls to the G
   callers can chain comparisons safely. **Use `toLocalISODate(date)` for any
   "is this today?" comparison** — `.toISOString().split('T')[0]` returns UTC
   date which flips to tomorrow in evening Eastern / afternoon Pacific.
+  **Use `endOfLocalDay(date)` for the END of an inclusive range** (custom
+  timeframe, season, Season Review) — ending at the stored midnight drops the
+  last day. Daily-tip doc keys (`dailyMessages/{schoolId}_{date}`) use
+  `toLocalISODate` on both writer and readers.
+- `getGroupWeekTarget(group, season, mondayISO)` (in `screens/SeasonPlanner.js`,
+  next to `getActiveSeason`/`getSeasonKey`) — the ONE weekly mileage target the
+  athlete home card and Stats tab share (season volume plan → legacy weeklyPlan
+  → generated curve → flat target).
 - `utils/complianceUtils.js` — training compliance scoring
 - `utils/weeklyCheckinUtils.js` — weekly check-in helpers: window math
   (`isInWeeklyWindow`, `getWeekAnchor`), doc-ID convention

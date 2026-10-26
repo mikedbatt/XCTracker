@@ -13,7 +13,7 @@ import {
   updateDoc,
   where
 } from 'firebase/firestore';
-import { Suspense, useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState, useRef } from 'react';
 import {
   ActivityIndicator, KeyboardAvoidingView,
   Modal,
@@ -201,6 +201,7 @@ export default function CoachDashboard({ userData }) {
   const [athleteRunMiles,     setAthleteRunMiles]     = useState({}); // running-only (leaderboard toggle)
   const [leaderboardCT,       setLeaderboardCT]       = useState(true);
   const [activeOverrides,     setActiveOverrides]     = useState({}); // athleteId → active workout override
+  const overrideChangedRef = useRef(false); // set by AthleteDetailScreen "Modify workout"
   const [selectedTimeframe,   setSelectedTimeframe]   = useState(TIMEFRAMES[0]);
   const [genderFilter,        setGenderFilter]        = useState('all');
   const [overtTrainingAlerts, setOvertTrainingAlerts] = useState({});
@@ -253,8 +254,9 @@ export default function CoachDashboard({ userData }) {
       const weekStart = new Date(now);
       weekStart.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
       weekStart.setHours(0, 0, 0, 0);
-      const todayKey = now.toISOString().split('T')[0];
-      const thirtyDaysAgoKey = new Date(now.getTime() - 30 * 86400000).toISOString().split('T')[0];
+      // Daily-tip keys use the LOCAL date (matches the athlete readers).
+      const todayKey = toLocalISODate(now);
+      const thirtyDaysAgoKey = toLocalISODate(new Date(now.getTime() - 30 * 86400000));
 
       // ── Phase 1: All independent top-level queries in parallel ──
       const [
@@ -472,18 +474,20 @@ export default function CoachDashboard({ userData }) {
           weeklyMilesMap[athlete.id] = weekMiles(weekFiltered);
 
           // 3-week average weekly miles
-          const week1Start = new Date(weekStart); // current week (incomplete)
+          const week1Start = new Date(weekStart); // current week (incomplete) — boundary only
           const week2Start = new Date(weekStart); week2Start.setDate(week2Start.getDate() - 7);
           const week3Start = new Date(weekStart); week3Start.setDate(week3Start.getDate() - 14);
           const week4Start = new Date(weekStart); week4Start.setDate(week4Start.getDate() - 21);
 
           // Weekly sums count cross-training credit (per the compliance decision).
-          const w1 = weekMiles(allRuns.filter(r => { const d = getRunDate(r); return d && d >= week1Start; }));
           const w2 = weekMiles(allRuns.filter(r => { const d = getRunDate(r); return d && d >= week2Start && d < week1Start; }));
           const w3 = weekMiles(allRuns.filter(r => { const d = getRunDate(r); return d && d >= week3Start && d < week2Start; }));
           const w4 = weekMiles(allRuns.filter(r => { const d = getRunDate(r); return d && d >= week4Start && d < week3Start; }));
 
-          threeWeekAvgMap[athlete.id] = Math.round(((w1 + w2 + w3) / 3) * 10) / 10;
+          // Average the 3 COMPLETED weeks. Including the current partial week
+          // deflated the fallback target (110% of this average) early in the
+          // week, flagging most of the team "over target" Mon–Wed.
+          threeWeekAvgMap[athlete.id] = Math.round(((w2 + w3 + w4) / 3) * 10) / 10;
           // Store last 3 COMPLETED weeks (skip current incomplete week)
           weekBreakdownMap[athlete.id] = {
             w1: Math.round(w2 * 10) / 10, // last week
@@ -692,7 +696,15 @@ export default function CoachDashboard({ userData }) {
       athlete={selectedAthlete}
       school={school}
       groups={groups}
-      onBack={() => setSelectedAthlete(null)}
+      onOverrideChanged={() => { overrideChangedRef.current = true; }}
+      onBack={() => {
+        setSelectedAthlete(null);
+        // A workout modification changes the injury card + compliance flags.
+        if (overrideChangedRef.current) {
+          overrideChangedRef.current = false;
+          loadDashboard();
+        }
+      }}
     />;
   }
 
@@ -740,7 +752,7 @@ export default function CoachDashboard({ userData }) {
     if (!tipText.trim()) return;
     setSendingTip(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = toLocalISODate(new Date());
       await setDoc(doc(db, 'dailyMessages', `${userData.schoolId}_${today}`), {
         schoolId:    userData.schoolId,
         message:     tipText.trim(),

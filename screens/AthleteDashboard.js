@@ -8,6 +8,7 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  increment,
   setDoc,
   updateDoc,
   where,
@@ -30,7 +31,7 @@ import { auth, db } from '../firebaseConfig';
 import { bottomInset } from '../utils/safeArea';
 import { aggregateMiles, isCrossTraining, creditForRun, activityMeta, CROSS_TRAINING_TYPES, DEFAULT_CT_FACTORS } from '../utils/activityMiles';
 import { lazyWithReload } from '../utils/lazyWithReload';
-import { toLocalISODate } from '../utils/dateUtils';
+import { getMondayISO, toLocalISODate } from '../utils/dateUtils';
 import { isGarminConnected } from '../garminConfig';
 import { BRAND, EFFORT_COLORS as DESIGN_EFFORT_COLORS, EFFORT_LABELS as DESIGN_EFFORT_LABELS, SIGNAL } from '../constants/design';
 import { batchDocsByIds } from '../utils/batchDocsByIds';
@@ -41,7 +42,7 @@ import CalendarScreen from './CalendarScreen';
 import { SIGNAL_TYPE_COLORS, TYPE_COLORS, WORKOUT_PACE_ZONE } from '../constants/training';
 import DatePickerField from './DatePickerField';
 import RunDetailModal from './RunDetailModal';
-import { getActiveSeason, getCompletedSeasons } from './SeasonPlanner';
+import { getActiveSeason, getCompletedSeasons, getGroupWeekTarget } from './SeasonPlanner';
 import GarminConnect from './GarminConnect';
 import ParentRequests from '../components/ParentRequests';
 import ChannelList from './ChannelList';
@@ -245,15 +246,9 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
       if (groupDoc && groupDoc.exists && groupDoc.exists()) {
         const loadedGroup = { id: groupDoc.id, ...groupDoc.data() };
         setMyGroup(loadedGroup);
-        const now = new Date();
-        const d = now.getDay();
-        const mon = new Date(now);
-        mon.setDate(now.getDate() - (d === 0 ? 6 : d - 1));
-        const mondayISO = mon.toISOString().split('T')[0];
-        const weekTarget = loadedGroup.weeklyPlan?.[mondayISO] ?? loadedGroup.weeklyMilesTarget;
-        // null = coach hasn't set a target; hero card shows a clean "no target"
-        // state rather than a fabricated goal.
-        setWeeklyTarget(weekTarget ?? null);
+        // Same target the Stats tab charts (season volume plan first). null =
+        // coach hasn't set a target; hero card shows a clean "no target" state.
+        setWeeklyTarget(getGroupWeekTarget(loadedGroup, activeSeason, getMondayISO(new Date())));
       } else if (userData.schoolId && !groupId) {
         setMyGroup(null);
         setWeeklyTarget(null);
@@ -348,7 +343,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
     // Daily message modal
     if (userData.schoolId) {
       try {
-        const today = new Date().toISOString().split('T')[0];
+        const today = toLocalISODate(new Date());
         const msgDoc = await getDoc(doc(db, 'dailyMessages', userData.schoolId + '_' + today));
         if (msgDoc.exists()) {
           setDailyMessage(msgDoc.data());
@@ -490,7 +485,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
         const oldSnap = await fsGet(fsDoc(db, 'runs', editingRunId));
         const oldMiles = oldSnap.data()?.miles || 0;
         await fsUpdate(fsDoc(db, 'runs', editingRunId), { miles: milesFloat, duration: duration || null, effort, notes: notes || null, date: runDate });
-        await updateDoc(doc(db, 'users', user.uid), { totalMiles: Math.max(0, Math.round(((totalMiles || 0) - oldMiles + milesFloat) * 10) / 10) });
+        await updateDoc(doc(db, 'users', user.uid), { totalMiles: increment(Math.round((milesFloat - oldMiles) * 10) / 10) });
         notify('Updated! ✅', 'Your run has been updated.');
         setEditingRunId(null);
       } else {
@@ -510,7 +505,8 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
           notify('Cross-training logged! 🚴', `${milesFloat} ${activityType} mi = ${creditMiles} mi credit.`);
         } else {
           await addDoc(collection(db, 'runs'), base);
-          await updateDoc(doc(db, 'users', user.uid), { totalMiles: Math.round(((totalMiles || 0) + milesFloat) * 10) / 10 });
+          // Atomic: totalMiles is lifetime RUNNING miles, not the on-screen timeframe total.
+          await updateDoc(doc(db, 'users', user.uid), { totalMiles: increment(Math.round(milesFloat * 10) / 10) });
           notify('Run logged! 🏃', miles + ' miles saved. Great work!');
         }
       }
@@ -532,7 +528,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
           await deleteDoc(firestoreDoc(db, 'runs', run.id));
           // totalMiles is running-only — only decrement for actual runs.
           if (!isCrossTraining(run)) {
-            await updateDoc(doc(db, 'users', auth.currentUser.uid), { totalMiles: Math.max(0, Math.round(((totalMiles || 0) - (run.miles || 0)) * 10) / 10) });
+            await updateDoc(doc(db, 'users', auth.currentUser.uid), { totalMiles: increment(-Math.round((run.miles || 0) * 10) / 10) });
           }
           notify('Deleted', 'Run removed.');
           setRunDetailVisible(false); setSelectedRun(null); loadDashboard();

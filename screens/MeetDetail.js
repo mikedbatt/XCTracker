@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import {
-  addDoc, collection, deleteDoc, doc, getDocs, query,
-  serverTimestamp, updateDoc, where,
+  addDoc, arrayRemove, arrayUnion, collection, deleteDoc, doc, getDocs, query, serverTimestamp, updateDoc, where,
 } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -40,34 +39,42 @@ export default function MeetDetail({ meet, schoolId, school, athletes, groups, o
         where('meetId', '==', meet.id)
       ));
       const loaded = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      // Also load result counts per race
-      for (const race of loaded) {
+      // Result counts per race, in parallel.
+      await Promise.all(loaded.map(async race => {
         try {
           const resSnap = await getDocs(query(
             collection(db, 'raceResults'),
             where('raceId', '==', race.id)
           ));
           race.resultCount = resSnap.size;
-        } catch { race.resultCount = 0; }
-      }
+        } catch (e) {
+          console.warn('Race result count:', e);
+          race.resultCount = 0;
+        }
+      }));
       setRaces(loaded);
     } catch (e) { console.warn('Failed to load races:', e); }
     setLoading(false);
   };
 
-  // Auto-suggest athletes based on gender + level
+  // Auto-suggest athletes based on gender + level. Never suggests an athlete
+  // already entered in another race at this meet, and only auto-enters by
+  // level when the group name says so ("varsity" / "jv"); athletes in other
+  // groups (e.g. "Distance A") are left for the coach to add — they used to
+  // pass both filters and land in the varsity AND JV race.
   const suggestEntries = (gender, level) => {
+    const alreadyEntered = new Set(races.flatMap(r => r.entries || []));
     return athletes.filter(a => {
       if (a.status !== 'approved') return false;
+      if (alreadyEntered.has(a.id)) return false;
       if (gender !== 'mixed' && a.gender !== gender) return false;
       if (level !== 'open') {
-        // Match level to group name (heuristic: group name contains "varsity" or "jv")
-        if (!a.groupId) return level === 'jv'; // unassigned → JV by default
-        const group = groups.find(g => g.id === a.groupId);
-        if (!group) return true;
+        const group = a.groupId ? groups.find(g => g.id === a.groupId) : null;
+        if (!group) return level === 'jv'; // unassigned → JV by default
         const gName = group.name.toLowerCase();
-        if (level === 'varsity' && gName.includes('jv')) return false;
-        if (level === 'jv' && gName.includes('varsity')) return false;
+        if (level === 'varsity') return gName.includes('varsity');
+        if (level === 'jv') return gName.includes('jv');
+        return false;
       }
       return true;
     }).map(a => a.id);
@@ -118,17 +125,24 @@ export default function MeetDetail({ meet, schoolId, school, athletes, groups, o
     });
   };
 
+  // arrayUnion/arrayRemove + functional state updates, so quick taps don't
+  // overwrite each other with a stale snapshot of the entry list.
   const handleToggleEntry = async (race, athleteId) => {
-    const currentEntries = race.entries || [];
-    const updated = currentEntries.includes(athleteId)
-      ? currentEntries.filter(id => id !== athleteId)
-      : [...currentEntries, athleteId];
+    const adding = !(race.entries || []).includes(athleteId);
+    const apply = list => adding
+      ? [...new Set([...(list || []), athleteId])]
+      : (list || []).filter(id => id !== athleteId);
+    setRaces(prev => prev.map(r => r.id === race.id ? { ...r, entries: apply(r.entries) } : r));
+    setEditingEntries(prev => (prev?.id === race.id ? { ...prev, entries: apply(prev.entries) } : prev));
     try {
-      await updateDoc(doc(db, 'races', race.id), { entries: updated });
-      // Update local state
-      setRaces(prev => prev.map(r => r.id === race.id ? { ...r, entries: updated } : r));
-      if (editingEntries?.id === race.id) setEditingEntries(prev => ({ ...prev, entries: updated }));
-    } catch (e) { console.warn('Failed to update entries:', e); }
+      await updateDoc(doc(db, 'races', race.id), {
+        entries: adding ? arrayUnion(athleteId) : arrayRemove(athleteId),
+      });
+    } catch (e) {
+      console.warn('Failed to update entries:', e);
+      notify('Error', 'Could not update the race entries. Please try again.');
+      loadRaces();
+    }
   };
 
   const getEligibleAthletes = (race) => {
