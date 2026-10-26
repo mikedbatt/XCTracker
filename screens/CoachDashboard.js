@@ -1,7 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as SecureStore from 'expo-secure-store';
 import { LinearGradient } from 'expo-linear-gradient';
-import { signOut } from 'firebase/auth';
 import {
   arrayRemove,
   arrayUnion,
@@ -60,6 +58,7 @@ import { useStaleRefresh } from '../hooks/useStaleRefresh';
 import { getRunDate, toLocalISODate } from '../utils/dateUtils';
 import { getWeekAnchor } from '../utils/weeklyCheckinUtils';
 import { lazyWithReload } from '../utils/lazyWithReload';
+import { signOutUser } from '../utils/signOutUser';
 
 // Lazy-loaded (heavy, opened on demand) — kept out of the initial bundle.
 const CoachAnalytics = lazyWithReload(() => import('../screens/CoachAnalytics'));
@@ -728,13 +727,7 @@ export default function CoachDashboard({ userData }) {
       title: 'Sign out',
       message: 'Are you sure?',
       confirmLabel: 'Sign out',
-      onConfirm: async () => {
-        try {
-          await SecureStore.deleteItemAsync('xctracker_email');
-          await SecureStore.deleteItemAsync('xctracker_password');
-        } catch (e) { /* SecureStore unavailable on web — Firebase persistence handles auth */ }
-        signOut(auth);
-      },
+      onConfirm: signOutUser,
     });
   };
 

@@ -940,6 +940,87 @@ exports.onWeeklyCheckinReply = functions.firestore
     }
   });
 
+// ── Parent ↔ athlete links (athlete-approved) ────────────────────────────────
+// A parent creates parentLinks/{parentId}_{athleteId} (status 'pending'); the
+// athlete approves or declines in the app. Firestore rules stop clients from
+// writing linkedAthleteIds / linkedParentIds / a parent's school, so the link
+// itself is made here with the Admin SDK once the athlete says yes.
+
+// Push one user on whichever channels they have registered.
+async function pushToUser(user, { title, body, data }) {
+  const sends = [];
+  if (user.expoPushToken && Expo.isExpoPushToken(user.expoPushToken)) {
+    sends.push(expo.sendPushNotificationsAsync([{ to: user.expoPushToken, sound: 'default', title, body, data }]));
+  }
+  if (user.webPushToken) {
+    sends.push(sendWebPushNotifications([{ token: user.webPushToken, title, body, data }]));
+  }
+  await Promise.all(sends);
+}
+
+exports.onParentLinkCreate = functions
+  .runWith({ maxInstances: 10 })
+  .firestore.document('parentLinks/{linkId}')
+  .onCreate(async (snap) => {
+    const link = snap.data();
+    try {
+      const athleteDoc = await db.collection('users').doc(link.athleteId).get();
+      if (!athleteDoc.exists) return;
+      await pushToUser(athleteDoc.data(), {
+        title: 'Parent connection request',
+        body: `${link.parentName || 'Someone'} wants to follow your training as your parent. Open XCTracker to approve or decline.`,
+        data: { type: 'parent_link_request', linkId: snap.id },
+      });
+    } catch (e) {
+      console.error('onParentLinkCreate error:', e);
+    }
+  });
+
+exports.onParentLinkUpdate = functions
+  .runWith({ maxInstances: 10 })
+  .firestore.document('parentLinks/{linkId}')
+  .onUpdate(async (change) => {
+    const before = change.before.data();
+    const after = change.after.data();
+    if (before.status === after.status || after.status !== 'approved') return;
+
+    const parentRef = db.collection('users').doc(after.parentId);
+    const athleteRef = db.collection('users').doc(after.athleteId);
+    try {
+      const [parentSnap, athleteSnap] = await Promise.all([parentRef.get(), athleteRef.get()]);
+      if (!parentSnap.exists || !athleteSnap.exists) return;
+      const parent = parentSnap.data();
+      const athlete = athleteSnap.data();
+
+      // The parent joins the athlete's school (feed, calendar) unless they
+      // already belong to one — a parent of athletes at two schools keeps the
+      // first. If the athlete isn't on an approved team yet, the parent picks
+      // the school up later (ownerParentAdoptsSchool rule, ParentDashboard).
+      const parentUpdate = {
+        linkedAthleteIds: admin.firestore.FieldValue.arrayUnion(after.athleteId),
+      };
+      if (!parent.schoolId && athlete.schoolId && athlete.status === 'approved') {
+        parentUpdate.schoolId = athlete.schoolId;
+        parentUpdate.status = 'approved';
+      }
+
+      const batch = db.batch();
+      batch.update(parentRef, parentUpdate);
+      batch.update(athleteRef, {
+        linkedParentIds: admin.firestore.FieldValue.arrayUnion(after.parentId),
+      });
+      await batch.commit();
+
+      await pushToUser(parent, {
+        title: 'Connection approved',
+        body: `${athlete.firstName || 'Your athlete'} approved your request. You can now follow their training in XCTracker.`,
+        data: { type: 'parent_link_approved', athleteId: after.athleteId },
+      });
+    } catch (e) {
+      console.error('onParentLinkUpdate error:', e);
+    }
+  });
+
 // ── Billing kill-switch (cost-abuse backstop) ────────────────────────────────
 // Triggered by Cloud Billing budget alerts on the `budget-alerts` Pub/Sub topic.
 // Disables billing if actual spend exceeds budget. Recovery: re-link billing

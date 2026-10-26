@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { signOut, updateEmail } from 'firebase/auth';
+import { updateEmail } from 'firebase/auth';
 import { arrayRemove, arrayUnion, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { useState } from 'react';
 import {
@@ -18,6 +18,7 @@ import { auth, db } from '../firebaseConfig';
 import { AVATAR_COLORS, SIGNAL } from '../constants/design';
 import { confirmDestructive } from '../utils/confirmDialog';
 import LegalLinks from '../components/LegalLinks';
+import { signOutUser } from '../utils/signOutUser';
 
 const SCHOOL_COLORS = [
   { name: 'Navy & Gold', primary: '#1a237e', secondary: '#ffd600' },
@@ -221,7 +222,7 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
       title: 'Sign out',
       message: 'Are you sure you want to sign out?',
       confirmLabel: 'Sign out',
-      onConfirm: () => signOut(auth),
+      onConfirm: signOutUser,
     });
   };
 

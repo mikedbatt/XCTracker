@@ -114,8 +114,18 @@ garminConfig.js   # Garmin client helpers (PKCE, auth URL, authed calls to the G
   / `MeetDetail.js` — race and meet management
 
 ### Parent-facing
-- `screens/ParentDashboard.js` — multi-athlete, multi-school parent view
-- `screens/ParentLinkScreen.js` — link parent account to an athlete
+- `screens/ParentDashboard.js` — multi-athlete, multi-school parent view. Parents
+  ALWAYS route here (never to an onboarding screen by `schoolId`); it handles
+  the no-athlete state, outstanding link requests, and picks up a linked
+  athlete's school once that athlete is on an approved team.
+- `screens/ParentLinkScreen.js` — parent finds an athlete by email and sends a
+  **link request** (`parentLinks/{parentId}_{athleteId}`, status 'pending').
+- **Parent links are athlete-approved.** `components/ParentRequests.js` shows
+  pending requests (AthleteDashboard + Profile → Connections) with
+  Approve/Decline. Approving sets the request to 'approved'; the
+  `onParentLinkUpdate` Cloud Function then writes `linkedAthleteIds` /
+  `linkedParentIds` / the parent's `schoolId` with the Admin SDK (rules forbid
+  clients from writing those). `onParentLinkCreate` pushes the athlete.
 
 ### Team communication
 - `screens/TeamFeed.js` / `ChannelList.js` — team feed with image attachments
@@ -168,6 +178,9 @@ garminConfig.js   # Garmin client helpers (PKCE, auth URL, authed calls to the G
   (CalendarScreen marks the days + swaps the day-detail item). The "Managed" list
   shows every athlete with an active override (even after their injury check-in
   ages out).
+- `utils/signOutUser.js` — the ONE sign-out path: clears this device's push
+  token from the user doc first (shared Chromebooks otherwise route one user's
+  notifications to another), then signs out. Never call `signOut(auth)` directly.
 - `utils/confirmDialog.js` — `confirmDestructive({title, message, confirmLabel,
   onConfirm})`. **Use this instead of `Alert.alert([...buttons])`** — the
   multi-button native Alert is broken on web (collapses to OK-only via
@@ -325,6 +338,20 @@ firebase deploy --only firestore:rules    # rules-only redeploy
 firebase deploy --only firestore:indexes  # indexes-only redeploy
 firebase deploy --only storage            # Cloud Storage rules (storage.rules)
 ```
+
+**Firestore write rules are field-restricted** (2026-10 audit). `users/{uid}`:
+an owner may edit profile fields freely but may change `role`, `status`,
+`schoolId`, `coachRole`, `groupId`, `linkedAthleteIds` & co. ONLY via the named
+flows in `firestore.rules` (`ownerJoinRequest` → always 'pending',
+`ownerLeaveTeam`, `ownerCreateSchool` → `school_{uid}`, `ownerParentAdoptsSchool`);
+coaches may only approve/deny/remove/group athletes at their school
+(`coachManagesUser`; assistants are head-coach-managed). `isCoachAtSchool`
+requires `status == 'approved'`, so a pending assistant has no coach powers.
+Team posts must carry the poster's own `authorId/authorRole/authorName`, parents
+can't post, and coach/parent channels are coach-only. **When adding a new
+client write to a user doc, add its field to the right rule function or it
+will be denied.** Rules can only be compile-checked locally
+(`firebase deploy --only firestore:rules --dry-run`) — no Java, so no emulator.
 
 `storage.rules` (root, wired in `firebase.json`) governs Cloud Storage —
 currently just team-feed image uploads (`teamPosts/{schoolId}/…`). Enforces

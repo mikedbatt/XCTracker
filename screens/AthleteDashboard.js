@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { signOut } from 'firebase/auth';
 import {
   addDoc,
   collection,
@@ -45,6 +44,7 @@ import DatePickerField from './DatePickerField';
 import RunDetailModal from './RunDetailModal';
 import { getActiveSeason, getCompletedSeasons } from './SeasonPlanner';
 import GarminConnect from './GarminConnect';
+import ParentRequests from '../components/ParentRequests';
 import ChannelList from './ChannelList';
 import TeammateProfile from './TeammateProfile';
 import TimeframePicker, { TIMEFRAMES, getDateRange } from './TimeframePicker';
@@ -59,6 +59,7 @@ import {
   isInWeeklyWindow,
 } from '../utils/weeklyCheckinUtils';
 import WorkoutDetailModal from './WorkoutDetailModal';
+import { signOutUser } from '../utils/signOutUser';
 
 const EFFORT_LABELS = DESIGN_EFFORT_LABELS;
 const EFFORT_COLORS = DESIGN_EFFORT_COLORS;
@@ -545,7 +546,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
       title: 'Sign out',
       message: 'Are you sure?',
       confirmLabel: 'Sign out',
-      onConfirm: () => signOut(auth),
+      onConfirm: signOutUser,
     });
   };
 
@@ -693,6 +694,9 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
             </View>
           </View>
         )}
+
+        {/* ── Parent link requests (athlete approves) ── */}
+        <ParentRequests style={styles.cardSpacer} />
 
         {/* ── Pending approval banner ── */}
         {isPending && (

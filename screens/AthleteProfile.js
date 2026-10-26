@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as SecureStore from 'expo-secure-store';
-import { signOut, updateEmail } from 'firebase/auth';
+import { updateEmail } from 'firebase/auth';
 import {
   arrayRemove, collection, doc, getDoc, getDocs, orderBy, query, updateDoc, where
 } from 'firebase/firestore';
@@ -23,7 +22,9 @@ import { confirmDestructive } from '../utils/confirmDialog';
 import LegalLinks from '../components/LegalLinks';
 import { calcVDOT, getTrainingPaces, formatPace, parseTimeToSeconds, RACE_DISTANCES } from '../utils/vdotUtils';
 import GarminConnect from './GarminConnect';
+import ParentRequests from '../components/ParentRequests';
 import { isGarminConnected } from '../garminConfig';
+import { signOutUser } from '../utils/signOutUser';
 
 export default function AthleteProfile({ userData, school, onClose, onUpdated, refreshUser, goToJoinScreen }) {
   const [firstName,     setFirstName]     = useState(userData.firstName || '');
@@ -194,12 +195,8 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
       const allIds = [...(freshData.linkedParentIds || []), ...(freshData.pendingParentIds || [])];
       const parentIds = [...new Set(allIds)];
       if (parentIds.length === 0) { setLinkedParents([]); return; }
-      const parents = [];
-      for (const pid of parentIds) {
-        const snap = await getDoc(doc(db, 'users', pid));
-        if (snap.exists()) parents.push({ id: snap.id, ...snap.data() });
-      }
-      setLinkedParents(parents);
+      const snaps = await Promise.all(parentIds.map(pid => getDoc(doc(db, 'users', pid))));
+      setLinkedParents(snaps.filter(s => s.exists()).map(s => ({ id: s.id, ...s.data() })));
     } catch (e) { console.warn('Failed to load linked parents:', e); }
   };
 
@@ -275,13 +272,7 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
       title: 'Sign out',
       message: 'Are you sure you want to sign out?',
       confirmLabel: 'Sign out',
-      onConfirm: async () => {
-        try {
-          await SecureStore.deleteItemAsync('xctracker_email');
-          await SecureStore.deleteItemAsync('xctracker_password');
-        } catch (e) { /* SecureStore unavailable on web — Firebase persistence handles auth */ }
-        signOut(auth);
-      },
+      onConfirm: signOutUser,
     });
   };
 
@@ -621,6 +612,7 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
             )}
 
             {/* Connected parents */}
+            <ParentRequests onChanged={loadLinkedParents} />
             <View style={styles.parentsHeader}>
               <Text style={[styles.eyebrow, { marginTop: 0, paddingLeft: 4 }]}>Connected parents</Text>
               {unseenParentCount > 0 && (
@@ -632,7 +624,7 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
             {linkedParents.length === 0 ? (
               <View style={styles.emptyCard}>
                 <Text style={styles.emptyTitle}>No parents connected</Text>
-                <Text style={styles.emptySub}>Parents can link to your account using your email address.</Text>
+                <Text style={styles.emptySub}>Parents send a request using your email address — you approve it here.</Text>
               </View>
             ) : linkedParents.map(parent => (
               <View key={parent.id} style={styles.connectionCard}>

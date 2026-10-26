@@ -47,6 +47,9 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
 
   const primaryColor = school?.primaryColor || BRAND;
   const isCoach = userData.role === 'admin_coach' || userData.role === 'assistant_coach';
+  // Parents read the feed but never post; the teamPosts rule enforces the same
+  // (plus approved-members-only and per-channel limits).
+  const canPost = userData.role !== 'parent';
   const myUid   = auth.currentUser?.uid;
 
   const activeChannel = channel || 'whole_team';
@@ -59,7 +62,7 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
         [`lastSeenChannels.${activeChannel}`]: new Date(),
         // Also update legacy lastSeenFeed for backward compat
         ...(activeChannel === 'whole_team' && { lastSeenFeed: new Date() }),
-      }).catch(() => {});
+      }).catch(e => console.warn('Mark channel seen:', e));
     }
   }, [activeChannel]);
 
@@ -421,6 +424,11 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
       )}
 
       {/* Compose bar */}
+      {!canPost ? (
+        <View style={styles.readOnlyBar}>
+          <Text style={styles.readOnlyText}>Parents can read the team feed but can't post.</Text>
+        </View>
+      ) : (
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={0}
@@ -471,6 +479,7 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
           <Text style={styles.charCount}>{500 - message.length} characters remaining</Text>
         )}
       </KeyboardAvoidingView>
+      )}
     </View>
   );
 }
@@ -712,6 +721,20 @@ const styles = StyleSheet.create({
   },
 
   // ── Composer ────────────────────────────────────────────────────────────
+  readOnlyBar: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: bottomInset(12, 26),
+    backgroundColor: SIGNAL.color.white,
+    borderTopWidth: 1,
+    borderTopColor: SIGNAL.color.line,
+  },
+  readOnlyText: {
+    fontFamily: SIGNAL.font.body,
+    fontSize: 13,
+    color: SIGNAL.color.mute,
+    textAlign: 'center',
+  },
   composeBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',

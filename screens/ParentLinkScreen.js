@@ -1,26 +1,29 @@
-import { arrayUnion, collection, doc, getDocs, query, updateDoc, where } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, where } from 'firebase/firestore';
 import { useState } from 'react';
 import {
     ActivityIndicator,
-    Alert, Platform, ScrollView,
+    Platform, ScrollView,
     StyleSheet,
     Text, TextInput, TouchableOpacity,
     View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 import { SIGNAL } from '../constants/design';
+import { notify } from '../utils/notify';
 
-export default function ParentLinkScreen({ onLinkComplete }) {
+// Parent → athlete link REQUEST. The athlete approves it in their app (they
+// know the family situation best); the onParentLinkUpdate Cloud Function then
+// makes the actual link. Firestore rules stop parents from linking directly.
+export default function ParentLinkScreen({ onLinkComplete, onCancel }) {
   const [athleteEmail, setAthleteEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [foundAthlete, setFoundAthlete] = useState(null);
-  // Set on success → shows the linked confirmation. (Not an Alert with a button:
-  // its onPress is dropped on web, stranding the parent on this screen.)
-  const [linked, setLinked] = useState(false);
+  // Set on success → shows the "request sent" confirmation.
+  const [requested, setRequested] = useState(false);
 
   const handleFindAthlete = async () => {
     if (!athleteEmail) {
-      Alert.alert('Missing info', 'Please enter your athlete\'s email address.');
+      notify('Missing info', 'Please enter your athlete\'s email address.');
       return;
     }
     setLoading(true);
@@ -29,14 +32,15 @@ export default function ParentLinkScreen({ onLinkComplete }) {
       const q = query(usersRef, where('email', '==', athleteEmail.toLowerCase().trim()), where('role', '==', 'athlete'));
       const snapshot = await getDocs(q);
       if (snapshot.empty) {
-        Alert.alert('Not found', 'No athlete account found with that email. Make sure your athlete has already signed up for XCTracker.');
+        notify('Not found', 'No athlete account found with that email. Make sure your athlete has already signed up for XCTracker.');
         setLoading(false);
         return;
       }
       const athleteDoc = snapshot.docs[0];
       setFoundAthlete({ id: athleteDoc.id, ...athleteDoc.data() });
     } catch (error) {
-      Alert.alert('Error', 'Could not search for athlete. Please try again.');
+      console.error('Parent link search:', error);
+      notify('Error', 'Could not search for athlete. Please try again.');
     }
     setLoading(false);
   };
@@ -46,39 +50,59 @@ export default function ParentLinkScreen({ onLinkComplete }) {
     setLoading(true);
     try {
       const user = auth.currentUser;
+      if ((foundAthlete.linkedParentIds || []).includes(user.uid)) {
+        notify('Already linked', `You're already connected to ${foundAthlete.firstName}.`);
+        setLoading(false);
+        return;
+      }
 
-      await updateDoc(doc(db, 'users', user.uid), {
-        linkedAthleteIds: arrayUnion(foundAthlete.id),
-        schoolId: foundAthlete.schoolId || null,
-        status: 'approved',
+      const linkRef = doc(db, 'parentLinks', `${user.uid}_${foundAthlete.id}`);
+      const existing = await getDoc(linkRef);
+      if (existing.exists()) {
+        if (existing.data().status === 'pending') {
+          notify('Already requested', `${foundAthlete.firstName} hasn't responded yet. They'll see your request in their app.`);
+          setLoading(false);
+          return;
+        }
+        // Declined (or stale) — clear it so the parent can ask again.
+        await deleteDoc(linkRef);
+      }
+
+      const parentDoc = await getDoc(doc(db, 'users', user.uid));
+      const parent = parentDoc.exists() ? parentDoc.data() : {};
+      await setDoc(linkRef, {
+        parentId: user.uid,
+        athleteId: foundAthlete.id,
+        parentName: `${parent.firstName || ''} ${parent.lastName || ''}`.trim(),
+        parentEmail: parent.email || user.email || '',
+        athleteName: `${foundAthlete.firstName || ''} ${foundAthlete.lastName || ''}`.trim(),
+        status: 'pending',
+        createdAt: new Date(),
       });
 
-      await updateDoc(doc(db, 'users', foundAthlete.id), {
-        linkedParentIds: arrayUnion(user.uid),
-      });
-
-      setLinked(true);
+      setRequested(true);
     } catch (error) {
-      Alert.alert('Error', 'Could not link accounts. Please try again.');
+      console.error('Parent link request:', error);
+      notify('Error', 'Could not send the request. Please try again.');
     }
     setLoading(false);
   };
 
-  // Success screen — shown after linking. Confirms the connection and gives an
-  // explicit way forward (works on web and native).
-  if (linked) {
+  // Success screen — request sent, waiting on the athlete.
+  if (requested) {
     return (
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <View style={styles.header}>
-          <Text style={styles.title}>You're linked</Text>
-          <Text style={styles.subtitle}>Connected to your athlete</Text>
+          <Text style={styles.title}>Request sent</Text>
+          <Text style={styles.subtitle}>Waiting for your athlete to approve</Text>
         </View>
         <View style={styles.card}>
           <Text style={styles.successTitle}>
-            You're now connected to {foundAthlete?.firstName}'s training 🎉
+            We've asked {foundAthlete?.firstName} to approve your connection
           </Text>
           <Text style={styles.successBody}>
-            You can view their miles, schedule, and recent runs from your dashboard.
+            They'll get a notification and see your request in their XCTracker app. Once they
+            approve, you'll be able to follow their miles, schedule, and races from your dashboard.
           </Text>
           <TouchableOpacity
             style={styles.successButton}
@@ -164,7 +188,7 @@ export default function ParentLinkScreen({ onLinkComplete }) {
               {loading ? (
                 <ActivityIndicator color={SIGNAL.color.white} size="small" />
               ) : (
-                <Text style={styles.linkButtonText}>Link</Text>
+                <Text style={styles.linkButtonText}>Request</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -174,15 +198,16 @@ export default function ParentLinkScreen({ onLinkComplete }) {
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Privacy note</Text>
         <Text style={styles.bodyText}>
-          Parents have read-only access. You can view your athlete's schedule and mileage
-          but cannot see other athletes' data. Your athlete will be notified that you have
-          linked to their account.
+          Parents have read-only access. Your athlete gets a request to approve before you
+          can see anything, and they can remove the connection at any time.
         </Text>
       </View>
 
-      <TouchableOpacity style={styles.skipButton} onPress={() => onLinkComplete && onLinkComplete()}>
-        <Text style={styles.skipText}>Skip for now — I'll link an athlete later</Text>
-      </TouchableOpacity>
+      {onCancel && (
+        <TouchableOpacity style={styles.skipButton} onPress={onCancel}>
+          <Text style={styles.skipText}>Cancel</Text>
+        </TouchableOpacity>
+      )}
 
     </ScrollView>
   );

@@ -1,7 +1,5 @@
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { signOut } from 'firebase/auth';
-import * as SecureStore from 'expo-secure-store';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
@@ -30,13 +28,13 @@ Notifications.setNotificationHandler({
 // initial bundle (and time-to-first-paint) stays small; the SW caches each
 // chunk after first load, so returning users get them instantly.
 import LoginScreen from '../screens/LoginScreen';
+import { signOutUser } from '../utils/signOutUser';
 const AssistantJoinScreen = lazyWithReload(() => import('../screens/AssistantJoinScreen'));
 const AthleteDashboard    = lazyWithReload(() => import('../screens/AthleteDashboard'));
 const AthleteJoinScreen   = lazyWithReload(() => import('../screens/AthleteJoinScreen'));
 const CoachDashboard      = lazyWithReload(() => import('../screens/CoachDashboard'));
 const CoachSetupScreen    = lazyWithReload(() => import('../screens/CoachSetupScreen'));
 const ParentDashboard     = lazyWithReload(() => import('../screens/ParentDashboard'));
-const ParentLinkScreen    = lazyWithReload(() => import('../screens/ParentLinkScreen'));
 
 // Register for push notifications and save token to Firestore.
 // On native: expo-notifications → expoPushToken.
@@ -78,6 +76,21 @@ async function registerForPushNotifications(uid) {
       vibrationPattern: [0, 250, 250, 250],
     });
   }
+}
+
+// Which onboarding screen (if any) a user belongs on. Parents always land on
+// ParentDashboard — it handles linking, pending requests and the no-athlete
+// state itself. (Routing parents by schoolId trapped them on the link screen
+// when their athlete hadn't joined a team yet.)
+function onboardingStepFor(data, { skippedSchoolJoin = false } = {}) {
+  if (!data.schoolId) {
+    if (data.role === 'admin_coach')     return 'coach_setup';
+    if (data.role === 'assistant_coach') return 'assistant_join';
+    if (data.role === 'athlete')         return skippedSchoolJoin ? null : 'athlete_join';
+    return null;
+  }
+  if (data.role === 'assistant_coach' && data.status === 'pending') return 'assistant_pending';
+  return null;
 }
 
 function AppNavigatorInner() {
@@ -125,18 +138,7 @@ function AppNavigatorInner() {
           setUserData(data);
           setUser(firebaseUser);
 
-          // Determine onboarding step needed
-          if (!data.schoolId) {
-            if (data.role === 'admin_coach') setOnboardingStep('coach_setup');
-            else if (data.role === 'assistant_coach') setOnboardingStep('assistant_join');
-            else if (data.role === 'athlete') setOnboardingStep('athlete_join');
-            else if (data.role === 'parent') setOnboardingStep('parent_link');
-            else setOnboardingStep(null);
-          } else if (data.role === 'assistant_coach' && data.status === 'pending') {
-            setOnboardingStep('assistant_pending');
-          } else {
-            setOnboardingStep(null);
-          }
+          setOnboardingStep(onboardingStepFor(data));
 
           // Register for push notifications
           registerForPushNotifications(firebaseUser.uid);
@@ -151,18 +153,13 @@ function AppNavigatorInner() {
     return unsubscribe;
   }, []);
 
-  const handleAuthSuccess = async ({ uid, role }) => {
+  const handleAuthSuccess = async ({ uid }) => {
     // Re-fetch user data after signup
     const userDoc = await getDoc(doc(db, 'users', uid));
     if (userDoc.exists()) {
       const data = userDoc.data();
       setUserData(data);
-      if (!data.schoolId) {
-        if (role === 'admin_coach') setOnboardingStep('coach_setup');
-        else if (role === 'assistant_coach') setOnboardingStep('assistant_join');
-        else if (role === 'athlete') setOnboardingStep('athlete_join');
-        else if (role === 'parent') setOnboardingStep('parent_link');
-      }
+      setOnboardingStep(onboardingStepFor(data));
     }
   };
 
@@ -183,23 +180,10 @@ function AppNavigatorInner() {
         // re-routes work correctly if they later leave the team.
         if (data.schoolId && skippedSchoolJoin) setSkippedSchoolJoin(false);
 
-        // No school yet → route into the per-role onboarding flow, UNLESS
-        // the athlete previously tapped "Skip for now" in this session.
-        if (!data.schoolId) {
-          if (data.role === 'athlete' && skippedSchoolJoin) {
-            setOnboardingStep(null);
-            return;
-          }
-          if (data.role === 'admin_coach')         { setOnboardingStep('coach_setup');   return; }
-          if (data.role === 'assistant_coach')     { setOnboardingStep('assistant_join'); return; }
-          if (data.role === 'athlete')             { setOnboardingStep('athlete_join');   return; }
-          if (data.role === 'parent')              { setOnboardingStep('parent_link');    return; }
-        }
-        // Has a school but assistant is still awaiting approval
-        if (data.role === 'assistant_coach' && data.status === 'pending') {
-          setOnboardingStep('assistant_pending');
-          return;
-        }
+        // No school yet → the per-role onboarding flow, unless the athlete
+        // tapped "Skip for now" this session.
+        setOnboardingStep(onboardingStepFor(data, { skippedSchoolJoin }));
+        return;
       }
     }
     setOnboardingStep(null);
@@ -259,13 +243,7 @@ function AppNavigatorInner() {
             title: 'Sign out',
             message: 'Are you sure?',
             confirmLabel: 'Sign out',
-            onConfirm: async () => {
-              try {
-                await SecureStore.deleteItemAsync('xctracker_email');
-                await SecureStore.deleteItemAsync('xctracker_password');
-              } catch (e) { /* SecureStore unavailable on web — Firebase persistence handles auth */ }
-              signOut(auth);
-            },
+            onConfirm: signOutUser,
           });
         }}>
           <Text style={styles.signOutLinkText}>Sign out</Text>
@@ -275,9 +253,6 @@ function AppNavigatorInner() {
   }
   if (onboardingStep === 'athlete_join') {
     return <AthleteJoinScreen onJoinComplete={handleOnboardingComplete} onSkip={handleSkipSchoolJoin} />;
-  }
-  if (onboardingStep === 'parent_link') {
-    return <ParentLinkScreen onLinkComplete={handleOnboardingComplete} />;
   }
 
   // Main app dashboards. handleOnboardingComplete doubles as a `refreshUser`
