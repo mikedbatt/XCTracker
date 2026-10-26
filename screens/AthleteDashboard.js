@@ -61,6 +61,7 @@ import {
 import WorkoutDetailModal from './WorkoutDetailModal';
 import { signOutUser } from '../utils/signOutUser';
 import { notify } from '../utils/notify';
+import { workoutMilesForGroup } from '../utils/workoutMiles';
 
 const EFFORT_LABELS = DESIGN_EFFORT_LABELS;
 const EFFORT_COLORS = DESIGN_EFFORT_COLORS;
@@ -1143,9 +1144,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
                   );
                 }
                 const c = SIGNAL_TYPE_COLORS[workout.type] || TYPE_COLORS[workout.type] || SIGNAL.color.indigo;
-                const wkMiles = myGroup && workout.groupMiles?.[myGroup.id]
-                  ? workout.groupMiles[myGroup.id]
-                  : workout.baseMiles || null;
+                const wkMiles = workoutMilesForGroup(workout, myGroup?.id);
                 let paceText = null;
                 if (userData.trainingPaces && WORKOUT_PACE_ZONE[workout.type]) {
                   const zone = WORKOUT_PACE_ZONE[workout.type];
@@ -1557,7 +1556,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
         visible={workoutDetailVisible}
         onClose={() => { setWorkoutDetailVisible(false); setSelectedWorkout(null); }}
         primaryColor={SIGNAL.color.indigo}
-        athleteMiles={selectedWorkout && myGroup ? (selectedWorkout.groupMiles?.[myGroup.id] || selectedWorkout.baseMiles || null) : (selectedWorkout?.baseMiles || null)}
+        athleteMiles={workoutMilesForGroup(selectedWorkout, myGroup?.id)}
         groupName={myGroup?.name}
         trainingPaces={userData.trainingPaces || null}
       />
@@ -1696,7 +1695,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
       )}
       {calendarMounted && (
         <View style={[styles.subScreen, { bottom: navHeight }, !calendarVisible && { display: 'none' }]}>
-          <MemoCalendarScreen userData={userData} school={school} trainingPaces={userData.trainingPaces || null} onClose={handleCloseCalendar} refreshKey={calendarVisible ? dataVersion : null} />
+          <MemoCalendarScreen userData={userData} school={school} trainingPaces={userData.trainingPaces || null} onClose={handleCloseCalendar} refreshKey={calendarVisible ? dataVersion : null} athleteGroup={myGroup} />
         </View>
       )}
       {garminVisible && (

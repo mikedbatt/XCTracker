@@ -25,11 +25,12 @@ import DatePickerField from './DatePickerField';
 import RunDetailModal from './RunDetailModal';
 import WorkoutDetailModal from './WorkoutDetailModal';
 import { notify } from '../utils/notify';
+import { workoutMilesForGroup } from '../utils/workoutMiles';
 
 // Re-export so existing imports from CalendarScreen keep working
 export { CATEGORIES, TYPE_COLORS };
 
-export default function CalendarScreen({ userData, school, onClose, autoOpenAdd, prefillWorkout, groups = [], externalAthleteRuns = null, trainingPaces = null, refreshKey = null }) {
+export default function CalendarScreen({ userData, school, onClose, autoOpenAdd, prefillWorkout, groups = [], externalAthleteRuns = null, trainingPaces = null, refreshKey = null, athleteGroup = null }) {
   const [markedDates, setMarkedDates] = useState({});
   const [allItems, setAllItems] = useState([]);
   const [athleteRuns, setAthleteRuns] = useState([]);
@@ -61,6 +62,10 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
   const [groupAdjustments, setGroupAdjustments] = useState({});
   const primaryColor = school?.primaryColor || BRAND;
   const isCoach = userData.role === 'admin_coach' || userData.role === 'assistant_coach';
+  // Athletes (and parents viewing an athlete) see their group's distance; the
+  // group comes from the caller (AthleteDashboard / ParentDashboard).
+  const athleteGroupId = isCoach ? null : (athleteGroup?.id || userData.groupId || null);
+  const milesFor = (item) => (isCoach ? (item.baseMiles || null) : workoutMilesForGroup(item, athleteGroupId));
   // True when the athlete's coach modification covers this ISO date.
   const overrideCovers = (iso) => !!myOverride && myOverride.startDate <= iso && iso <= myOverride.endDate;
 
@@ -472,7 +477,7 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
                   )}
                 </View>
               ) : selectedItems.map(item => {
-                const itemMiles = item.baseMiles || null;
+                const itemMiles = milesFor(item);
                 const c = getColor(item);
                 return (
                   <TouchableOpacity
@@ -575,7 +580,7 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
                 );
               }
               const c = getColor(item);
-              const itemMiles = item.baseMiles || null;
+              const itemMiles = milesFor(item);
               return (
                 <TouchableOpacity
                   key={item.id}
@@ -632,6 +637,8 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
         onClose={() => setDetailVisible(false)}
         primaryColor={primaryColor}
         groups={groups}
+        athleteMiles={!isCoach && detailItem ? workoutMilesForGroup(detailItem, athleteGroupId) : null}
+        groupName={!isCoach ? athleteGroup?.name : null}
         trainingPaces={trainingPaces}
         onEdit={isCoach ? (item) => { setDetailVisible(false); openEdit(item); } : null}
         onDelete={isCoach ? (item) => { handleDelete(item); } : null}

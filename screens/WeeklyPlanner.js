@@ -456,7 +456,7 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
               type: slot.type,
               title: slot.title || `${DAYS[slot.dayIdx]} ${slot.type}`,
               date: eventDate,
-              baseMiles: parseInt(slot.baseMiles) || null,
+              baseMiles: parseFloat(slot.baseMiles) || null,
               groupMiles,
               description: slot.description || null,
               notes: null,

@@ -482,6 +482,7 @@ export default function ParentDashboard({ userData }) {
                 groups={groups}
                 externalAthleteRuns={athleteRuns}
                 trainingPaces={selectedAthlete.trainingPaces || null}
+                athleteGroup={groups.find(g => g.id === selectedAthlete.groupId) || null}
                 onClose={() => setActiveTab('home')}
               />
             </View>
