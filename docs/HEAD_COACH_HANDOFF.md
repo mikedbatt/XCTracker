@@ -39,14 +39,24 @@ documents by hand. Go slowly and double-check IDs, because there's no undo.
 principal). The new head coach can read every athlete's private weekly
 check-ins, including past ones.
 
-### 1. Get the new head coach onto the team
+### 1. Make sure the new head coach has an account
 
-Have them sign up as an **Assistant Coach** and request to join with the team
-code.
+The new head coach only needs an XCTracker account. They **don't** need to
+have been on the team, request to join, or be approved by anyone. Step 3
+attaches them to the school directly.
 
-- If an approved assistant coach can still sign in, they don't need approval
-  to be made head coach. You'll set it below.
-- If nobody can approve them, that's fine too. Step 3 approves them directly.
+- Ask them to sign up at xctracker.com and pick **Assistant Coach** as their
+  role. After signup they'll sit on the "join a team" screen. That's fine,
+  they don't need to enter a code.
+- If they already have an account under a different role (athlete, parent),
+  ask them to create a new one with a different email. Changing an existing
+  athlete or parent account into a coach leaves behind fields that don't
+  belong.
+
+This also covers a chain of departures: if the previous head coach left
+without a handoff and the coach after them is also gone, you still just
+follow these steps with the newest coach. Step 5 removes whoever currently
+holds the head coach role.
 
 ### 2. Find the documents
 
