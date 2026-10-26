@@ -4,7 +4,6 @@ import { collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, serverTime
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Platform,
   ScrollView,
@@ -25,6 +24,7 @@ import { getMondayISO, getRunDate, groupRunsByWeek, toLocalISODate } from '../ut
 import { computeOvertraining } from '../utils/overtrainingUtils';
 import { confirmDestructive } from '../utils/confirmDialog';
 import { aggregateMiles, isCrossTraining, creditForRun, activityMeta, DEFAULT_CT_FACTORS } from '../utils/activityMiles';
+import { notify } from '../utils/notify';
 
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -92,11 +92,11 @@ export default function AthleteDetailScreen({ athlete, school, groups, onBack, p
       setOverride(data);
       setModifyVisible(false);
       setOvNote('');
-      Alert.alert('Workout modified',
+      notify('Workout modified',
         `${athlete.firstName} is set to ${ovType === 'rest' ? 'rest' : 'cross-training'} through ${endISO}.`);
     } catch (e) {
       console.warn('Save override failed:', e);
-      Alert.alert('Could not save', `The modification did not save: ${e?.message || e}. Please try again.`);
+      notify('Could not save', `The modification did not save: ${e?.message || e}. Please try again.`);
     }
     setSavingOverride(false);
   };

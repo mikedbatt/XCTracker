@@ -4,12 +4,13 @@ import {
 } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Platform,
+  ActivityIndicator, Platform,
   ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { db } from '../firebaseConfig';
 import { confirmDestructive } from '../utils/confirmDialog';
 import { SIGNAL } from '../constants/design';
+import { notify } from '../utils/notify';
 
 // Coach-facing roster management. Lists every athlete currently associated
 // with the school (approved + pending) and lets the head coach remove anyone
@@ -66,7 +67,7 @@ export default function ManageRoster({ schoolId, groups = [], onClose, onPending
       if (onPendingResolved) onPendingResolved(athlete.id);
     } catch (e) {
       console.warn('Approve athlete failed:', e);
-      Alert.alert('Could not approve', 'Something went wrong. Please try again.');
+      notify('Could not approve', 'Something went wrong. Please try again.');
     }
     setRemoving(null);
   };
@@ -89,7 +90,7 @@ export default function ManageRoster({ schoolId, groups = [], onClose, onPending
           if (onPendingResolved) onPendingResolved(athlete.id);
         } catch (e) {
           console.warn('Deny athlete failed:', e);
-          Alert.alert('Could not deny', 'Something went wrong. Please try again.');
+          notify('Could not deny', 'Something went wrong. Please try again.');
         }
         setRemoving(null);
       },
@@ -129,7 +130,7 @@ export default function ManageRoster({ schoolId, groups = [], onClose, onPending
             setAthletes(prev => prev.filter(a => a.id !== athlete.id));
           } catch (e) {
             console.warn('Remove athlete failed:', e);
-            Alert.alert('Could not remove', 'Something went wrong. Please try again.');
+            notify('Could not remove', 'Something went wrong. Please try again.');
           }
           setRemoving(null);
       },

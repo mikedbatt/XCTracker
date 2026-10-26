@@ -4,12 +4,13 @@ import {
   serverTimestamp, updateDoc, where,
 } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { db } from '../firebaseConfig';
 import { confirmDestructive } from '../utils/confirmDialog';
 import { SIGNAL } from '../constants/design';
 import { RACE_DISTANCES, RACE_LEVELS } from '../utils/raceUtils';
 import RaceResults from './RaceResults';
+import { notify } from '../utils/notify';
 
 export default function MeetDetail({ meet, schoolId, school, athletes, groups, onClose }) {
   const [races, setRaces] = useState([]);
@@ -95,7 +96,7 @@ export default function MeetDetail({ meet, schoolId, school, athletes, groups, o
       await loadRaces();
     } catch (e) {
       console.warn('Failed to create race:', e);
-      Alert.alert('Error', 'Could not create race.');
+      notify('Error', 'Could not create race.');
     }
     setSaving(false);
   };
@@ -112,7 +113,7 @@ export default function MeetDetail({ meet, schoolId, school, athletes, groups, o
           for (const d of resSnap.docs) await deleteDoc(doc(db, 'raceResults', d.id));
           await deleteDoc(doc(db, 'races', race.id));
           await loadRaces();
-        } catch { Alert.alert('Error', 'Could not delete race.'); }
+        } catch { notify('Error', 'Could not delete race.'); }
       },
     });
   };
@@ -188,7 +189,7 @@ export default function MeetDetail({ meet, schoolId, school, athletes, groups, o
                   ]}
                   onPress={() => {
                     if (otherRace && !isSelected) {
-                      Alert.alert('Already assigned', `${a.firstName} ${a.lastName} is already in ${otherRace}. Remove them from that race first.`);
+                      notify('Already assigned', `${a.firstName} ${a.lastName} is already in ${otherRace}. Remove them from that race first.`);
                       return;
                     }
                     handleToggleEntry(editingEntries, a.id);

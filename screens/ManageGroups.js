@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { addDoc, collection, deleteDoc, doc, getDocs, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
-  ActionSheetIOS, ActivityIndicator, Alert, Modal, Platform,
+  ActionSheetIOS, ActivityIndicator, Modal, Platform,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
@@ -11,6 +11,7 @@ import { batchDocsByIds } from '../utils/batchDocsByIds';
 import { confirmDestructive } from '../utils/confirmDialog';
 import { formatPace } from '../utils/vdotUtils';
 import { creditForRun } from '../utils/activityMiles';
+import { notify } from '../utils/notify';
 
 export default function ManageGroups({ schoolId, athletes, onClose }) {
   const [groups, setGroups] = useState([]);
@@ -85,7 +86,7 @@ export default function ManageGroups({ schoolId, athletes, onClose }) {
 
   const handleAddGroup = async () => {
     const name = newGroupName.trim();
-    if (!name) { Alert.alert('Name required', 'Please enter a group name.'); return; }
+    if (!name) { notify('Name required', 'Please enter a group name.'); return; }
     try {
       await addDoc(collection(db, 'groups'), {
         schoolId,
@@ -96,7 +97,7 @@ export default function ManageGroups({ schoolId, athletes, onClose }) {
       });
       setNewGroupName('');
       await loadGroups();
-    } catch (e) { console.warn('Create group error:', e); Alert.alert('Error', 'Could not create group: ' + e.message); }
+    } catch (e) { console.warn('Create group error:', e); notify('Error', 'Could not create group: ' + e.message); }
   };
 
   const handleUpdateGroup = async (groupId, updates) => {
@@ -120,7 +121,7 @@ export default function ManageGroups({ schoolId, athletes, onClose }) {
           }
           await deleteDoc(doc(db, 'groups', group.id));
           await loadGroups();
-        } catch { Alert.alert('Error', 'Could not delete group.'); }
+        } catch { notify('Error', 'Could not delete group.'); }
       },
     });
   };

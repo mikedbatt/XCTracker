@@ -181,10 +181,14 @@ garminConfig.js   # Garmin client helpers (PKCE, auth URL, authed calls to the G
 - `utils/signOutUser.js` — the ONE sign-out path: clears this device's push
   token from the user doc first (shared Chromebooks otherwise route one user's
   notifications to another), then signs out. Never call `signOut(auth)` directly.
+- `utils/notify.js` — `notify(title, message, onDismiss?)`. **Use this for
+  every one-button message** ("Saved", "Not found", validation). On web,
+  react-native-web's `Alert.alert` is a literal no-op (`static alert() {}`), so
+  any `Alert.alert` message silently never appears; `notify` uses
+  `window.alert` there. Don't call `Alert.alert` directly anywhere.
 - `utils/confirmDialog.js` — `confirmDestructive({title, message, confirmLabel,
-  onConfirm})`. **Use this instead of `Alert.alert([...buttons])`** — the
-  multi-button native Alert is broken on web (collapses to OK-only via
-  `window.alert`). The helper branches to `window.confirm` on web.
+  onConfirm})`. **Use this for every "are you sure?" prompt** — the helper
+  branches to `window.confirm` on web (where Alert does nothing at all).
 - `utils/imageHelpers.js` — `pickImageCrossPlatform()` and
   `saveImageCrossPlatform(url)`. Native uses expo-image-picker / media-library;
   web uses `<input type=file>` and browser anchor-download.
@@ -458,10 +462,10 @@ preserved and resumable. Patterns when working in web-touched code:
   login/push. `utils/webPush.js` re-registers the same URL (idempotent) when push
   is enabled. Firebase config is passed in via URL query string so values stay in
   sync with `firebaseConfig.js`.
-- **Confirmation dialogs:** use `confirmDestructive` from
-  `utils/confirmDialog.js` — never `Alert.alert([...buttons])` directly. The
-  multi-button Alert is silently broken on web (the button array is dropped, so
-  any `onPress` — including the one doing the work or navigating — never fires).
+- **Messages + confirmation dialogs:** `Alert.alert` does NOTHING on web
+  (react-native-web ships an empty stub) — no message, no buttons, no
+  `onPress`. Use `notify` (`utils/notify.js`) for messages and
+  `confirmDestructive` (`utils/confirmDialog.js`) for confirmations.
   Same trap for `Alert.alert` used as a picker/action-sheet: build a real
   `<Modal>` (see the group picker in `ManageGroups`).
 - **Date pickers:** use `screens/DatePickerField.js` — it Platform-branches to a

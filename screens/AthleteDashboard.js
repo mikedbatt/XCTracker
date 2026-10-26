@@ -14,8 +14,7 @@ import {
 } from 'firebase/firestore';
 import React, { memo, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert,
-  Animated,
+  ActivityIndicator, Animated,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -60,6 +59,7 @@ import {
 } from '../utils/weeklyCheckinUtils';
 import WorkoutDetailModal from './WorkoutDetailModal';
 import { signOutUser } from '../utils/signOutUser';
+import { notify } from '../utils/notify';
 
 const EFFORT_LABELS = DESIGN_EFFORT_LABELS;
 const EFFORT_COLORS = DESIGN_EFFORT_COLORS;
@@ -473,14 +473,14 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
       loadDashboard();
     } catch (e) {
       console.error('Failed to save effort:', e);
-      Alert.alert('Error', 'Could not save effort rating.');
+      notify('Error', 'Could not save effort rating.');
     }
   };
 
   const handleLogRunTap = () => setLogModalVisible(true);
 
   const handleLogRun = async () => {
-    if (!miles || isNaN(parseFloat(miles))) { Alert.alert('Missing info', 'Please enter the miles for this run.'); return; }
+    if (!miles || isNaN(parseFloat(miles))) { notify('Missing info', 'Please enter the miles for this run.'); return; }
     setSavingRun(true);
     try {
       const user = auth.currentUser;
@@ -491,7 +491,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
         const oldMiles = oldSnap.data()?.miles || 0;
         await fsUpdate(fsDoc(db, 'runs', editingRunId), { miles: milesFloat, duration: duration || null, effort, notes: notes || null, date: runDate });
         await updateDoc(doc(db, 'users', user.uid), { totalMiles: Math.max(0, Math.round(((totalMiles || 0) - oldMiles + milesFloat) * 10) / 10) });
-        Alert.alert('Updated! ✅', 'Your run has been updated.');
+        notify('Updated! ✅', 'Your run has been updated.');
         setEditingRunId(null);
       } else {
         const ct = activityType !== 'run';
@@ -507,17 +507,17 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
           const factor = factors[activityType] ?? DEFAULT_CT_FACTORS[activityType] ?? 0;
           const creditMiles = Math.round(milesFloat * factor * 10) / 10;
           await addDoc(collection(db, 'runs'), { ...base, creditMiles, factorAtLog: factor });
-          Alert.alert('Cross-training logged! 🚴', `${milesFloat} ${activityType} mi = ${creditMiles} mi credit.`);
+          notify('Cross-training logged! 🚴', `${milesFloat} ${activityType} mi = ${creditMiles} mi credit.`);
         } else {
           await addDoc(collection(db, 'runs'), base);
           await updateDoc(doc(db, 'users', user.uid), { totalMiles: Math.round(((totalMiles || 0) + milesFloat) * 10) / 10 });
-          Alert.alert('Run logged! 🏃', miles + ' miles saved. Great work!');
+          notify('Run logged! 🏃', miles + ' miles saved. Great work!');
         }
       }
       setLogModalVisible(false); setPendingWellness(null);
       setMiles(''); setDuration(''); setEffort(5); setNotes(''); setRunDate(new Date()); setActivityType('run');
       loadDashboard();
-    } catch (error) { console.error(error); Alert.alert('Error', 'Could not save run. Please try again.'); }
+    } catch (error) { console.error(error); notify('Error', 'Could not save run. Please try again.'); }
     setSavingRun(false);
   };
 
@@ -534,9 +534,9 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
           if (!isCrossTraining(run)) {
             await updateDoc(doc(db, 'users', auth.currentUser.uid), { totalMiles: Math.max(0, Math.round(((totalMiles || 0) - (run.miles || 0)) * 10) / 10) });
           }
-          Alert.alert('Deleted', 'Run removed.');
+          notify('Deleted', 'Run removed.');
           setRunDetailVisible(false); setSelectedRun(null); loadDashboard();
-        } catch { Alert.alert('Error', 'Could not delete run.'); }
+        } catch { notify('Error', 'Could not delete run.'); }
       },
     });
   };
@@ -1480,7 +1480,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
           loadDashboard();
         } catch (e) {
           console.warn('Failed to save daily check-in:', e);
-          Alert.alert('Check-in not saved', `Could not save your check-in: ${e.message || e}. Please try again.`);
+          notify('Check-in not saved', `Could not save your check-in: ${e.message || e}. Please try again.`);
         }
       }} onSkip={() => { setDailyWellnessVisible(false); setTodayCheckinDone(true); }} onClose={() => setDailyWellnessVisible(false)} />
 
@@ -1522,7 +1522,7 @@ export default function AthleteDashboard({ userData: userDataProp, refreshUser, 
             loadDashboard();
           } catch (e) {
             console.warn('Weekly check-in save failed:', e);
-            Alert.alert('Check-in not saved', `Could not send your message: ${e.message || e}. Please try again.`);
+            notify('Check-in not saved', `Could not send your message: ${e.message || e}. Please try again.`);
           }
         }}
         onMarkReplyRead={async () => {

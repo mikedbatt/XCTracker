@@ -19,13 +19,14 @@ import {
 } from 'firebase/firestore';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text,
+  ActivityIndicator, Platform, ScrollView, StyleSheet, Text,
   TouchableOpacity, View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 import { bottomInset } from '../utils/safeArea';
 import { SIGNAL } from '../constants/design';
 import DatePickerField from './DatePickerField';
+import { notify } from '../utils/notify';
 
 const STATUS_VALUES = ['present', 'absent', 'excused'];
 
@@ -133,11 +134,11 @@ export default function AttendanceScreen({ userData, athletes = [], onClose }) {
         });
       });
       await Promise.all(writes);
-      Alert.alert('Saved', `Attendance recorded for ${dateKey}.`);
+      notify('Saved', `Attendance recorded for ${dateKey}.`);
       if (onClose) onClose();
     } catch (e) {
       console.error('Save attendance error:', e);
-      Alert.alert('Error', 'Could not save attendance. Please try again.');
+      notify('Error', 'Could not save attendance. Please try again.');
     }
     setSaving(false);
   };

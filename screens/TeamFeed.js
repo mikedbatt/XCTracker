@@ -3,7 +3,6 @@ import { addDoc, collection, deleteDoc, doc, getDocs, limit, onSnapshot, orderBy
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     FlatList,
     Image,
     KeyboardAvoidingView, Platform,
@@ -20,6 +19,7 @@ import { bottomInset } from '../utils/safeArea';
 import { BRAND, SIGNAL } from '../constants/design';
 import { confirmDestructive } from '../utils/confirmDialog';
 import { pickImageCrossPlatform, saveImageCrossPlatform } from '../utils/imageHelpers';
+import { notify } from '../utils/notify';
 
 export default function TeamFeed({ userData, school, onClose, channel, channelName }) {
   const [posts,       setPosts]       = useState([]);
@@ -132,10 +132,10 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
       if (picked) setImageUri(picked.uri);
     } catch (e) {
       if (e.code === 'PERMISSION_DENIED') {
-        Alert.alert('Permission needed', 'Allow photo access to attach images.');
+        notify('Permission needed', 'Allow photo access to attach images.');
       } else {
         console.warn('Pick image failed:', e);
-        Alert.alert('Error', 'Could not pick image.');
+        notify('Error', 'Could not pick image.');
       }
     }
   };
@@ -155,7 +155,7 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
     const text = message.trim();
     if (!text && !imageUri) return;
     if (text.length > 500) {
-      Alert.alert('Too long', 'Messages are limited to 500 characters.');
+      notify('Too long', 'Messages are limited to 500 characters.');
       return;
     }
     setPosting(true);
@@ -178,7 +178,7 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
       setImageUri(null);
       inputRef.current?.blur();
     } catch (e) {
-      Alert.alert('Error', 'Could not post. Please try again.');
+      notify('Error', 'Could not post. Please try again.');
     }
     setPosting(false);
   };
@@ -188,19 +188,19 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
     try {
       await saveImageCrossPlatform(imageUrl);
       if (Platform.OS !== 'web') {
-        Alert.alert('Saved', 'Image saved to your camera roll.');
+        notify('Saved', 'Image saved to your camera roll.');
       }
       // On web the browser shows the download — no extra alert needed.
     } catch (e) {
       if (e.code === 'PERMISSION_DENIED') {
-        Alert.alert(
+        notify(
           'Permission needed',
           'XCTracker needs photo library access to save images. You can enable it in Settings → XCTracker → Photos.'
         );
         return;
       }
       console.warn('Save image failed:', e);
-      Alert.alert('Could not save', 'Something went wrong saving this image. Please try again.');
+      notify('Could not save', 'Something went wrong saving this image. Please try again.');
     }
   };
 
@@ -216,7 +216,7 @@ export default function TeamFeed({ userData, school, onClose, channel, channelNa
         try {
           await deleteDoc(doc(db, 'teamPosts', post.id));
         } catch {
-          Alert.alert('Error', 'Could not delete post.');
+          notify('Error', 'Could not delete post.');
         }
       },
     });

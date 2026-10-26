@@ -6,7 +6,7 @@ import { createUserWithEmailAndPassword, sendPasswordResetEmail, signInWithEmail
 import { doc, setDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
-  Alert, KeyboardAvoidingView, Linking, Platform,
+  KeyboardAvoidingView, Linking, Platform,
   ScrollView,
   StyleSheet,
   Text, TextInput, TouchableOpacity,
@@ -16,6 +16,7 @@ import { auth, db } from '../firebaseConfig';
 import { SIGNAL } from '../constants/design';
 import { confirmDestructive } from '../utils/confirmDialog';
 import { PRIVACY_URL, TERMS_URL } from '../constants/legal';
+import { notify } from '../utils/notify';
 
 const ROLES = [
   { key: 'admin_coach',     label: 'Head Coach',      description: 'Set up and manage your program',     icon: 'shield-checkmark-outline', color: SIGNAL.color.indigo },
@@ -68,7 +69,7 @@ export default function LoginScreen({ onAuthSuccess }) {
       fallbackLabel: 'Use password instead',
     });
     if (!result.success) {
-      Alert.alert('Failed', 'Biometric authentication failed. Please try your password.');
+      notify('Failed', 'Biometric authentication failed. Please try your password.');
       return;
     }
     setLoading(true);
@@ -76,14 +77,14 @@ export default function LoginScreen({ onAuthSuccess }) {
       const storedEmail = await SecureStore.getItemAsync('xctracker_email');
       const storedPassword = await SecureStore.getItemAsync('xctracker_password');
       if (!storedEmail || !storedPassword) {
-        Alert.alert('Sign in required', 'Please sign in with your email and password first to enable biometric login.');
+        notify('Sign in required', 'Please sign in with your email and password first to enable biometric login.');
         setLoading(false);
         return;
       }
       const userCredential = await signInWithEmailAndPassword(auth, storedEmail, storedPassword);
       if (onAuthSuccess) onAuthSuccess({ uid: userCredential.user.uid });
     } catch (error) {
-      Alert.alert('Sign in failed', 'Your saved credentials are no longer valid. Please sign in with your email and password.');
+      notify('Sign in failed', 'Your saved credentials are no longer valid. Please sign in with your email and password.');
       await SecureStore.deleteItemAsync('xctracker_email');
       await SecureStore.deleteItemAsync('xctracker_password');
       setBiometricAvailable(false);
@@ -191,7 +192,7 @@ export default function LoginScreen({ onAuthSuccess }) {
 
   const handleForgotPassword = () => {
     if (!email) {
-      Alert.alert('Enter your email', 'Type your email address above first, then tap Forgot Password.');
+      notify('Enter your email', 'Type your email address above first, then tap Forgot Password.');
       return;
     }
     confirmDestructive({
@@ -201,12 +202,12 @@ export default function LoginScreen({ onAuthSuccess }) {
       onConfirm: async () => {
         try {
           await sendPasswordResetEmail(auth, email);
-          Alert.alert('Email sent', `Check ${email} for a password reset link. Check your spam folder if you don't see it.`);
+          notify('Email sent', `Check ${email} for a password reset link. Check your spam folder if you don't see it.`);
         } catch (error) {
           if (error.code === 'auth/user-not-found') {
-            Alert.alert('Not found', 'No account found with that email address.');
+            notify('Not found', 'No account found with that email address.');
           } else {
-            Alert.alert('Error', 'Could not send reset email. Please try again.');
+            notify('Error', 'Could not send reset email. Please try again.');
           }
         }
       },
@@ -235,7 +236,7 @@ export default function LoginScreen({ onAuthSuccess }) {
             end={{ x: 1, y: 1 }}
             style={styles.brandMark}
           >
-            <Text style={styles.brandMarkText}>TB</Text>
+            <Text style={styles.brandMarkText}>XC</Text>
           </LinearGradient>
           <Text style={styles.brandTitle}>XCTracker</Text>
           <Text style={styles.brandTagline}>Building championship teams</Text>

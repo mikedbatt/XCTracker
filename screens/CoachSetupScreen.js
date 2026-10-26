@@ -1,13 +1,14 @@
 import { doc, setDoc, updateDoc } from 'firebase/firestore';
 import { useState } from 'react';
 import {
-    Alert, Platform, ScrollView,
+    Platform, ScrollView,
     StyleSheet,
     Text, TextInput, TouchableOpacity,
     View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 import { SIGNAL } from '../constants/design';
+import { notify } from '../utils/notify';
 
 const generateJoinCode = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -62,11 +63,11 @@ export default function CoachSetupScreen({ onSetupComplete }) {
 
   const handleCreateSchool = async () => {
     if (!schoolName || !city || !state) {
-      Alert.alert('Missing info', 'Please fill in your school name, city, and state.');
+      notify('Missing info', 'Please fill in your school name, city, and state.');
       return;
     }
     if (!selectedColors) {
-      Alert.alert('Missing info', 'Please select your school colors.');
+      notify('Missing info', 'Please select your school colors.');
       return;
     }
 
@@ -104,7 +105,7 @@ export default function CoachSetupScreen({ onSetupComplete }) {
 
       setCreatedCode(joinCode);
     } catch (error) {
-      Alert.alert('Error', 'Could not create school. Please try again.');
+      notify('Error', 'Could not create school. Please try again.');
       console.error(error);
     }
 

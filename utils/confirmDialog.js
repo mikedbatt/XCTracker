@@ -1,10 +1,10 @@
 // ── confirmDestructive ───────────────────────────────────────────────────────
 // Cross-platform "are you sure?" prompt for destructive actions.
 //
-// react-native-web's Alert.alert polyfill collapses multi-button alerts to
-// window.alert (OK only) on web, so the onPress callbacks for Cancel/Confirm
-// never fire. This helper branches to window.confirm on web (true/false) and
-// the native Alert.alert with proper buttons on iOS/Android.
+// react-native-web's Alert.alert is a no-op on web (`static alert() {}`): no
+// dialog appears and no onPress ever fires. This helper branches to
+// window.confirm on web (true/false) and the native Alert.alert with proper
+// buttons on iOS/Android. For plain one-button messages use utils/notify.js.
 
 import { Alert, Platform } from 'react-native';
 

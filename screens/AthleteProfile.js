@@ -7,7 +7,6 @@ import {
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Platform,
   ScrollView,
   StyleSheet,
@@ -25,6 +24,7 @@ import GarminConnect from './GarminConnect';
 import ParentRequests from '../components/ParentRequests';
 import { isGarminConnected } from '../garminConfig';
 import { signOutUser } from '../utils/signOutUser';
+import { notify } from '../utils/notify';
 
 export default function AthleteProfile({ userData, school, onClose, onUpdated, refreshUser, goToJoinScreen }) {
   const [firstName,     setFirstName]     = useState(userData.firstName || '');
@@ -88,7 +88,7 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
 
   const handleSave = async () => {
     if (!firstName.trim() || !lastName.trim()) {
-      Alert.alert('Required', 'Please enter both first and last name.');
+      notify('Required', 'Please enter both first and last name.');
       return;
     }
     setSaving(true);
@@ -108,38 +108,38 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
         } catch (e) {
           setSaving(false);
           if (e.code === 'auth/requires-recent-login') {
-            Alert.alert('Sign in required', 'To change your email, please sign out and sign back in first, then try again.');
+            notify('Sign in required', 'To change your email, please sign out and sign back in first, then try again.');
           } else if (e.code === 'auth/email-already-in-use') {
-            Alert.alert('Email taken', 'That email address is already in use by another account.');
+            notify('Email taken', 'That email address is already in use by another account.');
           } else {
-            Alert.alert('Email error', 'Could not update email. Please try again.');
+            notify('Email error', 'Could not update email. Please try again.');
           }
           return;
         }
       }
 
       await updateDoc(doc(db, 'users', auth.currentUser.uid), updates);
-      Alert.alert('Saved', 'Your profile has been updated.');
+      notify('Saved', 'Your profile has been updated.');
       onUpdated && onUpdated(updates);
     } catch {
-      Alert.alert('Error', 'Could not save. Please try again.');
+      notify('Error', 'Could not save. Please try again.');
     }
     setSaving(false);
   };
 
   const handleVdotCalculate = () => {
     const timeSec = parseTimeToSeconds(vdotTimeStr);
-    if (!timeSec || timeSec <= 0) { Alert.alert('Invalid time', 'Enter a valid time in MM:SS or HH:MM:SS format.'); return; }
+    if (!timeSec || timeSec <= 0) { notify('Invalid time', 'Enter a valid time in MM:SS or HH:MM:SS format.'); return; }
     const dist = RACE_DISTANCES[vdotDistance];
     if (!dist) return;
     const score = calcVDOT(dist, timeSec);
-    if (!score) { Alert.alert('Error', 'Could not calculate VDOT from that time.'); return; }
+    if (!score) { notify('Error', 'Could not calculate VDOT from that time.'); return; }
     setVdotScore(score);
     setVdotPaces(getTrainingPaces(score));
   };
 
   const handleVdotSave = async () => {
-    if (!vdotScore || !vdotPaces) { Alert.alert('Calculate first', 'Enter a race time and tap Calculate before saving.'); return; }
+    if (!vdotScore || !vdotPaces) { notify('Calculate first', 'Enter a race time and tap Calculate before saving.'); return; }
     setSavingVdot(true);
     try {
       await updateDoc(doc(db, 'users', auth.currentUser.uid), {
@@ -149,11 +149,11 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
         trainingPaces: vdotPaces,
         vdotUpdatedAt: new Date().toISOString(),
       });
-      Alert.alert('Saved!', 'Your training paces have been updated.');
+      notify('Saved!', 'Your training paces have been updated.');
       onUpdated && onUpdated({ vdot: vdotScore, trainingPaces: vdotPaces, vdotDistance, vdotTime: vdotTimeStr, vdotUpdatedAt: new Date().toISOString() });
     } catch (e) {
       console.warn('Failed to save VDOT:', e);
-      Alert.alert('Error', 'Could not save. Please try again.');
+      notify('Error', 'Could not save. Please try again.');
     }
     setSavingVdot(false);
   };
@@ -261,7 +261,7 @@ export default function AthleteProfile({ userData, school, onClose, onUpdated, r
             if (refreshUser) await refreshUser();
           } catch (e) {
             console.warn('Leave team failed:', e);
-            Alert.alert('Could not leave team', 'Something went wrong. Please try again.');
+            notify('Could not leave team', 'Something went wrong. Please try again.');
           }
       },
     });

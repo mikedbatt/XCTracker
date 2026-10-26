@@ -15,8 +15,7 @@ import {
 } from 'firebase/firestore';
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Alert,
-  KeyboardAvoidingView,
+  ActivityIndicator, KeyboardAvoidingView,
   Modal,
   Platform,
   ScrollView,
@@ -59,6 +58,7 @@ import { getRunDate, toLocalISODate } from '../utils/dateUtils';
 import { getWeekAnchor } from '../utils/weeklyCheckinUtils';
 import { lazyWithReload } from '../utils/lazyWithReload';
 import { signOutUser } from '../utils/signOutUser';
+import { notify } from '../utils/notify';
 
 // Lazy-loaded (heavy, opened on demand) — kept out of the initial bundle.
 const CoachAnalytics = lazyWithReload(() => import('../screens/CoachAnalytics'));
@@ -642,7 +642,7 @@ export default function CoachDashboard({ userData }) {
       .sort((a, b) => (shareMiles[b.id] || 0) - (shareMiles[a.id] || 0));
 
     if (sorted.length === 0) {
-      Alert.alert('Nothing to share', 'No athlete data for this timeframe.');
+      notify('Nothing to share', 'No athlete data for this timeframe.');
       return;
     }
 
@@ -704,9 +704,9 @@ export default function CoachDashboard({ userData }) {
         pendingAthleteIds: arrayRemove(athlete.id),
         athleteIds: arrayUnion(athlete.id),
       });
-      Alert.alert('Approved!', `${athlete.firstName} ${athlete.lastName} has been approved.`);
+      notify('Approved!', `${athlete.firstName} ${athlete.lastName} has been approved.`);
       loadDashboard();
-    } catch { Alert.alert('Error', 'Could not approve athlete.'); }
+    } catch { notify('Error', 'Could not approve athlete.'); }
   };
 
   const handleDenyAthlete = async (athlete) => {
@@ -751,9 +751,9 @@ export default function CoachDashboard({ userData }) {
       });
       setTodayTipSent(true);
       setTipModalVisible(false);
-      Alert.alert('Sent! ✅', "Your message has been pinned to every athlete's dashboard.");
+      notify('Sent! ✅', "Your message has been pinned to every athlete's dashboard.");
     } catch {
-      Alert.alert('Error', 'Could not send message. Please try again.');
+      notify('Error', 'Could not send message. Please try again.');
     }
     setSendingTip(false);
   };
@@ -1549,7 +1549,7 @@ export default function CoachDashboard({ userData }) {
                 loadDashboard();
               } catch (e) {
                 console.warn('Send weekly reply failed:', e);
-                Alert.alert('Reply not sent', `Could not send your reply: ${e.message || e}.`);
+                notify('Reply not sent', `Could not send your reply: ${e.message || e}.`);
               } finally {
                 setWeeklySendingReply(false);
               }

@@ -4,7 +4,6 @@ import { arrayRemove, arrayUnion, doc, getDoc, updateDoc } from 'firebase/firest
 import { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Platform,
   ScrollView,
   StyleSheet,
@@ -19,6 +18,7 @@ import { AVATAR_COLORS, SIGNAL } from '../constants/design';
 import { confirmDestructive } from '../utils/confirmDialog';
 import LegalLinks from '../components/LegalLinks';
 import { signOutUser } from '../utils/signOutUser';
+import { notify } from '../utils/notify';
 
 const SCHOOL_COLORS = [
   { name: 'Navy & Gold', primary: '#1a237e', secondary: '#ffd600' },
@@ -106,9 +106,9 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
         pendingCoachIds: arrayRemove(coach.id),
         coachIds: arrayUnion(coach.id),
       });
-      Alert.alert('Approved!', `${coach.firstName} ${coach.lastName} is now an assistant coach.`);
+      notify('Approved!', `${coach.firstName} ${coach.lastName} is now an assistant coach.`);
       loadAssistantCoaches();
-    } catch { Alert.alert('Error', 'Could not approve coach.'); }
+    } catch { notify('Error', 'Could not approve coach.'); }
   };
 
   const handleDenyCoach = (coach) => {
@@ -123,7 +123,7 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
           });
           await updateDoc(doc(db, 'users', coach.id), { schoolId: null, status: 'pending' });
           loadAssistantCoaches();
-        } catch { Alert.alert('Error', 'Could not deny coach.'); }
+        } catch { notify('Error', 'Could not deny coach.'); }
       },
     });
   };
@@ -132,7 +132,7 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
     try {
       await updateDoc(doc(db, 'users', coach.id), { trainingAccess: value });
       setAssistantCoaches(prev => prev.map(c => c.id === coach.id ? { ...c, trainingAccess: value } : c));
-    } catch { Alert.alert('Error', 'Could not update training access.'); }
+    } catch { notify('Error', 'Could not update training access.'); }
   };
 
   const handleRemoveCoach = (coach) => {
@@ -147,14 +147,14 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
           });
           await updateDoc(doc(db, 'users', coach.id), { schoolId: null, coachRole: null, trainingAccess: null, status: 'pending' });
           loadAssistantCoaches();
-        } catch { Alert.alert('Error', 'Could not remove coach.'); }
+        } catch { notify('Error', 'Could not remove coach.'); }
       },
     });
   };
 
   const handleSave = async () => {
     if (!firstName.trim() || !lastName.trim()) {
-      Alert.alert('Required', 'Please enter both first and last name.');
+      notify('Required', 'Please enter both first and last name.');
       return;
     }
     setSaving(true);
@@ -172,28 +172,28 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
         } catch (e) {
           setSaving(false);
           if (e.code === 'auth/requires-recent-login') {
-            Alert.alert('Sign in required', 'To change your email, please sign out and sign back in first, then try again.');
+            notify('Sign in required', 'To change your email, please sign out and sign back in first, then try again.');
           } else if (e.code === 'auth/email-already-in-use') {
-            Alert.alert('Email taken', 'That email address is already in use by another account.');
+            notify('Email taken', 'That email address is already in use by another account.');
           } else {
-            Alert.alert('Email error', 'Could not update email. Please try again.');
+            notify('Email error', 'Could not update email. Please try again.');
           }
           return;
         }
       }
 
       await updateDoc(doc(db, 'users', auth.currentUser.uid), updates);
-      Alert.alert('Saved!', 'Your profile has been updated.');
+      notify('Saved!', 'Your profile has been updated.');
       onUpdated && onUpdated(updates);
     } catch {
-      Alert.alert('Error', 'Could not save. Please try again.');
+      notify('Error', 'Could not save. Please try again.');
     }
     setSaving(false);
   };
 
   const handleSaveSchool = async () => {
     if (!schoolName.trim()) {
-      Alert.alert('Required', 'Please enter a school name.');
+      notify('Required', 'Please enter a school name.');
       return;
     }
     setSavingSchool(true);
@@ -208,11 +208,11 @@ export default function CoachProfile({ userData, school, pendingAthletes = [], o
         ...(primaryColor && { primaryColor }),
         ...(secondaryColor && { secondaryColor }),
       });
-      Alert.alert('Saved!', 'School info has been updated.');
+      notify('Saved!', 'School info has been updated.');
       setEditingSchool(false);
       onUpdated && onUpdated();
     } catch {
-      Alert.alert('Error', 'Could not save school info. Please try again.');
+      notify('Error', 'Could not save school info. Please try again.');
     }
     setSavingSchool(false);
   };

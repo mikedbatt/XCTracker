@@ -10,7 +10,6 @@ import {
 import { useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Platform,
     ScrollView,
     StyleSheet,
@@ -19,6 +18,7 @@ import {
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 import { SIGNAL } from '../constants/design';
+import { notify } from '../utils/notify';
 
 export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
   const [joinCode, setJoinCode] = useState('');
@@ -49,7 +49,7 @@ export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
 
   const handleJoinByCode = async () => {
     if (!joinCode || joinCode.length < 6) {
-      Alert.alert('Invalid code', 'Please enter the 6-character join code from your coach.');
+      notify('Invalid code', 'Please enter the 6-character join code from your coach.');
       return;
     }
     setLoading(true);
@@ -58,7 +58,7 @@ export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
       const q = query(schoolsRef, where('joinCode', '==', joinCode.toUpperCase().trim()));
       const snapshot = await getDocs(q);
       if (snapshot.empty) {
-        Alert.alert('Code not found', 'That join code was not found. Please check with your coach.');
+        notify('Code not found', 'That join code was not found. Please check with your coach.');
         setLoading(false);
         return;
       }
@@ -67,7 +67,7 @@ export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
       school.headCoachName = await loadHeadCoachName(school.id);
       setSelectedSchool(school);
     } catch (error) {
-      Alert.alert('Error', 'Could not find that join code. Please try again.');
+      notify('Error', 'Could not find that join code. Please try again.');
     }
     setLoading(false);
   };
@@ -92,7 +92,7 @@ export default function AthleteJoinScreen({ onJoinComplete, onSkip }) {
       // never fire and the user would be stranded with no confirmation).
       setRequestSent(true);
     } catch (error) {
-      Alert.alert('Error', 'Could not send join request. Please try again.');
+      notify('Error', 'Could not send join request. Please try again.');
     }
     setLoading(false);
   };

@@ -3,7 +3,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { doc, updateDoc } from 'firebase/firestore';
 import { useState } from 'react';
 import {
-  Alert,
   Platform,
   ScrollView,
   StyleSheet,
@@ -16,6 +15,7 @@ import { SIGNAL } from '../constants/design';
 import { db } from '../firebaseConfig';
 import { confirmDestructive } from '../utils/confirmDialog';
 import DatePickerField from './DatePickerField';
+import { notify } from '../utils/notify';
 
 // ── Sport definitions (3 sports) ─────────────────────────────────────────────
 export const SPORTS = {
@@ -386,11 +386,11 @@ export default function SeasonPlanner({ school, schoolId, onClose, onSaved }) {
 
   const handleSaveSeason = async () => {
     if (!seasonStart || !championshipDate) {
-      Alert.alert('Missing dates', 'Please set both a start date and championship date.');
+      notify('Missing dates', 'Please set both a start date and championship date.');
       return;
     }
     if (championshipDate <= seasonStart) {
-      Alert.alert('Invalid dates', 'Championship date must be after the start date.');
+      notify('Invalid dates', 'Championship date must be after the start date.');
       return;
     }
     const sportDef = SPORTS[sport];
@@ -410,7 +410,7 @@ export default function SeasonPlanner({ school, schoolId, onClose, onSaved }) {
       await updateDoc(doc(db, 'schools', schoolId), { seasons: updated });
       onSaved && onSaved({ seasons: updated });
     } catch {
-      Alert.alert('Error', 'Could not save to server. Check your connection and try again.');
+      notify('Error', 'Could not save to server. Check your connection and try again.');
     }
 
     setShowForm(false);
@@ -427,7 +427,7 @@ export default function SeasonPlanner({ school, schoolId, onClose, onSaved }) {
         try {
           await updateDoc(doc(db, 'schools', schoolId), { seasons: updated });
           onSaved && onSaved({ seasons: updated });
-        } catch { Alert.alert('Error', 'Could not delete. Please try again.'); }
+        } catch { notify('Error', 'Could not delete. Please try again.'); }
       },
     });
   };

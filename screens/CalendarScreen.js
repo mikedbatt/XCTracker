@@ -2,7 +2,6 @@ import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, up
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -25,6 +24,7 @@ import { confirmDestructive } from '../utils/confirmDialog';
 import DatePickerField from './DatePickerField';
 import RunDetailModal from './RunDetailModal';
 import WorkoutDetailModal from './WorkoutDetailModal';
+import { notify } from '../utils/notify';
 
 // Re-export so existing imports from CalendarScreen keep working
 export { CATEGORIES, TYPE_COLORS };
@@ -256,7 +256,7 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
   };
 
   const handleSave = async () => {
-    if (!title) { Alert.alert('Missing info', 'Please enter a title.'); return; }
+    if (!title) { notify('Missing info', 'Please enter a title.'); return; }
     setSaving(true);
     try {
       const eventDateTime = new Date(date);
@@ -292,17 +292,17 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
 
       if (editingItem) {
         await updateDoc(doc(db, 'events', editingItem.id), { ...data, updatedAt: new Date() });
-        Alert.alert('Updated!', `${title} has been updated.`);
+        notify('Updated!', `${title} has been updated.`);
       } else {
         await addDoc(collection(db, 'events'), { ...data, createdAt: new Date() });
-        Alert.alert('Added!', `${title} added to the calendar.`);
+        notify('Added!', `${title} added to the calendar.`);
       }
 
       setAddModalVisible(false);
       setEditingItem(null);
       loadItems();
     } catch (e) {
-      Alert.alert('Error', 'Could not save. Please try again.');
+      notify('Error', 'Could not save. Please try again.');
       console.error(e);
     }
     setSaving(false);
@@ -318,7 +318,7 @@ export default function CalendarScreen({ userData, school, onClose, autoOpenAdd,
           await deleteDoc(doc(db, 'events', item.id));
           setDetailVisible(false);
           loadItems();
-        } catch { Alert.alert('Error', 'Could not delete.'); }
+        } catch { notify('Error', 'Could not delete.'); }
       },
     });
   };

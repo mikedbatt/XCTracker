@@ -5,7 +5,7 @@ import {
 } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
-  Alert, Platform, ScrollView, StyleSheet,
+  Platform, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
@@ -13,6 +13,7 @@ import { SIGNAL } from '../constants/design';
 import { confirmDestructive } from '../utils/confirmDialog';
 import DatePickerField from './DatePickerField';
 import { generateVolumeCurve, getActiveSeason, getPhaseForSeason, SPORTS } from './SeasonPlanner';
+import { notify } from '../utils/notify';
 
 // Build a stable key for a season: "sport_YYYY-MM-DD"
 function seasonKey(season) {
@@ -96,11 +97,11 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
 
   const handleSaveSeason = async () => {
     if (!seasonStart || !championshipDate) {
-      Alert.alert('Missing dates', 'Please set both a start date and championship date.');
+      notify('Missing dates', 'Please set both a start date and championship date.');
       return;
     }
     if (championshipDate <= seasonStart) {
-      Alert.alert('Invalid dates', 'Championship date must be after the start date.');
+      notify('Invalid dates', 'Championship date must be after the start date.');
       return;
     }
     const sportDef = SPORTS[sport];
@@ -172,14 +173,14 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
       await updateDoc(doc(db, 'schools', schoolId), { seasons: updated });
       onSaved && onSaved({ seasons: updated });
     } catch {
-      Alert.alert('Error', 'Could not save to server. Check your connection and try again.');
+      notify('Error', 'Could not save to server. Check your connection and try again.');
     }
     setShowForm(false);
   };
 
   const handleDelete = (idx) => {
     if (!isHeadCoach) {
-      Alert.alert('Head coach only', 'Only the head coach can delete a season.');
+      notify('Head coach only', 'Only the head coach can delete a season.');
       return;
     }
     const target = seasons[idx];
@@ -202,7 +203,7 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
           }
           await updateDoc(doc(db, 'schools', schoolId), patch);
           onSaved && onSaved({ seasons: updated });
-        } catch { Alert.alert('Error', 'Could not delete. Please try again.'); }
+        } catch { notify('Error', 'Could not delete. Please try again.'); }
       },
     });
   };
@@ -253,7 +254,7 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
     const groupsWithPeak = groups.filter(g => (s.peakMileage?.[g.id] || 0) > 0);
 
     if (groupsWithPeak.length === 0) {
-      Alert.alert('Set peak mileage', 'Set a championship week peak for at least one group first.');
+      notify('Set peak mileage', 'Set a championship week peak for at least one group first.');
       return;
     }
     confirmDestructive({
@@ -271,7 +272,7 @@ export default function ManageSeasons({ school, schoolId, groups: initialGroups,
           } catch (e) { console.warn('Failed to save volume plan:', e); }
         }
         await reloadGroups();
-        Alert.alert('Done', `Volume plan generated for ${groupsWithPeak.length} group${groupsWithPeak.length > 1 ? 's' : ''}.`);
+        notify('Done', `Volume plan generated for ${groupsWithPeak.length} group${groupsWithPeak.length > 1 ? 's' : ''}.`);
       },
     });
   };

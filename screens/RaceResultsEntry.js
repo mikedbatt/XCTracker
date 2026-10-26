@@ -5,13 +5,14 @@ import {
 } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
+  ActivityIndicator, KeyboardAvoidingView, Platform,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 import { bottomInset } from '../utils/safeArea';
 import { BRAND, SIGNAL } from '../constants/design';
 import { parseTime, formatTime, calcPace } from '../utils/raceUtils';
+import { notify } from '../utils/notify';
 
 export default function RaceResultsEntry({ race, meet, schoolId, school, athletes, existingResults, onClose }) {
   const [entries, setEntries] = useState([]);
@@ -53,7 +54,7 @@ export default function RaceResultsEntry({ race, meet, schoolId, school, athlete
     const finishedEntries = entries.filter(e => e.status === 'finished' && e.timeInput.trim());
     for (const e of finishedEntries) {
       if (!parseTime(e.timeInput)) {
-        Alert.alert('Invalid time', `"${e.timeInput}" for ${e.athleteName} is not a valid time. Use MM:SS or H:MM:SS format.`);
+        notify('Invalid time', `"${e.timeInput}" for ${e.athleteName} is not a valid time. Use MM:SS or H:MM:SS format.`);
         return;
       }
     }
@@ -111,11 +112,11 @@ export default function RaceResultsEntry({ race, meet, schoolId, school, athlete
       // Mark race as results entered
       await updateDoc(doc(db, 'races', race.id), { resultsEntered: true });
 
-      Alert.alert('Saved!', 'Race results have been saved.');
+      notify('Saved!', 'Race results have been saved.');
       onClose();
     } catch (e) {
       console.error('Failed to save results:', e);
-      Alert.alert('Error', 'Could not save results. Please try again.');
+      notify('Error', 'Could not save results. Please try again.');
     }
     setSaving(false);
   };

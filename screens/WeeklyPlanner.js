@@ -13,6 +13,7 @@ import { SIGNAL } from '../constants/design';
 import { CATEGORIES, SIGNAL_TYPE_COLORS, TYPE_COLORS, WORKOUT_INTENSITY } from '../constants/training';
 import { getPhaseForSeason } from './SeasonPlanner';
 import WorkoutLibrary from './WorkoutLibrary';
+import { notify } from '../utils/notify';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const WORKOUT_TYPES = CATEGORIES?.Training?.types || ['Easy', 'Tempo', 'Long Run', 'Intervals', 'Speed', 'Cross Train', 'Weights', 'Recovery', 'Time Trial'];
@@ -423,7 +424,7 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
   const handlePushToCalendar = async () => {
     const filledSlots = daySlots.map((slot, i) => ({ ...slot, dayIdx: i })).filter(s => s.type);
     if (filledSlots.length === 0) {
-      Alert.alert('No workouts', 'Add at least one workout to push to the calendar.');
+      notify('No workouts', 'Add at least one workout to push to the calendar.');
       return;
     }
 
@@ -483,11 +484,11 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
           });
           setWeekStatus('published');
           setDraftDirty(false);
-          Alert.alert('Done', `${filledSlots.length} workout${filledSlots.length > 1 ? 's' : ''} pushed to calendar.`);
+          notify('Done', `${filledSlots.length} workout${filledSlots.length > 1 ? 's' : ''} pushed to calendar.`);
           loadWeekData();
         } catch (e) {
           console.error('Push to calendar failed:', e);
-          Alert.alert('Error', 'Could not push to calendar. Please try again.');
+          notify('Error', 'Could not push to calendar. Please try again.');
         }
         setSaving(false);
       },
@@ -867,9 +868,9 @@ export default function WeeklyPlanner({ schoolId, userData, school, groups, acti
                               createdAt: serverTimestamp(),
                               isCustom: true,
                             });
-                            Alert.alert('Saved!', `"${slot.title || slot.type}" added to your workout library.`);
+                            notify('Saved!', `"${slot.title || slot.type}" added to your workout library.`);
                           } catch (e) {
-                            Alert.alert('Error', 'Could not save to library.');
+                            notify('Error', 'Could not save to library.');
                           }
                         }}
                       >

@@ -20,7 +20,7 @@
 <body>
 <div class="nav"><a href="/">← Back to XCTracker</a><a href="/terms.html">Terms of Service</a></div>
 <h1>Privacy Policy</h1>
-<div class="updated">Last updated: June 11, 2026</div>
+<div class="updated">Last updated: October 26, 2026</div>
 
 <p>XCTracker ("we," "us") is a training platform for cross country, track, and related team sports. This policy explains what information we collect, how we use it, your rights, and the choices you have. By using XCTracker, you agree to the practices described here.</p>
 
@@ -51,24 +51,28 @@
   <li>Attendance records.</li>
 </ul>
 
-<h3>Strava integration (optional)</h3>
-<p>Connecting your Strava account is entirely optional. If you choose to connect Strava, you authorize XCTracker — through Strava's official OAuth flow — to access activity data from your Strava account on your behalf. Specifically:</p>
+<h3>Garmin Connect integration (optional)</h3>
+<p>Connecting your Garmin account is entirely optional. If you choose to connect, you authorize XCTracker — through Garmin's official sign-in and consent screen — to receive activity data from your Garmin Connect account. Specifically:</p>
 <ul>
-  <li><strong>What we receive from Strava:</strong> your Strava athlete ID, and for the activities you sync, summary data (distance, moving time, activity type, start date) and the pace stream for that activity.</li>
-  <li><strong>How we use it:</strong> solely to import your runs into your XCTracker training log and to compute your pace-based training zones. We do not use Strava data for any other purpose.</li>
-  <li><strong>Shared within your team — with your consent:</strong> XCTracker is a team training platform, so the runs you sync from Strava — and the pace and mileage metrics derived from them — are visible within XCTracker to your coaches, your teammates (for example, on team mileage leaderboards), and any linked parent/guardian, in the same way your manually-logged runs are (see "Who can see your data" below). When you connect Strava you give <strong>explicit consent</strong> to this sharing, and you can withdraw it at any time by disconnecting Strava. This sharing happens only within XCTracker among members of your team — we never share your Strava data with third parties outside the platform.</li>
-  <li><strong>What we store:</strong> the derived per-zone time for each run (a summary). Raw pace streams from Strava are processed in memory to compute your zones and are <strong>NOT</strong> permanently stored. We also store the Strava access tokens needed to keep your runs syncing.</li>
-  <li><strong>What we never do:</strong> we do not sell, rent, license, or share your Strava data with any third party; we do not use Strava data for advertising; and we do not use Strava data to train machine-learning or artificial-intelligence models.</li>
-  <li><strong>Your Strava privacy settings are respected:</strong> we only receive data you have authorized and that your Strava privacy settings permit. You control the connection.</li>
-  <li><strong>Disconnecting:</strong> you may disconnect Strava at any time from your XCTracker profile, or revoke access directly in your Strava account settings. When you disconnect or deauthorize, we delete your stored Strava access tokens and stop syncing. Runs already imported remain in your training log as your own derived training history (they contain no raw Strava data) until you delete those runs or your account.</li>
+  <li><strong>What we receive from Garmin:</strong> your Garmin user ID and, for each activity you record after connecting, summary data: activity type, distance, duration, average pace/speed, elevation gain, start time, and the activity's title.</li>
+  <li><strong>When:</strong> Garmin sends us new activities automatically after your watch syncs with Garmin Connect, starting from the moment you connect. We do not import activities recorded before you connected.</li>
+  <li><strong>How we use it:</strong> only running activities are imported into your XCTracker training log and used to estimate your pace-based training zones (from the activity's average pace). Non-running activities are ignored. A custom activity title (for example, a place name you typed) is saved as the run's notes.</li>
+  <li><strong>Shared within your team:</strong> runs imported from Garmin are visible within XCTracker in the same way as runs you log manually — to your coaches, your teammates (for example, on team mileage leaderboards), and any parent/guardian you have approved (see "Who can see your data" below). This sharing happens only within XCTracker among members of your team; we never share your Garmin data with third parties outside the platform.</li>
+  <li><strong>What we store:</strong> the run summary and derived per-zone time for each imported run, and the Garmin access tokens needed to keep your runs syncing. Tokens are stored on our servers only and are never visible to other users.</li>
+  <li><strong>What we never do:</strong> we do not sell, rent, license, or share your Garmin data with any third party; we do not use it for advertising; and we do not use it to train machine-learning or artificial-intelligence models.</li>
+  <li><strong>Disconnecting:</strong> you may disconnect Garmin at any time from your XCTracker profile, or remove XCTracker's access in your Garmin Connect account settings. When you disconnect, we ask Garmin to stop sending data, delete your stored Garmin tokens, and stop syncing. Runs already imported remain in your training log until you delete them or your account.</li>
 </ul>
-<p>Your use of Strava remains governed by <a href="https://www.strava.com/legal/privacy" target="_blank" rel="noopener">Strava's Privacy Policy</a> and <a href="https://www.strava.com/legal/terms" target="_blank" rel="noopener">Terms of Service</a>.</p>
+<p>Your use of Garmin Connect remains governed by <a href="https://www.garmin.com/en-US/privacy/connect/" target="_blank" rel="noopener">Garmin's Privacy Policy</a>.</p>
+<p><em>Earlier versions of XCTracker offered a Strava connection. It has been discontinued: no new data is received from Strava, and runs imported from Strava before then remain in your training log as your own history until you delete them.</em></p>
 
 <h3>Photos</h3>
 <p>If you attach a photo to a team feed post, the image is uploaded to our storage so teammates can view it.</p>
 
 <h3>Push notification tokens</h3>
-<p>If you enable notifications, we store a device push token to deliver check-in reminders and coach reply notifications.</p>
+<p>If you enable notifications, we store a device push token to deliver check-in reminders and coach reply notifications. The token is removed from your account when you sign out on that device.</p>
+
+<h3>Error reports</h3>
+<p>When the app hits an error, a technical error report (such as the browser or device type, the screen involved, and the error details) is sent to our error-monitoring provider so we can fix the problem. We do not attach your name or email address to these reports.</p>
 
 <h3>Information we do NOT collect</h3>
 <ul>
@@ -92,7 +96,7 @@
 <ul>
   <li><strong>Performance of contract:</strong> processing necessary to provide the XCTracker service you signed up for (e.g., storing your runs, enabling coach communication).</li>
   <li><strong>Legitimate interests:</strong> improving the app and maintaining its security, in ways that do not override your fundamental rights.</li>
-  <li><strong>Consent:</strong> for wellness check-in data (mood, fatigue, injury/illness), optional push notifications, and Strava integration. You may withdraw consent at any time without affecting prior processing.</li>
+  <li><strong>Consent:</strong> for wellness check-in data (mood, fatigue, injury/illness), optional push notifications, and the Garmin integration. You may withdraw consent at any time without affecting prior processing.</li>
   <li><strong>Legal obligation:</strong> where processing is required to comply with applicable law (e.g., COPPA parental consent requirements).</li>
 </ul>
 
@@ -101,7 +105,7 @@
   <li>We do not sell your personal information.</li>
   <li>We do not use your data for advertising or share it with third parties for marketing.</li>
   <li>We do not use wellness or health data for purposes beyond coaching and safety monitoring within your team.</li>
-  <li>We do not use your data — including Strava data — to train machine-learning or AI models.</li>
+  <li>We do not use your data — including data received from Garmin — to train machine-learning or AI models.</li>
 </ul>
 
 <h2>4. Who can see your data</h2>
@@ -110,7 +114,7 @@
   <li><strong>You</strong> can always see your own data.</li>
   <li><strong>Your coaches</strong> (head and assistant coaches at your school) can see your runs, wellness check-ins, race results, and attendance.</li>
   <li><strong>Only your head coach</strong> can see your private weekly check-in messages. Assistant coaches do not have access to weekly check-in threads.</li>
-  <li><strong>Parents/guardians</strong> linked to your account can see your training summary and the team feed. Parents cannot see your private weekly check-in messages.</li>
+  <li><strong>Parents/guardians</strong> can link to an athlete only after the athlete approves their request in the app. A linked parent can see the athlete's training summary, schedule and races, and read the team feed (parents cannot post). Parents cannot see private weekly check-in messages. An athlete can remove a linked parent at any time.</li>
   <li><strong>Teammates at your school</strong> can see leaderboard rankings (miles totals) and posts you make to the team feed.</li>
 </ul>
 
@@ -127,9 +131,10 @@
 <p>We use the following third-party services that may receive or process personal data on our behalf:</p>
 <ul>
   <li><strong>Google Firebase</strong> (Firestore, Authentication, Storage, Cloud Messaging) — provides our database, authentication, file storage, and push notification infrastructure. Data is hosted in Google's secure cloud infrastructure within the United States.</li>
-  <li><strong>Strava</strong> — if you choose to connect your Strava account, we receive only the activity data you authorize (see Section 2). Strava's own Terms of Service and Privacy Policy govern your Strava account.</li>
+  <li><strong>Garmin</strong> — if you choose to connect your Garmin account, Garmin sends us only the activity data you authorize (see Section 2). Garmin's own terms and privacy policy govern your Garmin account.</li>
+  <li><strong>Sentry</strong> (Functional Software, Inc.) — receives technical error reports from the app so we can find and fix bugs (see Section 2). Reports do not include your name or email address.</li>
 </ul>
-<p>We do not share your personal information with any other third parties except as required by law. We do not use third-party analytics or advertising networks.</p>
+<p>We do not share your personal information with any other third parties except as required by law. We do not use advertising networks or marketing analytics.</p>
 
 <h2>7. Data security and breach notification</h2>
 <p>We implement reasonable administrative, technical, and physical safeguards to protect your personal information, including Firebase's built-in security rules that enforce the role-based access boundaries described in Section 4.</p>
@@ -140,7 +145,7 @@
   <li><strong>Active accounts:</strong> we retain your data for as long as your account is active.</li>
   <li><strong>Account deletion:</strong> upon request, your personal data is removed from active systems within 30 days.</li>
   <li><strong>Minor accounts:</strong> upon a verified parental/guardian deletion request, data is removed within 14 days (see Section 5).</li>
-  <li><strong>Strava data:</strong> stored Strava access tokens are deleted when you disconnect or deauthorize (see Section 2).</li>
+  <li><strong>Garmin data:</strong> stored Garmin access tokens are deleted when you disconnect (see Section 2).</li>
   <li><strong>Aggregate data:</strong> anonymized, non-identifiable statistics (e.g., total platform miles logged) may be retained indefinitely and cannot be linked back to any individual.</li>
 </ul>
 
@@ -153,7 +158,7 @@
   <li><strong>Right to limit use of sensitive data:</strong> request that we restrict processing of your wellness/health data.</li>
   <li><strong>Right to data portability:</strong> request your data in a portable format.</li>
   <li><strong>Right to non-discrimination:</strong> we will not discriminate against you for exercising any of these rights.</li>
-  <li><strong>Disconnect Strava:</strong> remove Strava access at any time from your profile settings.</li>
+  <li><strong>Disconnect Garmin:</strong> remove Garmin access at any time from your profile settings or your Garmin Connect account.</li>
   <li><strong>Turn off push notifications:</strong> disable at any time in your device settings.</li>
 </ul>
 <p>California residents have additional rights under the California Privacy Rights Act (CPRA), including the right to opt out of the sale or sharing of personal information. We do not sell or share your personal information as defined by the CPRA.</p>
